@@ -158,8 +158,8 @@ class RipgrepSearcher:
     ) -> Dict[str, Any]:
         """Execute ripgrep search with given parameters"""
         
-        # Log search request
-        logger.info(f"Search request: pattern='{pattern}', file_types={file_types}, paths={paths}")
+        # Log search request with mode indication
+        logger.info(f"🔍 REGEX search: pattern='{pattern}', file_types={file_types}, paths={paths}")
         logger.debug(f"Working directory: {os.getcwd()}")
         logger.debug(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
         
@@ -341,9 +341,17 @@ try:
         CodeIndexer = load_module("indexer", current_dir / "indexer.py").CodeIndexer
     
     # Check if semantic index exists
-    index_path = Path("./chroma_db")
+    # First check MCP_WORKING_DIR (where Claude Code was launched from)
+    mcp_working_dir = os.environ.get('MCP_WORKING_DIR')
+    if mcp_working_dir:
+        index_path = Path(mcp_working_dir) / "chroma_db"
+        logger.info(f"Checking for ChromaDB at MCP working directory: {index_path}")
+    else:
+        index_path = Path("./chroma_db")
+        logger.info(f"No MCP_WORKING_DIR set, checking current directory: {index_path}")
+    
     if index_path.exists():
-        vector_store = CodeVectorStore()
+        vector_store = CodeVectorStore(persist_directory=str(index_path))
         stats = vector_store.get_statistics()
         if stats['total_symbols'] > 0:
             embedder = EmbeddingManager()
@@ -597,14 +605,31 @@ async def handle_call_tool(
                 paths=arguments.get('paths'),
                 limit=arguments.get('limit', 50),
                 case_sensitive=arguments.get('case_sensitive', False),
+                include_symbols=arguments.get('include_symbols', False),
+                similarity_threshold=arguments.get('similarity_threshold', 0.7),
+                format=arguments.get('format', 'navigation')
+            )
+        elif 'pattern' in arguments:
+            # Old search - convert pattern to query and use intelligent search
+            pattern = arguments.get('pattern')
+            if not pattern:
+                raise ValueError("Missing pattern argument")
+            
+            # Convert old pattern-based search to intelligent search
+            logger.info(f"🔄 CONVERTING pattern search to intelligent search: '{pattern}'")
+            return await handle_intelligent_search(
+                query=pattern,
+                mode='auto',  # Let auto-detection handle it
+                file_types=arguments.get('file_types'),
+                paths=arguments.get('paths'),
+                limit=arguments.get('limit', 50),
+                case_sensitive=arguments.get('case_sensitive', False),
+                include_symbols=arguments.get('include_symbols', False),
                 similarity_threshold=arguments.get('similarity_threshold', 0.7),
                 format=arguments.get('format', 'navigation')
             )
         else:
-            # Old search - handle existing pattern-based search
-            pattern = arguments.get('pattern')
-            if not pattern:
-                raise ValueError("Missing pattern argument")
+            raise ValueError("Missing query or pattern argument")
     
     # Handle new intelligent search tools
     elif name == "get_search_capabilities":
@@ -616,119 +641,11 @@ async def handle_call_tool(
             raise ValueError("Missing query argument")
         return await handle_simple_search(query)
     
-    # Handle old search_code tool for backwards compatibility
-    elif name == "search_code" and 'pattern' in arguments:
-        pattern = arguments.get('pattern')
-        if not pattern:
-            raise ValueError("Missing pattern argument")
-    
     else:
         raise ValueError(f"Unknown tool: {name}")
     
-    # Continue with original search_code logic for pattern-based searches
-    if not arguments:
-        raise ValueError("Missing arguments")
-    
-    # Extract arguments
-    pattern = arguments.get("pattern")
-    if not pattern:
-        raise ValueError("Pattern is required")
-    
-    file_types = arguments.get("file_types", [])
-    paths = arguments.get("paths", ["."])
-    limit = arguments.get("limit", DEFAULT_RESULTS)
-    case_sensitive = arguments.get("case_sensitive", False)
-    include_symbols = arguments.get("include_symbols", False)
-    exclude_patterns = arguments.get("exclude_patterns", None)
-    respect_gitignore = arguments.get("respect_gitignore", True)
-    output_format = arguments.get("format", "navigation")
-    
-    # Perform search
-    result = await searcher.search(
-        pattern=pattern,
-        file_types=file_types,
-        paths=paths,
-        limit=limit,
-        case_sensitive=case_sensitive,
-        exclude_patterns=exclude_patterns,
-        respect_gitignore=respect_gitignore,
-    )
-    
-    # Enhance with Tree-sitter if requested and available
-    if include_symbols and enhancer and result["success"]:
-        try:
-            result = await enhancer.enhance_search_results(result)
-        except Exception as e:
-            logger.warning(f"Failed to enhance results with Tree-sitter: {e}")
-    
-    # Format response based on requested format
-    if result["success"]:
-        if output_format == "raw":
-            # Simple format: just file:line references
-            response_text = ""
-            if result.get("matches"):
-                for match in result["matches"]:
-                    response_text += f"{match['file']}:{match['line_number']}\n"
-                if result.get("truncated"):
-                    response_text += f"\n[Truncated to {limit} results]"
-            else:
-                response_text = "No matches found."
-            return [types.TextContent(type="text", text=response_text)]
-        # Group matches by file for better navigation
-        matches_by_file = {}
-        for match in result.get("matches", []):
-            file_path = match["file"]
-            if file_path not in matches_by_file:
-                matches_by_file[file_path] = []
-            matches_by_file[file_path].append(match)
-        
-        # Build response with file-centric format
-        response_text = f"## Search Results: '{result['pattern']}'\n\n"
-        response_text += f"**Summary**: {result['total_matches']} matches in {len(matches_by_file)} files\n\n"
-        
-        if matches_by_file:
-            response_text += "### Files with matches:\n\n"
-            
-            # List all files first for quick navigation
-            for file_path in sorted(matches_by_file.keys()):
-                match_count = len(matches_by_file[file_path])
-                response_text += f"- `{file_path}` ({match_count} match{'es' if match_count > 1 else ''})\n"
-            
-            response_text += "\n### Match details:\n\n"
-            
-            # Then show details grouped by file
-            for file_path in sorted(matches_by_file.keys()):
-                matches = matches_by_file[file_path]
-                response_text += f"#### {file_path}\n"
-                
-                for match in matches:
-                    line_num = match['line_number']
-                    line_preview = match['line'].strip()
-                    
-                    # Truncate long lines
-                    if len(line_preview) > 80:
-                        line_preview = line_preview[:77] + "..."
-                    
-                    response_text += f"- Line {line_num}: `{line_preview}`\n"
-                    
-                    # Add symbol context if available
-                    if "symbol_context" in match:
-                        ctx = match["symbol_context"]
-                        context_parts = [f"{ctx['type']} '{ctx['name']}'"]
-                        if ctx.get('parent'):
-                            context_parts.append(f"in {ctx['parent']}")
-                        response_text += f"  Context: {' '.join(context_parts)}\n"
-                
-                response_text += "\n"
-            
-            if result.get("truncated"):
-                response_text += f"*Note: Results truncated to {limit} matches*\n"
-        else:
-            response_text += "No matches found.\n"
-    else:
-        response_text = f"Search failed: {result['error']}"
-    
-    return [types.TextContent(type="text", text=response_text)]
+    # This should never be reached due to the routing above
+    raise ValueError("Unexpected code path")
 
 
 # Helper functions for intelligent search
@@ -739,8 +656,10 @@ async def handle_intelligent_search(
     paths: Optional[List[str]] = None,
     limit: int = 50,
     case_sensitive: bool = False,
+    include_symbols: bool = False,  # For compatibility with Claude Code
     similarity_threshold: float = 0.7,
-    format: str = "navigation"
+    format: str = "navigation",
+    **kwargs  # Catch any other unexpected parameters
 ) -> List[types.TextContent]:
     """
     Intelligent code search with automatic mode detection and fallback.
@@ -749,14 +668,14 @@ async def handle_intelligent_search(
     # Detect or validate mode
     if mode == "auto":
         detected_mode = detect_query_type(query)
-        logger.info(f"🔍 Auto-detected search mode: {detected_mode} for query: '{query}'")
+        logger.info(f"🔍 AUTO-DETECTED → {detected_mode.upper()} search: '{query}'")
     else:
         detected_mode = mode
-        logger.info(f"🔍 Explicit search mode: {detected_mode} for query: '{query}'")
+        logger.info(f"🔍 EXPLICIT → {detected_mode.upper()} search: '{query}'")
     
     # Check if semantic search is available
     if detected_mode == "semantic" and not semantic_available:
-        logger.warning("Semantic search requested but not available, falling back to regex")
+        logger.warning("🧠 SEMANTIC search requested but not available → falling back to REGEX")
         detected_mode = "regex"
     
     # Enhance query for the selected mode
@@ -766,17 +685,19 @@ async def handle_intelligent_search(
     
     # Execute search based on mode
     if detected_mode == "semantic":
+        logger.info(f"🧠 EXECUTING semantic search with embeddings")
         result = await execute_semantic_search(enhanced_query, file_types, paths, limit, similarity_threshold)
     elif detected_mode == "symbol":
+        logger.info(f"🎯 EXECUTING symbol search with Tree-sitter")
         result = await execute_symbol_search(enhanced_query, file_types, paths, limit)
     else:  # regex mode
+        logger.info(f"⚡ EXECUTING regex search with ripgrep")
         result = await searcher.search(
             pattern=enhanced_query,
             file_types=file_types,
             paths=paths,
             limit=limit,
-            case_sensitive=case_sensitive,
-            include_symbols=True
+            case_sensitive=case_sensitive
         )
     
     # Add metadata about search execution
@@ -952,15 +873,14 @@ async def execute_semantic_search(query: str, file_types: Optional[List[str]], p
 
 async def execute_symbol_search(query: str, file_types: Optional[List[str]], paths: Optional[List[str]], limit: int) -> Dict:
     """Execute symbol search using Tree-sitter"""
-    # For now, use enhanced ripgrep search with symbol context
+    # For now, use enhanced ripgrep search
     # This could be enhanced to use the Tree-sitter enhancer directly
     return await searcher.search(
         pattern=query,
         file_types=file_types,
         paths=paths,
         limit=limit,
-        case_sensitive=False,
-        include_symbols=True
+        case_sensitive=False
     )
 
 
