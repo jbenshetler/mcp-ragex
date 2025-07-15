@@ -219,6 +219,10 @@ class RipgrepSearcher:
         # Log the full command
         logger.info(f"Ripgrep command: {' '.join(cmd)}")
         
+        # Track search time
+        import time
+        search_start = time.time()
+        
         # Execute search
         try:
             process = await asyncio.create_subprocess_exec(
@@ -231,6 +235,10 @@ class RipgrepSearcher:
                 process.communicate(),
                 timeout=30.0  # 30 second timeout
             )
+            
+            # Log search completion time
+            search_time = time.time() - search_start
+            logger.info(f"Search completed in {search_time:.3f} seconds")
             
             if process.returncode not in (0, 1):  # 0=matches found, 1=no matches
                 raise RuntimeError(f"ripgrep failed: {stderr.decode()}")
@@ -254,6 +262,9 @@ class RipgrepSearcher:
                 except json.JSONDecodeError:
                     logger.warning(f"Failed to parse line: {line}")
                     continue
+            
+            # Log search results
+            logger.info(f"Found {len(matches)} matches, returning {min(len(matches), limit)}")
             
             return {
                 "success": True,
