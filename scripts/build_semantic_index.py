@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""
+Build semantic search index for the codebase.
+Run this before starting the MCP server for the first time or when you need to rebuild the index.
+"""
+
+import asyncio
+import sys
+import time
+from pathlib import Path
+from datetime import datetime
+import json
+import argparse
+import logging
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.indexer import CodeIndexer
+from src.pattern_matcher import PatternMatcher
+from tqdm import tqdm
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("build-index")
+
+
+async def main():
+    parser = argparse.ArgumentParser(description="Build semantic search index for code")
+    parser.add_argument("paths", nargs="*", default=["."], 
+                       help="Paths to index (default: current directory)")
+    parser.add_argument("--force", action="store_true", 
+                       help="Force rebuild even if index exists")
+    parser.add_argument("--stats", action="store_true", 
+                       help="Show detailed statistics after indexing")
+    parser.add_argument("--persist-dir", default="./chroma_db",
+                       help="Directory for ChromaDB storage (default: ./chroma_db)")
+    parser.add_argument("--model", default="sentence-transformers/all-mpnet-base-v2",
+                       help="Sentence transformer model to use")
+    args = parser.parse_args()
+    
+    print("🔍 CodeRAG Semantic Search Indexer")
+    print("=" * 50)
+    
+    # Resolve paths
+    resolved_paths = [str(Path(p).resolve()) for p in args.paths]
+    print(f"📁 Indexing paths: {', '.join(resolved_paths)}")
+    
+    # Check if index exists
+    index_path = Path(args.persist_dir)
+    metadata_path = index_path / "index_metadata.json"
+    
+    if index_path.exists() and not args.force:
+        print("⚠️  Index already exists. Use --force to rebuild.")
+        
+        # Load and show existing index info
+        if metadata_path.exists():
+            try:
+                with open(metadata_path) as f:
+                    metadata = json.load(f)
+                print(f"\n📊 Current index:")
+                print(f"   - Created: {metadata.get('created_at', 'Unknown')}")
+                print(f"   - Symbols: {metadata.get('symbol_count', 'Unknown')}")
+                print(f"   - Files: {metadata.get('file_count', 'Unknown')}")
+                print(f"   - Index time: {metadata.get('index_time', 0):.1f}s")
+                
+                # Check if paths are different
+                indexed_paths = metadata.get('paths', [])
+                if set(resolved_paths) != set(indexed_paths):
+                    print(f"\n⚠️  Warning: Current index was built from different paths:")
+                    print(f"   - Indexed: {', '.join(indexed_paths)}")
+                    print(f"   - Requested: {', '.join(resolved_paths)}")
+            except Exception as e:
+                logger.warning(f"Could not read metadata: {e}")
+        
+        response = input("\nRebuild anyway? (y/N): ")
+        if response.lower() != 'y':
+            print("Aborted.")
+            return
+    
+    # Initialize indexer
+    print("\n📚 Initializing indexer...")
+    print(f"   - Model: {args.model}")
+    print(f"   - Storage: {args.persist_dir}")
+    
+    try:
+        indexer = CodeIndexer(
+            persist_directory=args.persist_dir,
+            model_name=args.model
+        )
+    except Exception as e:
+        print(f"❌ Failed to initialize indexer: {e}")
+        return
+    
+    # Count files first
+    pattern_matcher = PatternMatcher()
+    print("\n🔎 Discovering files...")
+    
+    all_files = indexer.find_code_files(resolved_paths)
+    print(f"📁 Found {len(all_files)} files to index")
+    
+    # Show file breakdown by type
+    file_types = {}
+    for file in all_files:
+        ext = file.suffix
+        file_types[ext] = file_types.get(ext, 0) + 1
+    
+    print("\n📊 File breakdown:")
+    for ext, count in sorted(file_types.items()):
+        print(f"   - {ext}: {count} files")
+    
+    if not all_files:
+        print("\n❌ No files found to index!")
+        print("   Make sure you're in a directory with Python, JavaScript, or TypeScript files.")
+        return
+    
+    # Start indexing
+    print("\n🏗️  Building index...")
+    start_time = time.time()
+    
+    # Track progress
+    processed_files = []
+    failed_files = []
+    
+    async def progress_callback(file_path, status):
+        if status == "success":
+            processed_files.append(file_path)
+        else:
+            failed_files.append(file_path)
+    
+    # Index with progress
+    try:
+        result = await indexer.index_codebase(
+            paths=resolved_paths,
+            force=True,
+            progress_callback=progress_callback
+        )
+    except Exception as e:
+        print(f"\n❌ Indexing failed: {e}")
+        logger.exception("Indexing error")
+        return
+    
+    elapsed = time.time() - start_time
+    
+    # Save metadata
+    metadata = {
+        "created_at": datetime.now().isoformat(),
+        "paths": resolved_paths,
+        "file_count": result.get("files_processed", 0),
+        "symbol_count": result.get("symbols_indexed", 0),
+        "index_time": elapsed,
+        "model": args.model,
+        "excluded_patterns": pattern_matcher.patterns[:10] if pattern_matcher.patterns else []
+    }
+    
+    index_path.mkdir(exist_ok=True)
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    # Print summary
+    print(f"\n✅ Indexing complete!")
+    print(f"\n📊 Summary:")
+    print(f"   - Status: {result.get('status', 'unknown')}")
+    print(f"   - Files processed: {result.get('files_processed', 0)}")
+    print(f"   - Symbols indexed: {result.get('symbols_indexed', 0)}")
+    print(f"   - Failed files: {len(result.get('failed_files', []))}")
+    print(f"   - Time taken: {elapsed:.1f}s")
+    
+    if result.get('symbols_indexed', 0) > 0:
+        print(f"   - Symbols/second: {result['symbols_indexed']/elapsed:.1f}")
+    
+    print(f"   - Index location: {index_path.absolute()}")
+    
+    # Show failed files if any
+    if result.get('failed_files'):
+        print(f"\n⚠️  Failed to process {len(result['failed_files'])} files:")
+        for f in result['failed_files'][:5]:
+            print(f"   - {f}")
+        if len(result['failed_files']) > 5:
+            print(f"   ... and {len(result['failed_files']) - 5} more")
+    
+    # Show detailed statistics if requested
+    if args.stats and result.get('symbols_indexed', 0) > 0:
+        print(f"\n📈 Detailed statistics:")
+        try:
+            stats = await indexer.get_index_statistics()
+            print(f"   - Functions: {stats.get('function_count', 0)}")
+            print(f"   - Classes: {stats.get('class_count', 0)}")
+            print(f"   - Methods: {stats.get('method_count', 0)}")
+            print(f"   - Variables: {stats.get('variable_count', 0)}")
+            print(f"   - Unique files: {stats.get('unique_files', 0)}")
+            print(f"   - Index size: {stats.get('index_size_mb', 0):.1f} MB")
+            
+            # Language breakdown
+            if stats.get('languages'):
+                print(f"\n📝 Language breakdown:")
+                for lang, count in sorted(stats['languages'].items()):
+                    print(f"   - {lang}: {count} symbols")
+        except Exception as e:
+            logger.warning(f"Could not get detailed stats: {e}")
+    
+    print(f"\n💡 Next steps:")
+    print(f"   1. Start the MCP server: ./run_server.sh")
+    print(f"   2. Use semantic_search in Claude Code")
+    print(f"   3. Re-run this script when codebase changes significantly")
+    
+    # Download model if needed
+    if result.get('symbols_indexed', 0) > 0:
+        print(f"\n📦 Note: The sentence transformer model '{args.model}'")
+        print(f"   has been downloaded and cached (~420MB).")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

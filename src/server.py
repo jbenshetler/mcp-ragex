@@ -306,6 +306,193 @@ except Exception as e:
     logger.warning(f"Failed to initialize Tree-sitter enhancer: {e}")
     enhancer = None
 
+# Initialize semantic search components
+semantic_searcher = None
+semantic_available = False
+
+try:
+    from .embedding_manager import EmbeddingManager
+    from .vector_store import CodeVectorStore
+    from .indexer import CodeIndexer
+    
+    # Check if semantic index exists
+    index_path = Path("./chroma_db")
+    if index_path.exists():
+        vector_store = CodeVectorStore()
+        stats = vector_store.get_statistics()
+        if stats['total_symbols'] > 0:
+            embedder = EmbeddingManager()
+            semantic_searcher = {
+                'embedder': embedder,
+                'vector_store': vector_store,
+                'indexer': CodeIndexer()
+            }
+            semantic_available = True
+            logger.info(f"Semantic search available with {stats['total_symbols']} symbols")
+        else:
+            logger.warning("Semantic index exists but is empty")
+    else:
+        logger.warning("Semantic search index not found. Run 'python scripts/build_semantic_index.py' to enable.")
+        
+except ImportError as e:
+    logger.warning(f"Semantic search dependencies not available: {e}")
+except Exception as e:
+    logger.warning(f"Failed to initialize semantic search: {e}")
+
+
+# Search mode detection and enhancement
+def detect_query_type(query: str) -> str:
+    """Detect the best search mode based on query characteristics"""
+    
+    # Check for regex patterns
+    regex_indicators = [
+        r'\.',      # literal dots
+        r'\*',      # wildcards  
+        r'\+',      # plus quantifier
+        r'\?',      # optional quantifier
+        r'\[.*\]',  # character classes
+        r'\{.*\}',  # quantifiers
+        r'\^',      # start anchor
+        r'\$',      # end anchor
+        r'\|',      # alternation
+        r'\\[a-z]', # escape sequences
+    ]
+    
+    if any(re.search(pattern, query) for pattern in regex_indicators):
+        return "regex"
+    
+    # Check for symbol-like queries
+    symbol_indicators = [
+        r'^[a-zA-Z_][a-zA-Z0-9_]*$',  # Simple identifier
+        r'^class\s+\w+',              # "class MyClass"
+        r'^def\s+\w+',                # "def function_name"
+        r'^function\s+\w+',           # "function myFunc"
+        r'^\w+\s*\(',                 # "funcName("
+    ]
+    
+    if any(re.search(pattern, query, re.IGNORECASE) for pattern in symbol_indicators):
+        return "symbol"
+    
+    # Check for natural language queries
+    natural_language_indicators = [
+        r'\b(functions?|methods?|classes?)\s+(that|which|for)\b',
+        r'\b(how to|where|what|when|why)\b',
+        r'\b(handles?|processes?|manages?|creates?|validates?)\b',
+        r'\b(error|exception|authentication|database|queue|file)\b',
+        r'\s(and|or|with|for|in|on|at|by)\s',
+        r'\b(submit|send|process|handle|create|delete|update)\b',
+    ]
+    
+    if any(re.search(pattern, query, re.IGNORECASE) for pattern in natural_language_indicators):
+        return "semantic"
+    
+    # Default fallback logic
+    if len(query.split()) >= 3:  # Multi-word queries likely semantic
+        return "semantic"
+    elif query.isidentifier():   # Valid identifier -> symbol search
+        return "symbol"
+    else:                        # Everything else -> regex
+        return "regex"
+
+
+def enhance_query_for_mode(query: str, mode: str) -> str:
+    """Enhance query based on the selected mode"""
+    
+    if mode == "semantic":
+        # Add context for better semantic matching
+        enhanced = query
+        
+        # Add programming context
+        if not any(word in query.lower() for word in ["function", "class", "method", "code"]):
+            enhanced = f"code {enhanced}"
+        
+        # Expand abbreviations
+        abbreviations = {
+            "auth": "authentication",
+            "db": "database", 
+            "config": "configuration",
+            "util": "utility",
+            "impl": "implementation"
+        }
+        
+        for abbr, full in abbreviations.items():
+            enhanced = re.sub(rf'\b{abbr}\b', full, enhanced, flags=re.IGNORECASE)
+        
+        return enhanced
+    
+    elif mode == "symbol":
+        # Clean up symbol queries
+        # Remove common prefixes
+        cleaned = re.sub(r'^(def|class|function)\s+', '', query, flags=re.IGNORECASE)
+        # Remove parentheses
+        cleaned = re.sub(r'\s*\(.*\)', '', cleaned)
+        return cleaned.strip()
+    
+    elif mode == "regex":
+        # Escape special chars if it doesn't look like intentional regex
+        if not any(char in query for char in r'.*+?[]{}()^$|\\'):
+            return re.escape(query)
+        return query
+    
+    return query
+
+
+def get_fallback_chain(preferred_mode: str, query: str) -> List[str]:
+    """Get intelligent fallback chain based on preferred mode"""
+    
+    if preferred_mode == "semantic":
+        # Semantic failed -> try symbol if looks like identifier, else regex
+        if query.replace("_", "").isalnum():
+            return ["symbol", "regex"]
+        else:
+            return ["regex", "symbol"]
+    
+    elif preferred_mode == "symbol":
+        # Symbol failed -> try regex (maybe partial match), then semantic
+        return ["regex", "semantic"]
+    
+    elif preferred_mode == "regex":
+        # Regex failed -> try semantic (maybe they meant natural language)
+        return ["semantic", "symbol"]
+    
+    return []
+
+
+def generate_search_guidance(query: str, mode: str) -> Dict:
+    """Generate helpful guidance when search fails"""
+    
+    guidance = {
+        "message": f"No results found for '{query}' in {mode} mode.",
+        "suggestions": []
+    }
+    
+    if mode == "semantic":
+        guidance["suggestions"] = [
+            f"Try symbol mode if you know specific names: search_code('{query.split()[0] if query.split() else query}', mode='symbol')",
+            f"Try regex mode for patterns: search_code('{query}.*', mode='regex')",
+            "Make query more specific: 'functions that handle file upload validation'",
+            "Try broader terms: 'file processing code' or 'queue management'"
+        ]
+    
+    elif mode == "symbol":
+        guidance["suggestions"] = [
+            f"Try semantic mode: search_code('functions related to {query}', mode='semantic')",
+            f"Try partial regex: search_code('{query}.*', mode='regex')",
+            "Check spelling and capitalization",
+            "Try variations: CamelCase, snake_case, kebab-case"
+        ]
+    
+    elif mode == "regex":
+        guidance["suggestions"] = [
+            f"Try semantic mode: search_code('code that handles {query}', mode='semantic')",
+            "Simplify pattern - remove some wildcards",
+            "Try case-insensitive search",
+            "Check regex syntax"
+        ]
+    
+    return guidance
+
+
 @app.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     """List available tools"""

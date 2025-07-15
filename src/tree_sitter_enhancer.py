@@ -30,6 +30,9 @@ class Symbol:
     parent: Optional[str] = None  # Parent class/module
     signature: Optional[str] = None  # Function signature
     docstring: Optional[str] = None
+    code: Optional[str] = None  # The actual code content
+    start_byte: Optional[int] = None  # Start position in file
+    end_byte: Optional[int] = None  # End position in file
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -215,6 +218,20 @@ class TreeSitterEnhancer:
         query = self.queries[lang]
         captures = query.captures(tree.root_node)
         
+        # Debug: Check what captures returns
+        logger.debug(f"Captures type: {type(captures)}, length: {len(captures) if hasattr(captures, '__len__') else 'N/A'}")
+        if captures:
+            logger.debug(f"Captures keys: {list(captures.keys()) if isinstance(captures, dict) else 'Not a dict'}")
+        
+        # Convert captures dict to list of tuples for processing
+        if isinstance(captures, dict):
+            # Tree-sitter returns a dict mapping capture names to lists of nodes
+            capture_list = []
+            for capture_name, nodes in captures.items():
+                for node in nodes:
+                    capture_list.append((node, capture_name))
+            captures = capture_list
+        
         # Process captures based on language
         if lang == "python":
             symbols.extend(self._extract_python_symbols(captures, content, file_path))
@@ -235,9 +252,35 @@ class TreeSitterEnhancer:
         symbols = []
         current_class = None
         
-        for node, capture_name in captures:
+        # Helper function to find nodes by capture name
+        def find_capture_node(capture_name_to_find: str, parent_node=None):
+            """Find a node with specific capture name, optionally with specific parent"""
+            for cap in captures:
+                if isinstance(cap, tuple) and len(cap) == 2:
+                    n, name = cap
+                    if name == capture_name_to_find:
+                        if parent_node is None or n.parent == parent_node:
+                            return n
+            return None
+        
+        # Debug: log capture structure
+        logger.debug(f"Python captures: {len(captures)} items")
+        
+        for capture in captures:
+            # Handle different capture formats
+            if isinstance(capture, tuple) and len(capture) == 2:
+                node, capture_name = capture
+            else:
+                logger.error(f"Unexpected capture format: {type(capture)}, value: {capture}")
+                continue
             if capture_name == "class":
-                class_name_node = next((n for n, name in captures if name == "class.name" and n.parent == node), None)
+                class_name_node = None
+                for cap in captures:
+                    if isinstance(cap, tuple) and len(cap) == 2:
+                        n, name = cap
+                        if name == "class.name" and n.parent == node:
+                            class_name_node = n
+                            break
                 if class_name_node:
                     class_name = self._extract_text(class_name_node, source)
                     current_class = class_name
@@ -251,12 +294,21 @@ class TreeSitterEnhancer:
                         end_line=node.end_point[0] + 1,
                         column=class_name_node.start_point[1],
                         docstring=docstring,
+                        code=self._extract_text(node, source),
+                        start_byte=node.start_byte,
+                        end_byte=node.end_byte,
                     ))
             
             elif capture_name == "function" or capture_name == "method.name":
                 is_method = capture_name == "method.name"
                 func_node = node.parent if is_method else node
-                func_name_node = next((n for n, name in captures if name in ["function.name", "method.name"] and (n == node or n.parent == func_node)), None)
+                func_name_node = None
+                for cap in captures:
+                    if isinstance(cap, tuple) and len(cap) == 2:
+                        n, name = cap
+                        if name in ["function.name", "method.name"] and (n == node or n.parent == func_node):
+                            func_name_node = n
+                            break
                 
                 if func_name_node:
                     func_name = self._extract_text(func_name_node, source)
@@ -279,6 +331,9 @@ class TreeSitterEnhancer:
                         parent=parent_class,
                         signature=f"{func_name}{signature}",
                         docstring=docstring,
+                        code=self._extract_text(func_node, source),
+                        start_byte=func_node.start_byte,
+                        end_byte=func_node.end_byte,
                     ))
         
         return symbols
@@ -287,9 +342,21 @@ class TreeSitterEnhancer:
         """Extract symbols from JavaScript/TypeScript code"""
         symbols = []
         
-        for node, capture_name in captures:
+        for capture in captures:
+            # Handle different capture formats
+            if isinstance(capture, tuple) and len(capture) == 2:
+                node, capture_name = capture
+            else:
+                logger.error(f"Unexpected capture format in JS/TS: {type(capture)}, value: {capture}")
+                continue
             if capture_name == "class":
-                class_name_node = next((n for n, name in captures if name == "class.name" and n.parent == node), None)
+                class_name_node = None
+                for cap in captures:
+                    if isinstance(cap, tuple) and len(cap) == 2:
+                        n, name = cap
+                        if name == "class.name" and n.parent == node:
+                            class_name_node = n
+                            break
                 if class_name_node:
                     class_name = self._extract_text(class_name_node, source)
                     symbols.append(Symbol(
@@ -299,10 +366,19 @@ class TreeSitterEnhancer:
                         line=class_name_node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=class_name_node.start_point[1],
+                        code=self._extract_text(node, source),
+                        start_byte=node.start_byte,
+                        end_byte=node.end_byte,
                     ))
             
             elif capture_name == "interface" and lang in ["typescript", "tsx"]:
-                interface_name_node = next((n for n, name in captures if name == "interface.name" and n.parent == node), None)
+                interface_name_node = None
+                for cap in captures:
+                    if isinstance(cap, tuple) and len(cap) == 2:
+                        n, name = cap
+                        if name == "interface.name" and n.parent == node:
+                            interface_name_node = n
+                            break
                 if interface_name_node:
                     interface_name = self._extract_text(interface_name_node, source)
                     symbols.append(Symbol(
@@ -312,6 +388,9 @@ class TreeSitterEnhancer:
                         line=interface_name_node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=interface_name_node.start_point[1],
+                        code=self._extract_text(node, source),
+                        start_byte=node.start_byte,
+                        end_byte=node.end_byte,
                     ))
             
             elif capture_name in ["function", "arrow_func"]:
@@ -340,6 +419,9 @@ class TreeSitterEnhancer:
                         end_line=node.end_point[0] + 1,
                         column=func_name_node.start_point[1],
                         signature=f"{func_name}{signature}{return_type}",
+                        code=self._extract_text(node, source),
+                        start_byte=node.start_byte,
+                        end_byte=node.end_byte,
                     ))
         
         return symbols
