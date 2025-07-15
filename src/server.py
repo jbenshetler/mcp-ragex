@@ -160,8 +160,8 @@ class RipgrepSearcher:
         
         # Log search request
         logger.info(f"Search request: pattern='{pattern}', file_types={file_types}, paths={paths}")
-        logger.info(f"Working directory: {os.getcwd()}")
-        logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
+        logger.debug(f"Working directory: {os.getcwd()}")
+        logger.debug(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
         
         # Validate inputs
         try:
@@ -177,7 +177,7 @@ class RipgrepSearcher:
             }
         
         search_paths = self.validate_paths(paths or ["."])
-        logger.info(f"Validated search paths: {[str(p) for p in search_paths]}")
+        logger.debug(f"Validated search paths: {[str(p) for p in search_paths]}")
         limit = min(max(1, limit), MAX_RESULTS)
         
         # Build command
@@ -217,7 +217,7 @@ class RipgrepSearcher:
         cmd.extend(str(p) for p in search_paths)
         
         # Log the full command
-        logger.info(f"Ripgrep command: {' '.join(cmd)}")
+        logger.debug(f"Ripgrep command: {' '.join(cmd)}")
         
         # Track search time
         import time
@@ -311,9 +311,34 @@ semantic_searcher = None
 semantic_available = False
 
 try:
-    from .embedding_manager import EmbeddingManager
-    from .vector_store import CodeVectorStore
-    from .indexer import CodeIndexer
+    # Import semantic search modules
+    import sys
+    import os
+    from pathlib import Path
+    
+    # Add the current directory to the path for imports
+    current_dir = Path(__file__).parent
+    if str(current_dir) not in sys.path:
+        sys.path.insert(0, str(current_dir))
+    
+    # Try importing the semantic search modules
+    try:
+        from embedding_manager import EmbeddingManager
+        from vector_store import CodeVectorStore
+        from indexer import CodeIndexer
+    except ImportError:
+        # If that fails, try with full path
+        import importlib.util
+        
+        def load_module(name, path):
+            spec = importlib.util.spec_from_file_location(name, path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+        
+        EmbeddingManager = load_module("embedding_manager", current_dir / "embedding_manager.py").EmbeddingManager
+        CodeVectorStore = load_module("vector_store", current_dir / "vector_store.py").CodeVectorStore
+        CodeIndexer = load_module("indexer", current_dir / "indexer.py").CodeIndexer
     
     # Check if semantic index exists
     index_path = Path("./chroma_db")
@@ -557,9 +582,50 @@ async def handle_call_tool(
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Handle tool calls"""
     
-    if name != "search_code":
+    if not arguments:
+        arguments = {}
+    
+    # Handle original search_code tool
+    if name == "search_code":
+        # Check if this is the new intelligent search (has 'query' param) or old search (has 'pattern' param)
+        if 'query' in arguments:
+            # New intelligent search
+            return await handle_intelligent_search(
+                query=arguments['query'],
+                mode=arguments.get('mode', 'auto'),
+                file_types=arguments.get('file_types'),
+                paths=arguments.get('paths'),
+                limit=arguments.get('limit', 50),
+                case_sensitive=arguments.get('case_sensitive', False),
+                similarity_threshold=arguments.get('similarity_threshold', 0.7),
+                format=arguments.get('format', 'navigation')
+            )
+        else:
+            # Old search - handle existing pattern-based search
+            pattern = arguments.get('pattern')
+            if not pattern:
+                raise ValueError("Missing pattern argument")
+    
+    # Handle new intelligent search tools
+    elif name == "get_search_capabilities":
+        return await handle_search_capabilities()
+    
+    elif name == "search_code_simple":
+        query = arguments.get('query')
+        if not query:
+            raise ValueError("Missing query argument")
+        return await handle_simple_search(query)
+    
+    # Handle old search_code tool for backwards compatibility
+    elif name == "search_code" and 'pattern' in arguments:
+        pattern = arguments.get('pattern')
+        if not pattern:
+            raise ValueError("Missing pattern argument")
+    
+    else:
         raise ValueError(f"Unknown tool: {name}")
     
+    # Continue with original search_code logic for pattern-based searches
     if not arguments:
         raise ValueError("Missing arguments")
     
@@ -663,6 +729,306 @@ async def handle_call_tool(
         response_text = f"Search failed: {result['error']}"
     
     return [types.TextContent(type="text", text=response_text)]
+
+
+# Helper functions for intelligent search
+async def handle_intelligent_search(
+    query: str,
+    mode: str = "auto",
+    file_types: Optional[List[str]] = None,
+    paths: Optional[List[str]] = None,
+    limit: int = 50,
+    case_sensitive: bool = False,
+    similarity_threshold: float = 0.7,
+    format: str = "navigation"
+) -> List[types.TextContent]:
+    """
+    Intelligent code search with automatic mode detection and fallback.
+    """
+    
+    # Detect or validate mode
+    if mode == "auto":
+        detected_mode = detect_query_type(query)
+        logger.info(f"🔍 Auto-detected search mode: {detected_mode} for query: '{query}'")
+    else:
+        detected_mode = mode
+        logger.info(f"🔍 Explicit search mode: {detected_mode} for query: '{query}'")
+    
+    # Check if semantic search is available
+    if detected_mode == "semantic" and not semantic_available:
+        logger.warning("Semantic search requested but not available, falling back to regex")
+        detected_mode = "regex"
+    
+    # Enhance query for the selected mode
+    enhanced_query = enhance_query_for_mode(query, detected_mode)
+    if enhanced_query != query:
+        logger.info(f"Enhanced query: '{query}' → '{enhanced_query}'")
+    
+    # Execute search based on mode
+    if detected_mode == "semantic":
+        result = await execute_semantic_search(enhanced_query, file_types, paths, limit, similarity_threshold)
+    elif detected_mode == "symbol":
+        result = await execute_symbol_search(enhanced_query, file_types, paths, limit)
+    else:  # regex mode
+        result = await searcher.search(
+            pattern=enhanced_query,
+            file_types=file_types,
+            paths=paths,
+            limit=limit,
+            case_sensitive=case_sensitive,
+            include_symbols=True
+        )
+    
+    # Add metadata about search execution
+    result.update({
+        "original_query": query,
+        "enhanced_query": enhanced_query,
+        "requested_mode": mode,
+        "detected_mode": detected_mode,
+        "search_mode": detected_mode,
+        "fallback_used": False
+    })
+    
+    # Format response
+    if format == "raw":
+        response_text = ""
+        if result.get("matches"):
+            for match in result["matches"]:
+                response_text += f"{match['file']}:{match['line_number']}\n"
+        else:
+            response_text = "No matches found."
+        return [types.TextContent(type="text", text=response_text)]
+    
+    # Navigation format 
+    return await format_search_results(result, limit, format)
+
+
+async def handle_search_capabilities() -> List[types.TextContent]:
+    """Get detailed information about available search capabilities"""
+    
+    logger.info("📊 Search capabilities requested")
+    
+    # Check semantic search status
+    semantic_status = {
+        "available": semantic_available,
+        "reason": "Index found" if semantic_available else "No index found - run build_semantic_index.py"
+    }
+    
+    if semantic_available:
+        try:
+            stats = semantic_searcher['vector_store'].get_statistics()
+            semantic_status.update({
+                "symbols_indexed": stats.get('total_symbols', 0),
+                "languages": list(stats.get('languages', {}).keys()),
+                "index_size_mb": stats.get('index_size_mb', 0)
+            })
+        except Exception as e:
+            semantic_status["error"] = str(e)
+    
+    capabilities = {
+        "available_modes": {
+            "regex": {
+                "available": True,
+                "description": "Fast exact pattern matching with ripgrep",
+                "best_for": [
+                    "Known exact patterns",
+                    "Wildcards and regex expressions", 
+                    "Case-sensitive searches",
+                    "File name patterns"
+                ],
+                "examples": [
+                    "handleError.*Exception",
+                    "class.*User.*{",
+                    "def.*validate.*:",
+                    "*.py"
+                ]
+            },
+            "symbol": {
+                "available": True,
+                "description": "Language-aware symbol search using Tree-sitter",
+                "best_for": [
+                    "Exact function/class names",
+                    "Method names",
+                    "Variable names",
+                    "When you know the identifier"
+                ],
+                "examples": [
+                    "DatabaseConnection",
+                    "submitToQueue", 
+                    "UserAuthService",
+                    "validateInput"
+                ]
+            },
+            "semantic": {
+                "available": semantic_status["available"],
+                "description": "Natural language search using embeddings",
+                "best_for": [
+                    "Conceptual searches",
+                    "Finding related functionality",
+                    "When you know what it does, not what it's called",
+                    "Exploring unfamiliar codebase"
+                ],
+                "examples": [
+                    "functions that handle user authentication",
+                    "error handling for database connections",
+                    "code that processes uploaded files",
+                    "validation logic for user input"
+                ],
+                "status": semantic_status
+            }
+        },
+        "auto_detection": {
+            "enabled": True,
+            "description": "Automatically chooses the best search mode",
+            "fallback_chain": "Primary mode → fallback modes if no results"
+        },
+        "recommendations": {
+            "unknown_exact_name": "Use semantic mode: 'functions that handle...'",
+            "know_exact_name": "Use symbol mode: 'MyClassName'",
+            "know_pattern": "Use regex mode: 'handle.*Error'",
+            "exploring_codebase": "Use semantic mode with broad queries",
+            "debugging_specific_issue": "Use regex mode with error patterns"
+        }
+    }
+    
+    import json
+    response_text = f"# Search Capabilities\n\n```json\n{json.dumps(capabilities, indent=2)}\n```"
+    return [types.TextContent(type="text", text=response_text)]
+
+
+async def handle_simple_search(query: str) -> List[types.TextContent]:
+    """Simple code search - auto-detects best mode and searches"""
+    logger.info(f"🔍 Simple search requested: '{query}'")
+    return await handle_intelligent_search(query, mode="auto")
+
+
+# Helper functions for new search modes
+async def execute_semantic_search(query: str, file_types: Optional[List[str]], paths: Optional[List[str]], limit: int, similarity_threshold: float) -> Dict:
+    """Execute semantic search using embeddings"""
+    try:
+        # Create query embedding
+        query_embedding = semantic_searcher['embedder'].embed_text(query)
+        
+        # Search vector store
+        where_filter = {}
+        if file_types:
+            where_filter["language"] = {"$in": file_types}
+        
+        results = semantic_searcher['vector_store'].search(
+            query_embedding=query_embedding,
+            limit=limit,
+            where=where_filter if where_filter else None
+        )
+        
+        # Convert to standard format
+        matches = []
+        for result in results["results"]:
+            if result["distance"] <= (1.0 - similarity_threshold):  # Convert similarity to distance
+                matches.append({
+                    "file": result["metadata"]["file"],
+                    "line_number": result["metadata"]["line"],
+                    "line": result["code"][:100] + "..." if len(result["code"]) > 100 else result["code"],
+                    "similarity": 1.0 - result["distance"]
+                })
+        
+        return {
+            "success": True,
+            "pattern": query,
+            "total_matches": len(matches),
+            "matches": matches,
+            "truncated": False
+        }
+        
+    except Exception as e:
+        logger.error(f"Semantic search failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "pattern": query,
+            "total_matches": 0,
+            "matches": []
+        }
+
+
+async def execute_symbol_search(query: str, file_types: Optional[List[str]], paths: Optional[List[str]], limit: int) -> Dict:
+    """Execute symbol search using Tree-sitter"""
+    # For now, use enhanced ripgrep search with symbol context
+    # This could be enhanced to use the Tree-sitter enhancer directly
+    return await searcher.search(
+        pattern=query,
+        file_types=file_types,
+        paths=paths,
+        limit=limit,
+        case_sensitive=False,
+        include_symbols=True
+    )
+
+
+async def format_search_results(result: Dict, limit: int, format: str) -> List[types.TextContent]:
+    """Format search results for display"""
+    if format == "raw":
+        response_text = ""
+        if result.get("matches"):
+            for match in result["matches"]:
+                response_text += f"{match['file']}:{match['line_number']}\n"
+        else:
+            response_text = "No matches found."
+        return [types.TextContent(type="text", text=response_text)]
+    
+    # Navigation format - reuse existing logic
+    matches_by_file = {}
+    for match in result.get("matches", []):
+        file_path = match["file"]
+        if file_path not in matches_by_file:
+            matches_by_file[file_path] = []
+        matches_by_file[file_path].append(match)
+    
+    # Build response with file-centric format
+    response_text = f"## Search Results: '{result['pattern']}'\n\n"
+    response_text += f"**Summary**: {result['total_matches']} matches in {len(matches_by_file)} files\n\n"
+    
+    # Add search mode info
+    if "search_mode" in result:
+        response_text += f"**Search mode**: {result['search_mode']}\n\n"
+    
+    if matches_by_file:
+        response_text += "### Files with matches:\n\n"
+        
+        # List all files first for quick navigation
+        for file_path in sorted(matches_by_file.keys()):
+            match_count = len(matches_by_file[file_path])
+            response_text += f"- `{file_path}` ({match_count} match{'es' if match_count > 1 else ''})\n"
+        
+        response_text += "\n### Match details:\n\n"
+        
+        # Then show details grouped by file
+        for file_path in sorted(matches_by_file.keys()):
+            matches = matches_by_file[file_path]
+            response_text += f"#### {file_path}\n"
+            
+            for match in matches:
+                line_num = match['line_number']
+                line_preview = match['line'].strip()
+                
+                # Truncate long lines
+                if len(line_preview) > 80:
+                    line_preview = line_preview[:77] + "..."
+                
+                response_text += f"- Line {line_num}: `{line_preview}`\n"
+                
+                # Add similarity for semantic search
+                if "similarity" in match:
+                    response_text += f"  Similarity: {match['similarity']:.2f}\n"
+            
+            response_text += "\n"
+        
+        if result.get("truncated"):
+            response_text += f"*Note: Results truncated to {limit} matches*\n"
+    else:
+        response_text += "No matches found.\n"
+    
+    return [types.TextContent(type="text", text=response_text)]
+
 
 async def main():
     """Run the MCP server"""

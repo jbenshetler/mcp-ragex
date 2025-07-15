@@ -10,10 +10,17 @@ from typing import List, Dict, Optional, Any, Callable
 import logging
 from tqdm import tqdm
 
-from .tree_sitter_enhancer import TreeSitterEnhancer
-from .embedding_manager import EmbeddingManager
-from .vector_store import CodeVectorStore
-from .pattern_matcher import PatternMatcher
+try:
+    from .tree_sitter_enhancer import TreeSitterEnhancer
+    from .embedding_manager import EmbeddingManager
+    from .vector_store import CodeVectorStore
+    from .pattern_matcher import PatternMatcher
+except ImportError:
+    # Fallback for direct execution
+    from tree_sitter_enhancer import TreeSitterEnhancer
+    from embedding_manager import EmbeddingManager
+    from vector_store import CodeVectorStore
+    from pattern_matcher import PatternMatcher
 
 logger = logging.getLogger("code-indexer")
 
