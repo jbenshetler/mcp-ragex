@@ -126,6 +126,18 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
+### Raw Output Format
+```json
+{
+  "tool": "search_code",
+  "arguments": {
+    "pattern": "submit_file",
+    "format": "raw"
+  }
+}
+```
+Returns simple `file:line` format for programmatic use.
+
 ### Search Specific Paths
 ```json
 {

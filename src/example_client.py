@@ -57,6 +57,12 @@ async def example_usage():
     print('   Arguments: {"pattern": "import", "exclude_patterns": ["tests/**", "*.spec.js"], "file_types": ["js", "ts"]}')
     print()
     
+    # Example 8: Raw format for programmatic use
+    print("8. Get results in raw format (just file:line):")
+    print('   Tool: search_code')
+    print('   Arguments: {"pattern": "TODO", "format": "raw", "limit": 20}')
+    print()
+    
     # Integration example
     print("\nIntegration with Claude Desktop (claude_desktop_config.json):")
     print(json.dumps({

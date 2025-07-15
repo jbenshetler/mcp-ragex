@@ -286,6 +286,11 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "boolean",
                         "description": "Whether to respect .gitignore files (default: true)",
                     },
+                    "format": {
+                        "type": "string",
+                        "enum": ["navigation", "raw"],
+                        "description": "Output format: 'navigation' for human-friendly file grouping (default), 'raw' for simple file:line format",
+                    },
                 },
                 "required": ["pattern"],
             },
@@ -316,6 +321,7 @@ async def handle_call_tool(
     include_symbols = arguments.get("include_symbols", False)
     exclude_patterns = arguments.get("exclude_patterns", None)
     respect_gitignore = arguments.get("respect_gitignore", True)
+    output_format = arguments.get("format", "navigation")
     
     # Perform search
     result = await searcher.search(
@@ -335,29 +341,70 @@ async def handle_call_tool(
         except Exception as e:
             logger.warning(f"Failed to enhance results with Tree-sitter: {e}")
     
-    # Format response
+    # Format response based on requested format
     if result["success"]:
-        response_text = f"Found {result['total_matches']} matches for pattern: {result['pattern']}\n\n"
+        if output_format == "raw":
+            # Simple format: just file:line references
+            response_text = ""
+            if result.get("matches"):
+                for match in result["matches"]:
+                    response_text += f"{match['file']}:{match['line_number']}\n"
+                if result.get("truncated"):
+                    response_text += f"\n[Truncated to {limit} results]"
+            else:
+                response_text = "No matches found."
+            return [types.TextContent(type="text", text=response_text)]
+        # Group matches by file for better navigation
+        matches_by_file = {}
+        for match in result.get("matches", []):
+            file_path = match["file"]
+            if file_path not in matches_by_file:
+                matches_by_file[file_path] = []
+            matches_by_file[file_path].append(match)
         
-        if result["matches"]:
-            for match in result["matches"]:
-                # Basic match info
-                response_text += f"{match['file']}:{match['line_number']} - {match['line']}\n"
+        # Build response with file-centric format
+        response_text = f"## Search Results: '{result['pattern']}'\n\n"
+        response_text += f"**Summary**: {result['total_matches']} matches in {len(matches_by_file)} files\n\n"
+        
+        if matches_by_file:
+            response_text += "### Files with matches:\n\n"
+            
+            # List all files first for quick navigation
+            for file_path in sorted(matches_by_file.keys()):
+                match_count = len(matches_by_file[file_path])
+                response_text += f"- `{file_path}` ({match_count} match{'es' if match_count > 1 else ''})\n"
+            
+            response_text += "\n### Match details:\n\n"
+            
+            # Then show details grouped by file
+            for file_path in sorted(matches_by_file.keys()):
+                matches = matches_by_file[file_path]
+                response_text += f"#### {file_path}\n"
                 
-                # Add symbol context if available
-                if "symbol_context" in match:
-                    ctx = match["symbol_context"]
-                    symbol_info = f"  └─ In {ctx['type']} '{ctx['name']}'"
-                    if ctx.get('parent'):
-                        symbol_info += f" (in {ctx['parent']})"
-                    if ctx.get('signature'):
-                        symbol_info += f" - {ctx['signature']}"
-                    response_text += symbol_info + "\n"
+                for match in matches:
+                    line_num = match['line_number']
+                    line_preview = match['line'].strip()
+                    
+                    # Truncate long lines
+                    if len(line_preview) > 80:
+                        line_preview = line_preview[:77] + "..."
+                    
+                    response_text += f"- Line {line_num}: `{line_preview}`\n"
+                    
+                    # Add symbol context if available
+                    if "symbol_context" in match:
+                        ctx = match["symbol_context"]
+                        context_parts = [f"{ctx['type']} '{ctx['name']}'"]
+                        if ctx.get('parent'):
+                            context_parts.append(f"in {ctx['parent']}")
+                        response_text += f"  Context: {' '.join(context_parts)}\n"
+                
+                response_text += "\n"
             
             if result.get("truncated"):
-                response_text += f"\n... truncated to {limit} results"
+                response_text += f"*Note: Results truncated to {limit} matches*\n"
         else:
-            response_text += "No matches found."
+            response_text += "No matches found.\n"
     else:
         response_text = f"Search failed: {result['error']}"
     
