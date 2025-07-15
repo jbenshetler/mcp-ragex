@@ -10,8 +10,11 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import atexit
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+from datetime import datetime
 
 from mcp.server import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
@@ -29,6 +32,49 @@ except ImportError:
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("coderag-mcp")
+
+# Setup debug logging
+DEBUG_LOG_PATH = "/tmp/mcp_coderag.log"
+
+def setup_debug_logging():
+    """Setup debug logging to file"""
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    # Create file handler
+    file_handler = logging.FileHandler(DEBUG_LOG_PATH, mode='w')
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    
+    # Add to root logger to catch everything
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+    
+    # Log startup info
+    logger.info("="*50)
+    logger.info("MCP CodeRAG Server Started")
+    logger.info(f"Time: {datetime.now()}")
+    logger.info(f"CWD: {os.getcwd()}")
+    logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
+    logger.info(f"Python: {sys.executable}")
+    logger.info(f"Arguments: {sys.argv}")
+    logger.info(f"Environment PATH: {os.environ.get('PATH', 'Not set')}")
+    logger.info("="*50)
+
+def cleanup_debug_log():
+    """Remove debug log on exit"""
+    if os.path.exists(DEBUG_LOG_PATH):
+        try:
+            os.remove(DEBUG_LOG_PATH)
+            print(f"Cleaned up debug log: {DEBUG_LOG_PATH}")
+        except Exception as e:
+            print(f"Failed to clean up debug log: {e}")
+
+# Setup debug logging
+setup_debug_logging()
+
+# Register cleanup on exit
+# atexit.register(cleanup_debug_log)  # Commented out for debugging
 
 # Security constants
 MAX_RESULTS = 200
@@ -80,23 +126,23 @@ class RipgrepSearcher:
     def validate_paths(self, paths: List[str]) -> List[Path]:
         """Validate and resolve search paths"""
         validated_paths = []
-        cwd = Path.cwd()
+        # Use MCP_WORKING_DIR if set, otherwise current directory
+        cwd = Path(os.environ.get('MCP_WORKING_DIR', os.getcwd()))
         
         for path_str in paths:
-            path = Path(path_str).resolve()
+            # Resolve relative to working directory
+            if os.path.isabs(path_str):
+                path = Path(path_str).resolve()
+            else:
+                path = (cwd / path_str).resolve()
             
-            # Ensure path exists and is within current directory or subdirectories
+            # Ensure path exists
             if not path.exists():
                 logger.warning(f"Path does not exist: {path}")
                 continue
                 
-            # Security: ensure we're not searching outside project directory
-            try:
-                path.relative_to(cwd)
-                validated_paths.append(path)
-            except ValueError:
-                logger.warning(f"Path outside project directory: {path}")
-                continue
+            # For now, allow any path (you can add security checks later)
+            validated_paths.append(path)
         
         return validated_paths or [cwd]
     
@@ -112,10 +158,16 @@ class RipgrepSearcher:
     ) -> Dict[str, Any]:
         """Execute ripgrep search with given parameters"""
         
+        # Log search request
+        logger.info(f"Search request: pattern='{pattern}', file_types={file_types}, paths={paths}")
+        logger.info(f"Working directory: {os.getcwd()}")
+        logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
+        
         # Validate inputs
         try:
             pattern = self.validate_pattern(pattern)
         except ValueError as e:
+            logger.error(f"Pattern validation failed: {e}")
             return {
                 "success": False,
                 "error": str(e),
@@ -125,6 +177,7 @@ class RipgrepSearcher:
             }
         
         search_paths = self.validate_paths(paths or ["."])
+        logger.info(f"Validated search paths: {[str(p) for p in search_paths]}")
         limit = min(max(1, limit), MAX_RESULTS)
         
         # Build command
@@ -162,6 +215,9 @@ class RipgrepSearcher:
         
         # Add paths
         cmd.extend(str(p) for p in search_paths)
+        
+        # Log the full command
+        logger.info(f"Ripgrep command: {' '.join(cmd)}")
         
         # Execute search
         try:

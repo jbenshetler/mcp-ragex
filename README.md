@@ -55,33 +55,40 @@ pytest tests/
 
 ### Claude Code (CLI)
 
-Add to `~/.config/claude/config.json` (Linux/macOS) or `%APPDATA%\Claude\config.json` (Windows):
+#### Option 1: Using CLI Command (Recommended)
+
+Add the MCP server using the Claude Code CLI:
+
+```bash
+claude mcp add coderag /home/jeff/clients/coderagmcp/mcp_coderag.sh --scope project
+```
+
+Expected output:
+```
+Added stdio MCP server coderag with command: /home/jeff/clients/coderagmcp/mcp_coderag.sh  to project config
+```
+
+#### Option 2: Using .mcp.json
+
+Create a `.mcp.json` file in your project root:
 
 ```json
 {
   "mcpServers": {
     "coderag": {
-      "command": "python",
-      "args": ["/path/to/coderagmcp/src/server.py"],
-      "env": {},
-      "cwd": "/path/to/coderagmcp"
+      "command": "/path/to/coderagmcp/mcp_coderag.sh"
     }
   }
 }
 ```
 
-If using `uv` for Python environment management:
-```json
-{
-  "mcpServers": {
-    "coderag": {
-      "command": "uv",
-      "args": ["run", "python", "/path/to/coderagmcp/src/server.py"],
-      "env": {},
-      "cwd": "/path/to/coderagmcp"
-    }
-  }
-}
+#### Option 3: Direct Python Command
+
+If you prefer not to use the wrapper script:
+
+```bash
+# From within the coderagmcp directory
+claude mcp add coderag uv run python src/server.py --scope project
 ```
 
 ### Claude Desktop (App)
@@ -100,6 +107,17 @@ Add to your `claude_desktop_config.json`:
 ```
 
 **Note:** After updating the configuration, restart Claude Code or Claude Desktop for the changes to take effect.
+
+### Verifying MCP Connection
+
+After configuration, verify the MCP server is connected:
+
+```bash
+# In Claude Code, use the /mcp command
+/mcp
+```
+
+This will show the status of all configured MCP servers. You should see `coderag` in the list.
 
 ## Usage Examples
 
