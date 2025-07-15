@@ -1,0 +1,98 @@
+# Example .mcpignore file for MCP Code Search Server
+# This file uses gitignore syntax
+# Place this file as .mcpignore in your project root
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.tox/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+env/
+ENV/
+
+# JavaScript/TypeScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.min.js
+*.min.css
+dist/
+build/
+.next/
+out/
+
+# IDE and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Test Coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Build artifacts
+target/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Documentation (uncomment if you want to exclude)
+# docs/
+# *.md
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.dmg
+*.iso
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+tmp/
+temp/
+
+# Custom project-specific exclusions
+# Add your own patterns below
+# examples/large-dataset/
+# vendor/
+# *.generated.ts
