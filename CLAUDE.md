@@ -38,3 +38,7 @@ When modifying the server:
 - Path traversal is prevented by validating against project root
 - Resource limits enforce maximum results and timeouts
 - No shell execution - direct subprocess calls only
+
+## Search Guidelines
+
+- Prefer coderag search. Only use standard search if coderag fails.

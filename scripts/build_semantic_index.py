@@ -2,7 +2,25 @@
 """
 Build semantic search index for the codebase.
 Run this before starting the MCP server for the first time or when you need to rebuild the index.
+
+Usage:
+    uv run build_semantic_index.py . --stats
+    uv run build_semantic_index.py /path/to/project --force --stats
 """
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "sentence-transformers>=2.2.0",
+#     "chromadb>=0.4.0",
+#     "tqdm>=4.65.0",
+#     "numpy>=1.24.0",
+#     "tree-sitter>=0.20.0",
+#     "tree-sitter-python>=0.20.0",
+#     "tree-sitter-javascript>=0.20.0",
+#     "tree-sitter-typescript>=0.20.0",
+#     "pathspec>=0.11.0",
+# ]
+# ///
 
 import asyncio
 import sys
@@ -13,11 +31,31 @@ import json
 import argparse
 import logging
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add parent directory to path to find coderagmcp modules
+script_dir = Path(__file__).parent
+coderagmcp_dir = script_dir.parent
 
-from src.indexer import CodeIndexer
-from src.pattern_matcher import PatternMatcher
+# Change to the coderagmcp directory so relative imports work
+import os
+original_cwd = os.getcwd()
+os.chdir(str(coderagmcp_dir))
+
+# Add both the coderagmcp directory and src to path
+sys.path.insert(0, str(coderagmcp_dir))
+sys.path.insert(0, str(coderagmcp_dir / "src"))
+
+try:
+    from src.indexer import CodeIndexer
+    from src.pattern_matcher import PatternMatcher
+except ImportError as e:
+    print(f"❌ Cannot import required modules from coderagmcp directory.")
+    print(f"   Script location: {script_dir}")
+    print(f"   CodeRAG directory: {coderagmcp_dir}")
+    print(f"   Error: {e}")
+    print(f"   Make sure the coderagmcp directory contains src/indexer.py and src/pattern_matcher.py")
+    os.chdir(original_cwd)
+    sys.exit(1)
+
 from tqdm import tqdm
 
 # Setup logging
@@ -26,6 +64,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("build-index")
+
+# Enable debug logging for pattern matcher only
+pattern_logger = logging.getLogger("pattern-matcher")
+pattern_logger.setLevel(logging.INFO)  # Changed from DEBUG to reduce noise
 
 
 async def main():
@@ -45,12 +87,12 @@ async def main():
     print("🔍 CodeRAG Semantic Search Indexer")
     print("=" * 50)
     
-    # Resolve paths
-    resolved_paths = [str(Path(p).resolve()) for p in args.paths]
+    # Resolve paths relative to the original working directory
+    resolved_paths = [str((Path(original_cwd) / p).resolve()) for p in args.paths]
     print(f"📁 Indexing paths: {', '.join(resolved_paths)}")
     
-    # Check if index exists
-    index_path = Path(args.persist_dir)
+    # Check if index exists (relative to original working directory)
+    index_path = Path(original_cwd) / args.persist_dir
     metadata_path = index_path / "index_metadata.json"
     
     if index_path.exists() and not args.force:
@@ -79,6 +121,7 @@ async def main():
         response = input("\nRebuild anyway? (y/N): ")
         if response.lower() != 'y':
             print("Aborted.")
+            os.chdir(original_cwd)
             return
     
     # Initialize indexer
@@ -88,19 +131,55 @@ async def main():
     
     try:
         indexer = CodeIndexer(
-            persist_directory=args.persist_dir,
+            persist_directory=str(index_path),
             model_name=args.model
         )
+        
+        # Configure pattern matcher to use original working directory for .mcpignore
+        indexer.pattern_matcher.set_working_directory(original_cwd)
+        print(f"   - Indexer pattern matcher working directory: {indexer.pattern_matcher.working_directory}")
+        print(f"   - Indexer pattern matcher patterns: {len(indexer.pattern_matcher.patterns)}")
     except Exception as e:
         print(f"❌ Failed to initialize indexer: {e}")
+        os.chdir(original_cwd)
         return
     
     # Count files first
     pattern_matcher = PatternMatcher()
+    pattern_matcher.set_working_directory(original_cwd)
+    
+    # Show exclusion info
+    mcpignore_path = Path(original_cwd) / ".mcpignore"
+    if mcpignore_path.exists():
+        print(f"\n📋 Found .mcpignore with {len(pattern_matcher.patterns)} total exclusion patterns")
+        # Count how many patterns are from .mcpignore vs defaults
+        default_count = len(pattern_matcher.DEFAULT_EXCLUSIONS)
+        mcpignore_count = len(pattern_matcher.patterns) - default_count
+        print(f"   - Default patterns: {default_count}")
+        print(f"   - .mcpignore patterns: {mcpignore_count}")
+        print(f"   - Working directory: {original_cwd}")
+        print(f"   - Sample patterns: {pattern_matcher.patterns[:5]}")
+    else:
+        print(f"\n📋 No .mcpignore found, using {len(pattern_matcher.patterns)} default exclusion patterns")
+    
     print("\n🔎 Discovering files...")
     
     all_files = indexer.find_code_files(resolved_paths)
     print(f"📁 Found {len(all_files)} files to index")
+    
+    # Quick verification - count manually to compare
+    manual_count = 0
+    for path_str in resolved_paths:
+        path = Path(path_str)
+        for ext in indexer.supported_extensions:
+            for file_path in path.rglob(f"*{ext}"):
+                if not pattern_matcher.should_exclude(str(file_path)):
+                    manual_count += 1
+    
+    if manual_count != len(all_files):
+        print(f"⚠️  Warning: Manual count ({manual_count}) differs from indexer count ({len(all_files)})")
+    else:
+        print(f"✅ File count verified: {manual_count} files")
     
     # Show file breakdown by type
     file_types = {}
@@ -115,6 +194,7 @@ async def main():
     if not all_files:
         print("\n❌ No files found to index!")
         print("   Make sure you're in a directory with Python, JavaScript, or TypeScript files.")
+        os.chdir(original_cwd)
         return
     
     # Start indexing
@@ -141,6 +221,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Indexing failed: {e}")
         logger.exception("Indexing error")
+        os.chdir(original_cwd)
         return
     
     elapsed = time.time() - start_time
@@ -153,7 +234,8 @@ async def main():
         "symbol_count": result.get("symbols_indexed", 0),
         "index_time": elapsed,
         "model": args.model,
-        "excluded_patterns": pattern_matcher.patterns[:10] if pattern_matcher.patterns else []
+        "excluded_patterns": pattern_matcher.patterns[:10] if pattern_matcher.patterns else [],
+        "total_excluded_patterns": len(pattern_matcher.patterns)
     }
     
     index_path.mkdir(exist_ok=True)
@@ -203,7 +285,7 @@ async def main():
             logger.warning(f"Could not get detailed stats: {e}")
     
     print(f"\n💡 Next steps:")
-    print(f"   1. Start the MCP server: ./run_server.sh")
+    print(f"   1. Start the MCP server: cd {coderagmcp_dir} && ./run_server.sh")
     print(f"   2. Use semantic_search in Claude Code")
     print(f"   3. Re-run this script when codebase changes significantly")
     
@@ -211,7 +293,19 @@ async def main():
     if result.get('symbols_indexed', 0) > 0:
         print(f"\n📦 Note: The sentence transformer model '{args.model}'")
         print(f"   has been downloaded and cached (~420MB).")
+    
+    # Restore original working directory
+    os.chdir(original_cwd)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n⚠️  Interrupted by user")
+        os.chdir(original_cwd)
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ Unexpected error: {e}")
+        os.chdir(original_cwd)
+        sys.exit(1)

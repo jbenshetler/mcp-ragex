@@ -42,6 +42,7 @@ class PatternMatcher:
             custom_patterns: Additional patterns to include (from API)
         """
         self._validation_report = None
+        self.working_directory = Path.cwd()  # Default to current working directory
         self.patterns = self._load_all_patterns(custom_patterns)
         self.spec = self._compile_patterns(self.patterns)
     
@@ -69,11 +70,12 @@ class PatternMatcher:
                 unique_patterns.append(pattern)
         
         logger.info(f"Loaded {len(unique_patterns)} unique exclusion patterns")
+        logger.debug(f"All patterns: {unique_patterns}")
         return unique_patterns
     
     def _read_mcpignore(self) -> List[str]:
         """Read and validate patterns from .mcpignore file"""
-        mcpignore_path = Path.cwd() / ".mcpignore"
+        mcpignore_path = self.working_directory / ".mcpignore"
         if not mcpignore_path.exists():
             return []
         
@@ -82,6 +84,7 @@ class PatternMatcher:
         warnings = []
         
         try:
+            logger.info(f"Reading .mcpignore from: {mcpignore_path}")
             with open(mcpignore_path, 'r', encoding='utf-8') as f:
                 for line_num, line in enumerate(f, 1):
                     original_line = line.rstrip('\n\r')
@@ -109,6 +112,7 @@ class PatternMatcher:
                         # Test if pattern is valid by creating a temporary PathSpec
                         pathspec.PathSpec.from_lines('gitwildmatch', [line])
                         valid_patterns.append(line)
+                        logger.debug(f"Added .mcpignore pattern: {line}")
                     except (pathspec.patterns.GitWildMatchPatternError, ValueError) as e:
                         invalid_patterns.append((line_num, line, str(e)))
                         logger.warning(
@@ -161,6 +165,23 @@ class PatternMatcher:
                 return None
         return None
     
+    def set_working_directory(self, working_directory: str):
+        """
+        Set the working directory for .mcpignore file lookup
+        
+        Args:
+            working_directory: Path to the working directory
+        """
+        self.working_directory = Path(working_directory)
+        logger.info(f"Set working directory to: {self.working_directory}")
+        
+        # Reload patterns with new working directory
+        self.patterns = self._load_all_patterns(None)
+        self.spec = self._compile_patterns(self.patterns)
+        
+        # Debug: Show what patterns were loaded
+        logger.debug(f"Reloaded patterns: {self.patterns}")
+    
     def should_exclude(self, file_path: str) -> bool:
         """
         Check if a file should be excluded based on patterns
@@ -174,14 +195,16 @@ class PatternMatcher:
         if not self.spec:
             return False
         
-        # Convert to relative path from current directory
+        # Convert to relative path from working directory
         try:
             path = Path(file_path)
             if path.is_absolute():
-                path = path.relative_to(Path.cwd())
+                path = path.relative_to(self.working_directory)
             
             # Check if path matches any exclusion pattern
-            return self.spec.match_file(str(path))
+            result = self.spec.match_file(str(path))
+            logger.debug(f"Exclusion check for {path}: {result}")
+            return result
         except Exception as e:
             logger.debug(f"Error checking exclusion for {file_path}: {e}")
             return False

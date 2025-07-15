@@ -55,17 +55,18 @@ To enable semantic search capabilities:
 
 1. **Build the semantic index:**
    ```bash
-   uv run python scripts/build_semantic_index.py . --stats
+   uv run scripts/build_semantic_index.py . --stats
    ```
    
    This will:
+   - Automatically install required dependencies (sentence-transformers, chromadb, etc.)
    - Download the sentence-transformer model (~420MB)
    - Index all Python/JS/TS files in the current directory
    - Create a ChromaDB vector database in `./chroma_db`
 
 2. **Check index status:**
    ```bash
-   uv run python scripts/check_index.py
+   uv run scripts/check_index.py
    ```
 
 ### Running the Server
