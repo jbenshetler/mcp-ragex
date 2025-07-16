@@ -52,6 +52,10 @@ class EmbeddingManager:
             return self._create_env_var_context(symbol)
         elif symbol_type == 'constant':
             return self._create_constant_context(symbol)
+        elif symbol_type == 'comment':
+            return self._create_comment_context(symbol)
+        elif symbol_type == 'module_doc':
+            return self._create_module_doc_context(symbol)
         else:
             # Default handling for functions, classes, methods
             return self._create_default_context(symbol)
@@ -136,6 +140,62 @@ class EmbeddingManager:
         
         if symbol.get('file'):
             parts.append(f"File: {symbol['file']}")
+        
+        return '\n'.join(parts)
+    
+    def _create_comment_context(self, symbol: Dict) -> str:
+        """Create context for comments"""
+        parts = []
+        parts.append(f"Type: code comment")
+        
+        # Check if it's a special comment (TODO, FIXME, etc.)
+        signature = symbol.get('signature', '')
+        if signature and signature != 'comment':
+            parts.append(f"Category: {signature} comment")
+        
+        # The comment text itself
+        comment_text = symbol.get('code', '')
+        parts.append(f"Comment: {comment_text}")
+        
+        # File location
+        if symbol.get('file'):
+            parts.append(f"File: {symbol['file']}")
+            parts.append(f"Line: {symbol.get('line', 'unknown')}")
+        
+        # Try to infer what the comment is about
+        if any(word in comment_text.lower() for word in ['param', 'arg', 'return', 'raise']):
+            parts.append("Context: function documentation")
+        elif any(word in comment_text.lower() for word in ['class', 'inherit', 'attribute']):
+            parts.append("Context: class documentation")
+        elif any(word in comment_text.lower() for word in ['todo', 'fixme', 'hack', 'bug']):
+            parts.append("Context: development note")
+        elif any(word in comment_text.lower() for word in ['example', 'usage', 'note']):
+            parts.append("Context: usage guidance")
+        
+        return '\n'.join(parts)
+    
+    def _create_module_doc_context(self, symbol: Dict) -> str:
+        """Create context for module-level documentation"""
+        parts = []
+        parts.append(f"Type: module documentation")
+        parts.append(f"Module: {symbol.get('file', 'unknown')}")
+        
+        # The docstring content
+        docstring = symbol.get('docstring', symbol.get('code', ''))
+        
+        # Extract key sections if present
+        if 'Overview' in docstring or 'Description' in docstring:
+            parts.append("Contains: module overview")
+        if 'Usage' in docstring or 'Example' in docstring:
+            parts.append("Contains: usage examples")
+        if 'API' in docstring or 'Interface' in docstring:
+            parts.append("Contains: API documentation")
+        if 'Copyright' in docstring or 'License' in docstring:
+            parts.append("Contains: licensing information")
+        
+        # Include a portion of the docstring
+        doc_preview = docstring[:300] + "..." if len(docstring) > 300 else docstring
+        parts.append(f"Documentation:\n{doc_preview}")
         
         return '\n'.join(parts)
     

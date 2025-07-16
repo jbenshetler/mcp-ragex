@@ -107,7 +107,8 @@ class CodeIndexer:
             language = self.supported_extensions.get(file_path.suffix, 'unknown')
             
             # Extract symbols using Tree-sitter
-            symbols = await self.tree_sitter.extract_symbols(str(file_path))
+            # Include comments and docstrings for semantic search
+            symbols = await self.tree_sitter.extract_symbols(str(file_path), include_docs_and_comments=True)
             
             # Convert Symbol objects to dictionaries
             symbol_dicts = []

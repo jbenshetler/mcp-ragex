@@ -168,6 +168,14 @@ class TreeSitterEnhancer:
                     (string) @env_sub.var_name
                     (#eq? @env_sub.module "os")
                     (#eq? @env_sub.attr "environ")) @env_subscript
+                
+                ; Comments for semantic search only
+                (comment) @comment
+                
+                ; Module docstrings (first expression in module if it's a string)
+                (module
+                    . (expression_statement
+                        (string) @module_doc.content)) @module_doc
             """),
             
             "javascript": self.languages["javascript"].query("""
@@ -249,8 +257,15 @@ class TreeSitterEnhancer:
                         return self._extract_text(expr, source).strip('"""\'')
         return None
     
-    async def extract_symbols(self, file_path: str) -> List[Symbol]:
-        """Extract symbols from a single file"""
+    async def extract_symbols(self, file_path: str, include_docs_and_comments: bool = False) -> List[Symbol]:
+        """Extract symbols from a single file
+        
+        Args:
+            file_path: Path to the file to analyze
+            include_docs_and_comments: If True, includes comments and standalone docstrings
+                                     (for semantic search). If False, only code symbols
+                                     (for symbol search).
+        """
         # Check if file should be excluded
         if self.pattern_matcher.should_exclude(file_path):
             return []
@@ -259,9 +274,10 @@ class TreeSitterEnhancer:
         if not lang:
             return []
         
-        # Check cache first
-        if file_path in self._symbol_cache:
-            return self._symbol_cache[file_path]
+        # Check cache first (separate caches for with/without docs)
+        cache_key = f"{file_path}:{include_docs_and_comments}"
+        if cache_key in self._symbol_cache:
+            return self._symbol_cache[cache_key]
         
         content = self._read_file_cached(file_path)
         if not content:
@@ -290,7 +306,7 @@ class TreeSitterEnhancer:
         
         # Process captures based on language
         if lang == "python":
-            symbols.extend(self._extract_python_symbols(captures, content, file_path))
+            symbols.extend(self._extract_python_symbols(captures, content, file_path, include_docs_and_comments))
         elif lang in ["javascript", "typescript", "tsx"]:
             symbols.extend(self._extract_js_ts_symbols(captures, content, file_path, lang))
         
@@ -299,11 +315,11 @@ class TreeSitterEnhancer:
             # Remove oldest entry
             oldest = next(iter(self._symbol_cache))
             del self._symbol_cache[oldest]
-        self._symbol_cache[file_path] = symbols
+        self._symbol_cache[cache_key] = symbols
         
         return symbols
     
-    def _extract_python_symbols(self, captures, source: bytes, file_path: str) -> List[Symbol]:
+    def _extract_python_symbols(self, captures, source: bytes, file_path: str, include_docs_and_comments: bool = False) -> List[Symbol]:
         """Extract symbols from Python code"""
         symbols = []
         current_class = None
@@ -520,6 +536,46 @@ class TreeSitterEnhancer:
                         code=self._extract_text(node, source),
                         start_byte=node.start_byte,
                         end_byte=node.end_byte,
+                    ))
+            
+            # Handle comments and module docstrings (only for semantic search)
+            elif include_docs_and_comments and capture_name == "comment":
+                comment_text = self._extract_text(node, source).strip()
+                # Extract TODO/FIXME/NOTE patterns
+                special_comment = None
+                for pattern in ['TODO', 'FIXME', 'NOTE', 'HACK', 'XXX']:
+                    if pattern in comment_text.upper():
+                        special_comment = pattern
+                        break
+                
+                symbols.append(Symbol(
+                    name=f"Comment: {comment_text[:50]}..." if len(comment_text) > 50 else f"Comment: {comment_text}",
+                    type="comment",
+                    file=file_path,
+                    line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    column=node.start_point[1],
+                    code=comment_text,
+                    signature=special_comment if special_comment else "comment",
+                    start_byte=node.start_byte,
+                    end_byte=node.end_byte,
+                ))
+            
+            elif include_docs_and_comments and capture_name == "module_doc":
+                doc_node = find_capture_node("module_doc.content", node)
+                if doc_node:
+                    module_doc = self._extract_text(doc_node, source).strip('"""\'')
+                    symbols.append(Symbol(
+                        name="Module Documentation",
+                        type="module_doc",
+                        file=file_path,
+                        line=doc_node.start_point[0] + 1,
+                        end_line=doc_node.end_point[0] + 1,
+                        column=doc_node.start_point[1],
+                        docstring=module_doc,
+                        code=module_doc[:200] + "..." if len(module_doc) > 200 else module_doc,
+                        start_byte=doc_node.start_byte,
+                        end_byte=doc_node.end_byte,
                     ))
         
         return symbols
