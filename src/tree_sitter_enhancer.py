@@ -112,6 +112,62 @@ class TreeSitterEnhancer:
                         (class_definition
                             name: (identifier) @decorated_class.name)
                     ]) @decorated
+                
+                ; Import statements
+                (import_statement
+                    name: (dotted_name) @import.name) @import
+                
+                (import_from_statement
+                    module_name: (dotted_name)? @import.module
+                    name: (dotted_name)? @import.name
+                    (aliased_import
+                        name: (dotted_name) @import.name
+                        alias: (identifier) @import.alias)?
+                    ) @import_from
+                
+                ; Module-level assignments (constants)
+                ((expression_statement
+                    (assignment
+                        left: (identifier) @constant.name
+                        right: (_) @constant.value)) @constant
+                    (#match? @constant.name "^[A-Z_]+$|^[a-z_]*config[a-z_]*$|^[a-z_]*setting[a-z_]*$"))
+                
+                ; All module-level assignments for now (fallback)
+                ((expression_statement
+                    (assignment
+                        left: (identifier) @assignment.name
+                        right: (_) @assignment.value)) @assignment)
+                
+                ; Environment variable access patterns
+                (call
+                    function: (attribute
+                        object: (attribute
+                            object: (identifier) @env.module
+                            attribute: (identifier) @env.environ)
+                        attribute: (identifier) @env.method)
+                    arguments: (argument_list
+                        (string) @env.var_name)
+                    (#eq? @env.module "os")
+                    (#eq? @env.environ "environ")
+                    (#match? @env.method "^(get|pop)$")) @env_access
+                
+                (call
+                    function: (attribute
+                        object: (identifier) @getenv.module
+                        attribute: (identifier) @getenv.method)
+                    arguments: (argument_list
+                        (string) @getenv.var_name)
+                    (#eq? @getenv.module "os")
+                    (#eq? @getenv.method "getenv")) @getenv_access
+                
+                ; Subscript access to os.environ
+                (subscript
+                    (attribute
+                        object: (identifier) @env_sub.module
+                        attribute: (identifier) @env_sub.attr)
+                    (string) @env_sub.var_name
+                    (#eq? @env_sub.module "os")
+                    (#eq? @env_sub.attr "environ")) @env_subscript
             """),
             
             "javascript": self.languages["javascript"].query("""
@@ -334,6 +390,136 @@ class TreeSitterEnhancer:
                         code=self._extract_text(func_node, source),
                         start_byte=func_node.start_byte,
                         end_byte=func_node.end_byte,
+                    ))
+            
+            # Handle import statements
+            elif capture_name == "import":
+                import_name_node = find_capture_node("import.name", node)
+                if import_name_node:
+                    import_name = self._extract_text(import_name_node, source)
+                    symbols.append(Symbol(
+                        name=import_name,
+                        type="import",
+                        file=file_path,
+                        line=node.start_point[0] + 1,
+                        end_line=node.end_point[0] + 1,
+                        column=node.start_point[1],
+                        code=self._extract_text(node, source),
+                        start_byte=node.start_byte,
+                        end_byte=node.end_byte,
+                    ))
+            
+            elif capture_name == "import_from":
+                module_node = find_capture_node("import.module", node)
+                name_nodes = [n for n, name in captures if name == "import.name" and n.parent == node]
+                alias_nodes = [n for n, name in captures if name == "import.alias" and n.parent == node]
+                
+                module_name = self._extract_text(module_node, source) if module_node else ""
+                
+                # Handle "from X import Y, Z" or "from X import Y as A"
+                for i, name_node in enumerate(name_nodes):
+                    imported_name = self._extract_text(name_node, source)
+                    alias = None
+                    if i < len(alias_nodes):
+                        alias = self._extract_text(alias_nodes[i], source)
+                    
+                    full_name = f"{module_name}.{imported_name}" if module_name else imported_name
+                    display_name = alias if alias else imported_name
+                    
+                    symbols.append(Symbol(
+                        name=display_name,
+                        type="import_from",
+                        file=file_path,
+                        line=node.start_point[0] + 1,
+                        end_line=node.end_point[0] + 1,
+                        column=node.start_point[1],
+                        signature=f"from {module_name} import {imported_name}" + (f" as {alias}" if alias else ""),
+                        code=self._extract_text(node, source),
+                        start_byte=node.start_byte,
+                        end_byte=node.end_byte,
+                    ))
+            
+            # Handle module-level constants and assignments
+            elif capture_name in ["constant", "assignment"]:
+                name_key = f"{capture_name}.name"
+                value_key = f"{capture_name}.value"
+                
+                const_name_node = find_capture_node(name_key, node)
+                const_value_node = find_capture_node(value_key, node)
+                
+                if const_name_node and const_value_node:
+                    const_name = self._extract_text(const_name_node, source)
+                    const_value = self._extract_text(const_value_node, source)
+                    
+                    # Determine if this is inside a function/class (not module-level)
+                    is_module_level = True
+                    parent = node.parent
+                    while parent:
+                        if parent.type in ["function_definition", "class_definition"]:
+                            is_module_level = False
+                            break
+                        parent = parent.parent
+                    
+                    # Only capture module-level assignments
+                    if is_module_level:
+                        # Determine type based on name pattern
+                        if const_name.isupper() or "config" in const_name.lower() or "setting" in const_name.lower():
+                            symbol_type = "constant"
+                        else:
+                            # Skip regular variable assignments for now
+                            continue
+                        
+                        symbols.append(Symbol(
+                            name=const_name,
+                            type=symbol_type,
+                            file=file_path,
+                            line=const_name_node.start_point[0] + 1,
+                            end_line=node.end_point[0] + 1,
+                            column=const_name_node.start_point[1],
+                            signature=f"{const_name} = {const_value[:50]}..." if len(const_value) > 50 else f"{const_name} = {const_value}",
+                            code=self._extract_text(node, source),
+                            start_byte=node.start_byte,
+                            end_byte=node.end_byte,
+                        ))
+            
+            # Handle environment variable access
+            elif capture_name in ["env_access", "getenv_access", "env_subscript"]:
+                # Find the specific var_name node for this capture
+                var_name_node = None
+                for n, name in captures:
+                    if name.endswith(".var_name") and node.start_byte <= n.start_byte <= node.end_byte:
+                        # Get the first string argument (the env var name)
+                        if n.parent.type == "argument_list":
+                            # For os.environ.get() or os.getenv(), get first argument only
+                            var_name_node = n
+                            break
+                        elif n.parent.type == "subscript":
+                            # For os.environ[], get the subscript string
+                            var_name_node = n
+                            break
+                
+                if var_name_node:
+                    env_var_name = self._extract_text(var_name_node, source).strip('"\'')
+                    
+                    # Determine the access pattern
+                    if capture_name == "env_access":
+                        access_pattern = "os.environ.get()"
+                    elif capture_name == "getenv_access":
+                        access_pattern = "os.getenv()"
+                    else:
+                        access_pattern = "os.environ[]"
+                    
+                    symbols.append(Symbol(
+                        name=env_var_name,
+                        type="env_var",
+                        file=file_path,
+                        line=node.start_point[0] + 1,
+                        end_line=node.end_point[0] + 1,
+                        column=node.start_point[1],
+                        signature=f"{access_pattern} -> {env_var_name}",
+                        code=self._extract_text(node, source),
+                        start_byte=node.start_byte,
+                        end_byte=node.end_byte,
                     ))
         
         return symbols
