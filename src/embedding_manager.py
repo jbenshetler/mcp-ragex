@@ -31,10 +31,10 @@ class EmbeddingManager:
         
         Args:
             symbol: Dictionary containing symbol information with keys:
-                - type: function, class, method, etc.
+                - type: function, class, method, import, env_var, constant, etc.
                 - name: symbol name
                 - file: file path
-                - signature: function/method signature
+                - signature: function/method signature or import statement
                 - docstring: documentation string
                 - code: actual code content
                 - parent: parent class/module
@@ -43,6 +43,104 @@ class EmbeddingManager:
         Returns:
             Enriched text representation for embedding
         """
+        symbol_type = symbol.get('type', 'unknown')
+        
+        # Handle different symbol types with specialized context
+        if symbol_type in ['import', 'import_from']:
+            return self._create_import_context(symbol)
+        elif symbol_type == 'env_var':
+            return self._create_env_var_context(symbol)
+        elif symbol_type == 'constant':
+            return self._create_constant_context(symbol)
+        else:
+            # Default handling for functions, classes, methods
+            return self._create_default_context(symbol)
+    
+    def _create_import_context(self, symbol: Dict) -> str:
+        """Create context for import statements"""
+        parts = []
+        parts.append(f"Type: import statement")
+        parts.append(f"Module: {symbol.get('name', 'unknown')}")
+        
+        if symbol.get('signature'):
+            parts.append(f"Import: {symbol['signature']}")
+        
+        # Add file context for understanding where it's used
+        if symbol.get('file'):
+            parts.append(f"Used in: {symbol['file']}")
+        
+        # For imports, the module name itself is the key signal
+        module_name = symbol.get('name', '')
+        if '.' in module_name:
+            # For dotted imports, include parent package
+            parent_package = module_name.split('.')[0]
+            parts.append(f"Package: {parent_package}")
+        
+        # Common import patterns for searchability
+        if any(pkg in module_name.lower() for pkg in ['os', 'sys', 'path']):
+            parts.append("Category: system/filesystem")
+        elif any(pkg in module_name.lower() for pkg in ['numpy', 'pandas', 'scipy']):
+            parts.append("Category: data science")
+        elif any(pkg in module_name.lower() for pkg in ['requests', 'urllib', 'http']):
+            parts.append("Category: networking/http")
+        
+        return '\n'.join(parts)
+    
+    def _create_env_var_context(self, symbol: Dict) -> str:
+        """Create context for environment variable access"""
+        parts = []
+        parts.append(f"Type: environment variable")
+        parts.append(f"Variable: {symbol.get('name', 'unknown')}")
+        
+        if symbol.get('signature'):
+            # Signature contains access pattern
+            parts.append(f"Access: {symbol['signature']}")
+        
+        # Add semantic hints based on common env var patterns
+        var_name = symbol.get('name', '').upper()
+        if any(key in var_name for key in ['KEY', 'TOKEN', 'SECRET', 'PASSWORD']):
+            parts.append("Category: credentials/secrets")
+        elif any(key in var_name for key in ['URL', 'HOST', 'PORT', 'ENDPOINT']):
+            parts.append("Category: configuration/connection")
+        elif any(key in var_name for key in ['PATH', 'DIR', 'FOLDER']):
+            parts.append("Category: filesystem/paths")
+        elif any(key in var_name for key in ['DEBUG', 'LOG', 'VERBOSE']):
+            parts.append("Category: debugging/logging")
+        
+        if symbol.get('file'):
+            parts.append(f"File: {symbol['file']}")
+        
+        # Include the code context for better matching
+        if symbol.get('code'):
+            parts.append(f"Context: {symbol['code'][:100]}")
+        
+        return '\n'.join(parts)
+    
+    def _create_constant_context(self, symbol: Dict) -> str:
+        """Create context for module-level constants"""
+        parts = []
+        parts.append(f"Type: constant/configuration")
+        parts.append(f"Name: {symbol.get('name', 'unknown')}")
+        
+        if symbol.get('signature'):
+            parts.append(f"Definition: {symbol['signature']}")
+        
+        # Categorize based on naming patterns
+        const_name = symbol.get('name', '')
+        if const_name.isupper():
+            parts.append("Style: UPPER_CASE constant")
+        elif 'config' in const_name.lower():
+            parts.append("Category: configuration")
+        elif 'setting' in const_name.lower():
+            parts.append("Category: settings")
+        
+        if symbol.get('file'):
+            parts.append(f"File: {symbol['file']}")
+        
+        return '\n'.join(parts)
+    
+    def _create_default_context(self, symbol: Dict) -> str:
+        """Default context creation for functions, classes, methods"""
         # Extract keywords from code
         keywords = self._extract_keywords(symbol.get("code", ""))
         

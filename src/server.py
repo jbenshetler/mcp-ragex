@@ -377,6 +377,30 @@ except Exception as e:
 def detect_query_type(query: str) -> str:
     """Detect the best search mode based on query characteristics"""
     
+    # Check for environment variable and configuration patterns - use semantic
+    env_config_indicators = [
+        r'\b(env|environ|environment)\s+(var|variable)',
+        r'\b(config|configuration|setting)',
+        r'\bos\.environ',
+        r'\bgetenv\b',
+        r'^[A-Z][A-Z_]+[A-Z]$',           # CONSTANT_NAME pattern
+        r'\b(API_KEY|DATABASE_URL|SECRET|TOKEN|PASSWORD)\b',
+    ]
+    
+    if any(re.search(pattern, query, re.IGNORECASE) for pattern in env_config_indicators):
+        return "semantic"  # Semantic search works best for env vars
+    
+    # Check for import patterns - use semantic
+    import_indicators = [
+        r'\b(import|imports|importing|uses?|using)\s+\w+',
+        r'\bfrom\s+\w+\s+import',
+        r'\b(files?|modules?)\s+(that\s+)?(use|import|require)',
+        r'\b(pandas|numpy|requests|flask|django)\b',  # Common libraries
+    ]
+    
+    if any(re.search(pattern, query, re.IGNORECASE) for pattern in import_indicators):
+        return "semantic"  # Semantic search works best for imports
+    
     # Check for regex patterns
     regex_indicators = [
         r'\.',      # literal dots
