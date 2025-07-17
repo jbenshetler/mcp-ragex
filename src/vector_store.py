@@ -244,7 +244,11 @@ class CodeVectorStore:
             Status message
         """
         logger.warning("Clearing all data from vector store")
-        self.collection.delete(where={})  # Delete all
+        # ChromaDB requires getting all IDs first, then deleting
+        # Get all document IDs
+        all_data = self.collection.get()
+        if all_data['ids']:
+            self.collection.delete(ids=all_data['ids'])
         
         return {
             "status": "cleared",
