@@ -23,10 +23,12 @@ MANIFEST
 
 # Virtual Environment
 .venv/
+.mcp_venv/
 venv/
 ENV/
 env/
 .venv/**
+.mcp_venv/**
 venv/**
 
 # IDE

@@ -74,14 +74,35 @@ To enable semantic search capabilities:
    uv run scripts/check_index.py
    ```
 
-### Register MCP Server
+### Install MCP Server (One-time setup)
+
+Install the MCP server with all dependencies in an isolated environment:
+
+```bash
+cd /path/to/coderagmcp
+./scripts/install_mcp_server.sh
 ```
-claude mcp add coderag /home/jeff/clients/coderagmcp/mcp_coderag_pwd.sh --scope project
+
+This creates a dedicated virtual environment (`.mcp_venv`) with all required dependencies, ensuring the MCP server works consistently across all projects.
+
+### Register MCP Server
+
+After installation, register the MCP server from your project directory:
+
+```bash
+cd /path/to/your/project
+claude mcp add ragex /path/to/coderagmcp/mcp_server_isolated.sh --scope project
+```
+
+#### Alternative Registration (Legacy)
+```bash
+# Uses current project's Python environment (may have missing dependencies)
+claude mcp add ragex /path/to/coderagmcp/mcp_coderag_pwd.sh --scope project
 ```
 
 #### Unregister MCP Server
-```
-claude mcp remove coderag --scope project
+```bash
+claude mcp remove ragex --scope project
 ```
 
 
