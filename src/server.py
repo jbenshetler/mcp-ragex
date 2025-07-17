@@ -341,31 +341,66 @@ try:
         CodeIndexer = load_module("indexer", current_dir / "indexer.py").CodeIndexer
     
     # Check if semantic index exists
-    # First check MCP_WORKING_DIR (where Claude Code was launched from)
+    # Try multiple locations for ChromaDB
+    search_paths = []
+    
+    # 1. First check MCP_WORKING_DIR (where Claude Code was launched from)
     mcp_working_dir = os.environ.get('MCP_WORKING_DIR')
     if mcp_working_dir:
-        index_path = Path(mcp_working_dir) / "chroma_db"
-        logger.info(f"Checking for ChromaDB at MCP working directory: {index_path}")
-    else:
-        index_path = Path("./chroma_db")
-        logger.info(f"No MCP_WORKING_DIR set, checking current directory: {index_path}")
+        search_paths.append(Path(mcp_working_dir) / "chroma_db")
+        logger.info(f"MCP_WORKING_DIR set to: {mcp_working_dir}")
     
-    if index_path.exists():
-        vector_store = CodeVectorStore(persist_directory=str(index_path))
-        stats = vector_store.get_statistics()
-        if stats['total_symbols'] > 0:
-            embedder = EmbeddingManager()
-            semantic_searcher = {
-                'embedder': embedder,
-                'vector_store': vector_store,
-                'indexer': CodeIndexer()
-            }
-            semantic_available = True
-            logger.info(f"Semantic search available with {stats['total_symbols']} symbols")
-        else:
-            logger.warning("Semantic index exists but is empty")
+    # 2. Check current working directory
+    cwd = Path.cwd()
+    search_paths.append(cwd / "chroma_db")
+    logger.info(f"Current working directory: {cwd}")
+    
+    # 3. Check RAGEX_CHROMA_PERSIST_DIR if set
+    custom_dir = os.environ.get('RAGEX_CHROMA_PERSIST_DIR')
+    if custom_dir:
+        search_paths.append(Path(custom_dir))
+        logger.info(f"RAGEX_CHROMA_PERSIST_DIR set to: {custom_dir}")
+    
+    # Log all search paths for debugging
+    logger.info("ChromaDB search paths:")
+    for i, path in enumerate(search_paths, 1):
+        exists = "EXISTS" if path.exists() else "NOT FOUND"
+        logger.info(f"  {i}. {path} [{exists}]")
+    
+    # Try each path
+    index_path = None
+    for path in search_paths:
+        if path.exists():
+            index_path = path
+            logger.info(f"✓ Found ChromaDB at: {index_path}")
+            break
+    
+    if index_path:
+        try:
+            vector_store = CodeVectorStore(persist_directory=str(index_path))
+            stats = vector_store.get_statistics()
+            logger.info(f"ChromaDB stats: {stats}")
+            
+            if stats['total_symbols'] > 0:
+                embedder = EmbeddingManager()
+                semantic_searcher = {
+                    'embedder': embedder,
+                    'vector_store': vector_store,
+                    'indexer': CodeIndexer()
+                }
+                semantic_available = True
+                logger.info(f"✓ Semantic search ENABLED with {stats['total_symbols']} symbols from {stats['unique_files']} files")
+                logger.info(f"  Languages: {', '.join(stats.get('languages', {}).keys())}")
+            else:
+                logger.warning("✗ Semantic index exists but is EMPTY")
+                logger.info("  Run: uv run python scripts/build_semantic_index.py . --stats")
+        except Exception as e:
+            logger.error(f"✗ Failed to load ChromaDB from {index_path}: {e}")
+            logger.exception("Full traceback:")
     else:
-        logger.warning("Semantic search index not found. Run 'uv run python scripts/build_semantic_index.py' to enable.")
+        logger.warning("✗ Semantic search index NOT FOUND in any search path")
+        logger.info("  To enable semantic search, run from project directory:")
+        logger.info("  uv run python scripts/build_semantic_index.py . --stats")
         
 except ImportError as e:
     logger.warning(f"Semantic search dependencies not available: {e}")
@@ -868,6 +903,22 @@ async def handle_simple_search(query: str) -> List[types.TextContent]:
 # Helper functions for new search modes
 async def execute_semantic_search(query: str, file_types: Optional[List[str]], paths: Optional[List[str]], limit: int, similarity_threshold: float) -> Dict:
     """Execute semantic search using embeddings"""
+    
+    # Check if semantic search is available
+    if not semantic_available or not semantic_searcher:
+        error_msg = "Semantic search is not available. "
+        error_msg += "ChromaDB index may not be found or dependencies missing. "
+        error_msg += "Check /tmp/mcp_coderag.log for initialization details."
+        logger.error(error_msg)
+        return {
+            "success": False,
+            "error": error_msg,
+            "pattern": query,
+            "total_matches": 0,
+            "matches": [],
+            "semantic_unavailable": True
+        }
+    
     try:
         # Create query embedding
         query_embedding = semantic_searcher['embedder'].embed_text(query)
@@ -894,6 +945,8 @@ async def execute_semantic_search(query: str, file_types: Optional[List[str]], p
                     "similarity": 1.0 - result["distance"]
                 })
         
+        logger.info(f"Semantic search completed: found {len(matches)} matches for '{query}'")
+        
         return {
             "success": True,
             "pattern": query,
@@ -904,6 +957,7 @@ async def execute_semantic_search(query: str, file_types: Optional[List[str]], p
         
     except Exception as e:
         logger.error(f"Semantic search failed: {e}")
+        logger.exception("Full traceback:")
         return {
             "success": False,
             "error": str(e),
@@ -988,6 +1042,21 @@ async def format_search_results(result: Dict, limit: int, format: str) -> List[t
             response_text += f"*Note: Results truncated to {limit} matches*\n"
     else:
         response_text += "No matches found.\n"
+        
+        # Add debugging info if semantic search was attempted but failed
+        if result.get("search_mode") == "semantic" and result.get("requested_mode") == "semantic":
+            response_text += "\n**Debugging info**: Semantic search was attempted but may have failed.\n"
+            response_text += "Check /tmp/mcp_coderag.log for details about ChromaDB initialization.\n"
+        
+        # Show error if semantic search was unavailable
+        if result.get("semantic_unavailable"):
+            response_text += "\n⚠️ **Semantic Search Unavailable**\n"
+            response_text += "The ChromaDB index could not be found. Please ensure:\n"
+            response_text += "1. You have built the index: `uv run python scripts/build_semantic_index.py . --stats`\n"
+            response_text += "2. The index exists in one of these locations:\n"
+            response_text += "   - Project directory: `./chroma_db`\n"
+            response_text += "   - Or set RAGEX_CHROMA_PERSIST_DIR environment variable\n"
+            response_text += "\nFalling back to regex search instead.\n"
     
     return [types.TextContent(type="text", text=response_text)]
 
