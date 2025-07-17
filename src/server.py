@@ -556,13 +556,19 @@ async def handle_list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="search_code",
-            description="Search for code patterns using ripgrep. Supports regex patterns and file type filtering.",
+            description="Intelligent code search with automatic mode detection. Use 'semantic' mode when searching for concepts or functionality. Use 'symbol' or 'regex' modes when you know specific names or patterns.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pattern": {
+                    "query": {
                         "type": "string",
-                        "description": "Regex pattern to search for",
+                        "description": "Search query (natural language for semantic search, exact names for symbol search, or patterns for regex search)",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["auto", "semantic", "symbol", "regex"],
+                        "description": "Search mode - 'auto' (default): automatically detects best mode. 'semantic': natural language search for concepts/functionality. 'symbol': exact function/class/variable names. 'regex': pattern matching with regular expressions",
+                        "default": "auto"
                     },
                     "file_types": {
                         "type": "array",
@@ -579,31 +585,43 @@ async def handle_list_tools() -> list[types.Tool]:
                         "description": f"Maximum results to return (1-{MAX_RESULTS}, default: {DEFAULT_RESULTS})",
                         "minimum": 1,
                         "maximum": MAX_RESULTS,
+                        "default": DEFAULT_RESULTS
                     },
                     "case_sensitive": {
                         "type": "boolean",
                         "description": "Whether search should be case sensitive (default: false)",
+                        "default": False
                     },
                     "include_symbols": {
                         "type": "boolean",
                         "description": "Include symbol context (function/class info) in results (default: false)",
+                        "default": False
+                    },
+                    "similarity_threshold": {
+                        "type": "number",
+                        "description": "Minimum similarity score for semantic search results (0.0-1.0, default: 0.7)",
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "default": 0.7
                     },
                     "exclude_patterns": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Additional patterns to exclude (gitignore syntax). Default exclusions: .venv/**, __pycache__/**, etc.",
+                        "description": "Additional patterns to exclude (gitignore syntax)",
                     },
                     "respect_gitignore": {
                         "type": "boolean",
                         "description": "Whether to respect .gitignore files (default: true)",
+                        "default": True
                     },
                     "format": {
                         "type": "string",
                         "enum": ["navigation", "raw"],
                         "description": "Output format: 'navigation' for human-friendly file grouping (default), 'raw' for simple file:line format",
+                        "default": "navigation"
                     },
                 },
-                "required": ["pattern"],
+                "required": ["query"],
             },
         ),
     ]

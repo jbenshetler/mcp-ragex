@@ -11,6 +11,8 @@ This is a Model Context Protocol (MCP) server that provides code search function
 - **Run server**: `./run_server.sh` or `python src/server.py`
 - **Run tests**: `python tests/test_server.py` or `pytest tests/`
 - **Install dependencies**: `pip install -r requirements.txt` or `pip install -e .`
+- **Run python programs**: `uv run`
+- **Install packages**: `uv install`
 
 ## Architecture
 

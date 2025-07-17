@@ -69,6 +69,17 @@ To enable semantic search capabilities:
    uv run scripts/check_index.py
    ```
 
+### Register MCP Server
+```
+claude mcp add coderag /home/jeff/clients/coderagmcp/mcp_coderag_pwd.sh --scope project
+```
+
+#### Unregister MCP Server
+```
+claude mcp remove coderag --scope project
+```
+
+
 ### Running the Server
 
 ```bash
