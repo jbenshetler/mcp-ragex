@@ -410,7 +410,7 @@
     - But it returned 0 results
     - There's no error about semantic search being unavailable, which means the system thinks it's available but the index is empty
   2. Index Doesn't Include This File: Even if an index exists, it might not include the docmonitor/monitor.py file. The semantic index needs to be built by running:
-  python scripts/build_semantic_index.py /path/to/docmonitor
+  uv run python scripts/build_semantic_index.py /path/to/docmonitor
 
   Why Regex Search Succeeded
 

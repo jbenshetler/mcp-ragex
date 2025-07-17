@@ -4,10 +4,15 @@ Embedding manager for semantic code search using sentence-transformers
 """
 
 import re
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import logging
+
+try:
+    from .embedding_config import EmbeddingConfig, ModelConfig
+except ImportError:
+    from embedding_config import EmbeddingConfig, ModelConfig
 
 logger = logging.getLogger("embedding-manager")
 
@@ -15,15 +20,48 @@ logger = logging.getLogger("embedding-manager")
 class EmbeddingManager:
     """Manages code embeddings using sentence-transformers"""
     
-    def __init__(self, model_name: str = "sentence-transformers/all-mpnet-base-v2"):
-        """Initialize with specified model
+    def __init__(self, 
+                 model_name: Optional[str] = None,
+                 config: Optional[Union[EmbeddingConfig, str]] = None):
+        """Initialize with specified model or configuration
         
         Args:
-            model_name: HuggingFace model name for sentence-transformers
+            model_name: HuggingFace model name for sentence-transformers (deprecated, use config)
+            config: EmbeddingConfig instance or preset name ("fast", "balanced", "accurate")
         """
-        logger.info(f"Loading embedding model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        # Handle configuration
+        if config is not None:
+            if isinstance(config, str):
+                # Preset name provided
+                self.config = EmbeddingConfig(preset=config)
+            elif isinstance(config, EmbeddingConfig):
+                self.config = config
+            else:
+                raise ValueError(f"config must be EmbeddingConfig or preset name, got {type(config)}")
+        elif model_name is not None:
+            # Legacy support - create config from model name
+            logger.warning("Using model_name parameter is deprecated, use config instead")
+            self.config = EmbeddingConfig(custom_model=ModelConfig(
+                model_name=model_name,
+                dimensions=384,  # Assume default
+                max_seq_length=256,
+                batch_size=32
+            ))
+        else:
+            # Use default configuration
+            self.config = EmbeddingConfig()
+        
+        logger.info(f"Loading embedding model: {self.config.model_name}")
+        logger.info(f"Model config: dims={self.config.dimensions}, max_seq={self.config.max_seq_length}")
+        
+        self.model = SentenceTransformer(self.config.model_name)
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
+        
+        # Verify dimensions match
+        if self.embedding_dim != self.config.dimensions:
+            logger.warning(f"Model dimension mismatch: expected {self.config.dimensions}, got {self.embedding_dim}")
+            logger.warning("Using actual model dimensions")
+        
         logger.info(f"Model loaded. Embedding dimension: {self.embedding_dim}")
     
     def create_code_context(self, symbol: Dict) -> str:
@@ -299,30 +337,35 @@ class EmbeddingManager:
         """
         return self.model.encode(text, convert_to_numpy=True)
     
-    def embed_batch(self, texts: List[str], batch_size: int = 32, show_progress: bool = True) -> np.ndarray:
+    def embed_batch(self, texts: List[str], batch_size: Optional[int] = None, show_progress: bool = True) -> np.ndarray:
         """Embed multiple texts in batches
         
         Args:
             texts: List of texts to embed
-            batch_size: Batch size for processing
+            batch_size: Batch size for processing (uses config default if not specified)
             show_progress: Whether to show progress bar
             
         Returns:
             Array of embeddings
         """
+        # Use config batch size if not specified
+        if batch_size is None:
+            batch_size = self.config.batch_size
+            
         return self.model.encode(
             texts,
             batch_size=batch_size,
             show_progress_bar=show_progress,
-            convert_to_numpy=True
+            convert_to_numpy=True,
+            normalize_embeddings=self.config.normalize_embeddings
         )
     
-    def embed_code_symbols(self, symbols: List[Dict], batch_size: int = 32, show_progress: bool = True) -> np.ndarray:
+    def embed_code_symbols(self, symbols: List[Dict], batch_size: Optional[int] = None, show_progress: bool = True) -> np.ndarray:
         """Embed code symbols with enriched context
         
         Args:
             symbols: List of symbol dictionaries
-            batch_size: Batch size for processing
+            batch_size: Batch size for processing (uses config default if not specified)
             show_progress: Whether to show progress bar
             
         Returns:

@@ -8,8 +8,8 @@ This is a Model Context Protocol (MCP) server that provides code search function
 
 ## Key Commands
 
-- **Run server**: `./run_server.sh` or `python src/server.py`
-- **Run tests**: `python tests/test_server.py` or `pytest tests/`
+- **Run server**: `./run_server.sh` or `uv run python src/server.py`
+- **Run tests**: `uv run python tests/test_server.py` or `uv run pytest tests/`
 - **Install dependencies**: `pip install -r requirements.txt` or `pip install -e .`
 - **Run python programs**: `uv run`
 - **Install packages**: `uv install`
@@ -30,7 +30,7 @@ Key design decisions:
 ## Testing Approach
 
 When modifying the server:
-1. Run `python tests/test_server.py` to validate basic functionality
+1. Run `uv run python tests/test_server.py` to validate basic functionality
 2. Check error handling with invalid inputs (regex, paths)
 3. Test with real codebases for performance
 

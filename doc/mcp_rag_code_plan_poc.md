@@ -204,7 +204,7 @@ ripgrep:
 #### **1. Basic Functionality Test**
 ```bash
 # Test the MCP server directly
-python poc_search_server.py &
+uv run python poc_search_server.py &
 MCP_SERVER_PID=$!
 
 # Test with MCP client

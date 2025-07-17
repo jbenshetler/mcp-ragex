@@ -55,12 +55,17 @@ To enable semantic search capabilities:
 
 1. **Build the semantic index:**
    ```bash
+   # Use default fast model (~80MB)
    uv run scripts/build_semantic_index.py . --stats
+   
+   # Or choose a different preset
+   uv run scripts/build_semantic_index.py . --preset balanced --stats  # ~420MB model
+   uv run scripts/build_semantic_index.py . --preset accurate --stats  # ~1.3GB model
    ```
    
    This will:
    - Automatically install required dependencies (sentence-transformers, chromadb, etc.)
-   - Download the sentence-transformer model (~420MB)
+   - Download the sentence-transformer model (size varies by preset)
    - Index all Python/JS/TS files in the current directory
    - Create a ChromaDB vector database in `./chroma_db`
 
@@ -433,6 +438,70 @@ The MCP server actively teaches Claude Code how to use search effectively:
 - **Rich tool descriptions**: Detailed documentation in tool schemas
 - **Response metadata**: Information about search mode selection
 - **Failure guidance**: Helpful suggestions when searches fail
+
+## Configuration
+
+### Embedding Model Configuration
+
+The semantic search system supports multiple embedding models with different trade-offs:
+
+#### Model Presets
+
+| Preset | Model | Dimensions | Size | Use Case |
+|--------|-------|------------|------|----------|
+| `fast` (default) | all-MiniLM-L6-v2 | 384 | ~80MB | Quick prototyping, smaller codebases |
+| `balanced` | all-mpnet-base-v2 | 768 | ~420MB | Good balance of speed and quality |
+| `accurate` | all-roberta-large-v1 | 1024 | ~1.3GB | Best quality, larger codebases |
+
+#### Configuration Methods
+
+1. **Command-line preset:**
+   ```bash
+   uv run scripts/build_semantic_index.py . --preset balanced
+   ```
+
+2. **Environment variable:**
+   ```bash
+   # Use a preset
+   export RAGEX_EMBEDDING_MODEL=balanced
+   
+   # Or specify a custom model
+   export RAGEX_EMBEDDING_MODEL=sentence-transformers/codebert-base
+   ```
+
+3. **Other environment variables:**
+   ```bash
+   # ChromaDB settings
+   export RAGEX_CHROMA_PERSIST_DIR=/custom/path/to/db
+   export RAGEX_CHROMA_COLLECTION=my_project_embeddings
+   ```
+
+### File Exclusion (.mcpignore)
+
+Create a `.mcpignore` file in your project root to exclude files from indexing:
+
+```gitignore
+# Dependencies
+node_modules/
+venv/
+.venv/
+
+# Build outputs
+dist/
+build/
+*.min.js
+
+# Large files
+*.csv
+*.json
+data/
+
+# Test files (optional)
+*_test.py
+*.test.js
+```
+
+The system automatically excludes common directories like `.git`, `__pycache__`, etc.
 
 ## Future Enhancements
 

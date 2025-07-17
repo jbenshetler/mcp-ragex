@@ -365,7 +365,7 @@ try:
         else:
             logger.warning("Semantic index exists but is empty")
     else:
-        logger.warning("Semantic search index not found. Run 'python scripts/build_semantic_index.py' to enable.")
+        logger.warning("Semantic search index not found. Run 'uv run python scripts/build_semantic_index.py' to enable.")
         
 except ImportError as e:
     logger.warning(f"Semantic search dependencies not available: {e}")

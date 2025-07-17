@@ -67,8 +67,8 @@ Based on the todo list, the next major initiative is implementing a Code Propert
 ## Development Guidelines
 
 ### Running the Project
-- Start server: `./run_server.sh` or `python src/server.py`
-- Run tests: `python tests/test_server.py` or `pytest tests/`
+- Start server: `./run_server.sh` or `uv run python src/server.py`
+- Run tests: `uv run python tests/test_server.py` or `uv run pytest tests/`
 - Install dependencies: `pip install -r requirements.txt` or `pip install -e .`
 
 ### When Making Changes

@@ -4,12 +4,17 @@ Vector store for semantic code search using ChromaDB
 """
 
 import os
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 import numpy as np
 import chromadb
 from chromadb.config import Settings
 import logging
 from pathlib import Path
+
+try:
+    from .embedding_config import EmbeddingConfig
+except ImportError:
+    from embedding_config import EmbeddingConfig
 
 logger = logging.getLogger("vector-store")
 
@@ -17,16 +22,36 @@ logger = logging.getLogger("vector-store")
 class CodeVectorStore:
     """Manages code embeddings in ChromaDB"""
     
-    def __init__(self, persist_directory: str = "./chroma_db"):
+    def __init__(self, 
+                 persist_directory: Optional[str] = None,
+                 collection_name: Optional[str] = None,
+                 config: Optional[Union[EmbeddingConfig, str]] = None):
         """Initialize ChromaDB with persistent storage
         
         Args:
-            persist_directory: Directory to store the database
+            persist_directory: Directory to store the database (uses config default if not specified)
+            collection_name: Name of the collection (uses config default if not specified)
+            config: EmbeddingConfig instance or preset name
         """
-        self.persist_directory = Path(persist_directory).absolute()
+        # Handle configuration
+        if config is not None:
+            if isinstance(config, str):
+                self.config = EmbeddingConfig(preset=config)
+            elif isinstance(config, EmbeddingConfig):
+                self.config = config
+            else:
+                raise ValueError(f"config must be EmbeddingConfig or preset name, got {type(config)}")
+        else:
+            self.config = EmbeddingConfig()
+        
+        # Use provided values or fall back to config
+        self.persist_directory = Path(persist_directory or self.config.persist_directory).absolute()
+        self.collection_name = collection_name or self.config.collection_name
+        
         self.persist_directory.mkdir(parents=True, exist_ok=True)
         
         logger.info(f"Initializing ChromaDB at {self.persist_directory}")
+        logger.info(f"Collection name: {self.collection_name}")
         
         # Initialize ChromaDB client with persistence
         self.client = chromadb.PersistentClient(
@@ -37,13 +62,18 @@ class CodeVectorStore:
             )
         )
         
-        # Get or create collection
+        # Get or create collection with configurable HNSW parameters
         self.collection = self.client.get_or_create_collection(
-            name="code_search",
-            metadata={"hnsw:space": "cosine"}
+            name=self.collection_name,
+            metadata={
+                "hnsw:space": "cosine",
+                "hnsw:construction_ef": self.config.hnsw_construction_ef,
+                "hnsw:search_ef": self.config.hnsw_search_ef,
+                "hnsw:M": self.config.hnsw_M
+            }
         )
         
-        logger.info(f"Collection 'code_search' ready. Current count: {self.collection.count()}")
+        logger.info(f"Collection '{self.collection_name}' ready. Current count: {self.collection.count()}")
     
     def add_symbols(self, symbols: List[Dict], embeddings: np.ndarray) -> Dict[str, Any]:
         """Add code symbols with their embeddings to the store
@@ -234,7 +264,7 @@ class CodeVectorStore:
             "languages": language_counts,
             "unique_files": len(file_counts),
             "persist_directory": str(self.persist_directory),
-            "collection_name": "code_search"
+            "collection_name": self.collection_name
         }
     
     def clear(self) -> Dict[str, str]:
@@ -264,12 +294,17 @@ class CodeVectorStore:
         logger.warning("Resetting vector store")
         
         # Delete the collection
-        self.client.delete_collection("code_search")
+        self.client.delete_collection(self.collection_name)
         
-        # Recreate it
+        # Recreate it with configurable HNSW parameters
         self.collection = self.client.get_or_create_collection(
-            name="code_search",
-            metadata={"hnsw:space": "cosine"}
+            name=self.collection_name,
+            metadata={
+                "hnsw:space": "cosine",
+                "hnsw:construction_ef": self.config.hnsw_construction_ef,
+                "hnsw:search_ef": self.config.hnsw_search_ef,
+                "hnsw:M": self.config.hnsw_M
+            }
         )
         
         return {

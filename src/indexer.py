@@ -6,7 +6,7 @@ Code indexer for building semantic search index
 import os
 import asyncio
 from pathlib import Path
-from typing import List, Dict, Optional, Any, Callable
+from typing import List, Dict, Optional, Any, Callable, Union
 import logging
 from tqdm import tqdm
 
@@ -25,24 +25,57 @@ except ImportError:
 logger = logging.getLogger("code-indexer")
 
 
+try:
+    from .embedding_config import EmbeddingConfig
+except ImportError:
+    from embedding_config import EmbeddingConfig
+
+
 class CodeIndexer:
     """Indexes code for semantic search"""
     
     def __init__(self, 
-                 persist_directory: str = "./chroma_db",
-                 model_name: str = "sentence-transformers/all-mpnet-base-v2"):
+                 persist_directory: Optional[str] = None,
+                 model_name: Optional[str] = None,
+                 config: Optional[Union[EmbeddingConfig, str]] = None):
         """Initialize the indexer with components
         
         Args:
-            persist_directory: Directory for ChromaDB storage
-            model_name: Sentence transformer model to use
+            persist_directory: Directory for ChromaDB storage (uses config default if not specified)
+            model_name: Sentence transformer model to use (deprecated, use config)
+            config: EmbeddingConfig instance or preset name ("fast", "balanced", "accurate")
         """
         logger.info("Initializing CodeIndexer")
         
-        # Initialize components
+        # Handle configuration
+        if config is not None:
+            if isinstance(config, str):
+                self.config = EmbeddingConfig(preset=config)
+            elif isinstance(config, EmbeddingConfig):
+                self.config = config
+            else:
+                raise ValueError(f"config must be EmbeddingConfig or preset name, got {type(config)}")
+        elif model_name is not None:
+            # Legacy support
+            logger.warning("Using model_name parameter is deprecated, use config instead")
+            from .embedding_config import ModelConfig
+            self.config = EmbeddingConfig(custom_model=ModelConfig(
+                model_name=model_name,
+                dimensions=384,
+                max_seq_length=256,
+                batch_size=32
+            ))
+        else:
+            self.config = EmbeddingConfig()
+        
+        # Override persist directory if provided
+        if persist_directory:
+            self.config._persist_directory = persist_directory
+        
+        # Initialize components with shared config
         self.tree_sitter = TreeSitterEnhancer()
-        self.embedder = EmbeddingManager(model_name)
-        self.vector_store = CodeVectorStore(persist_directory)
+        self.embedder = EmbeddingManager(config=self.config)
+        self.vector_store = CodeVectorStore(config=self.config)
         self.pattern_matcher = PatternMatcher()
         
         # Supported file extensions

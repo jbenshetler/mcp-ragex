@@ -385,7 +385,7 @@ def main():
     
     if not index_path.exists():
         print("❌ No semantic search index found.")
-        print("   Run: python scripts/build_semantic_index.py")
+        print("   Run: uv run python scripts/build_semantic_index.py")
         return
     
     # Load metadata
@@ -425,7 +425,7 @@ def main():
                 print(f"   - {f}")
             if len(changed_files) > 5:
                 print(f"   ... and {len(changed_files) - 5} more")
-            print("\n💡 Consider rebuilding: python scripts/build_semantic_index.py --force")
+            print("\n💡 Consider rebuilding: uv run python scripts/build_semantic_index.py --force")
         else:
             print("\n✅ Index is up to date")
     else:
@@ -449,7 +449,7 @@ def check_semantic_index():
     if not index_path.exists():
         logger.warning(
             "Semantic search index not found. "
-            "Run 'python scripts/build_semantic_index.py' to enable semantic search."
+            "Run 'uv run python scripts/build_semantic_index.py' to enable semantic search."
         )
         return False
     
@@ -473,7 +473,7 @@ async def semantic_search(query: str, ...) -> Dict:
     if not SEMANTIC_SEARCH_AVAILABLE:
         return {
             "error": "Semantic search not available",
-            "message": "Index not found. Run: python scripts/build_semantic_index.py"
+            "message": "Index not found. Run: uv run python scripts/build_semantic_index.py"
         }
     # ... rest of implementation
 ```
@@ -496,7 +496,7 @@ pip install -q sentence-transformers chromadb tqdm
 
 # Build initial index
 echo "🏗️  Building semantic search index..."
-python scripts/build_semantic_index.py
+uv run python scripts/build_semantic_index.py
 
 echo "✅ Setup complete!"
 ```
@@ -966,7 +966,7 @@ async def performance_test():
    ./scripts/setup_semantic_search.sh
    
    # Build initial index
-   python scripts/build_semantic_index.py
+   uv run python scripts/build_semantic_index.py
    # Expected time for 196 files/54k LOC: ~30-60 seconds
    ```
 
@@ -980,12 +980,12 @@ async def performance_test():
 3. **After Major Changes**:
    ```bash
    # Check if reindex needed
-   python scripts/check_index.py
+   uv run python scripts/check_index.py
    
    # Update incrementally or rebuild
-   python scripts/update_index.py  # Fast, only changed files
+   uv run python scripts/update_index.py  # Fast, only changed files
    # OR
-   python scripts/build_semantic_index.py --force  # Full rebuild
+   uv run python scripts/build_semantic_index.py --force  # Full rebuild
    ```
 
 ### Indexing Time Estimates

@@ -80,8 +80,10 @@ async def main():
                        help="Show detailed statistics after indexing")
     parser.add_argument("--persist-dir", default="./chroma_db",
                        help="Directory for ChromaDB storage (default: ./chroma_db)")
-    parser.add_argument("--model", default="sentence-transformers/all-mpnet-base-v2",
-                       help="Sentence transformer model to use")
+    parser.add_argument("--model", default=None,
+                       help="Sentence transformer model to use (deprecated, use --preset)")
+    parser.add_argument("--preset", choices=["fast", "balanced", "accurate"], default="fast",
+                       help="Model preset: fast, balanced, or accurate (default: fast)")
     args = parser.parse_args()
     
     print("🔍 CodeRAG Semantic Search Indexer")
@@ -126,19 +128,38 @@ async def main():
     
     # Initialize indexer
     print("\n📚 Initializing indexer...")
-    print(f"   - Model: {args.model}")
-    print(f"   - Storage: {args.persist_dir}")
     
-    try:
+    # Handle model/preset selection
+    if args.model:
+        print(f"   - Model: {args.model} (deprecated, use --preset)")
+        print(f"   - Storage: {args.persist_dir}")
         indexer = CodeIndexer(
             persist_directory=str(index_path),
             model_name=args.model
         )
+    else:
+        print(f"   - Preset: {args.preset}")
+        print(f"   - Storage: {args.persist_dir}")
         
+        # Check for environment override
+        env_model = os.getenv("RAGEX_EMBEDDING_MODEL")
+        if env_model:
+            print(f"   - Environment override: RAGEX_EMBEDDING_MODEL={env_model}")
+        
+        indexer = CodeIndexer(
+            persist_directory=str(index_path),
+            config=args.preset
+        )
+    
+    try:
         # Configure pattern matcher to use original working directory for .mcpignore
         indexer.pattern_matcher.set_working_directory(original_cwd)
         print(f"   - Indexer pattern matcher working directory: {indexer.pattern_matcher.working_directory}")
         print(f"   - Indexer pattern matcher patterns: {len(indexer.pattern_matcher.patterns)}")
+        
+        # Show model info
+        print(f"   - Model: {indexer.config.model_name}")
+        print(f"   - Dimensions: {indexer.config.dimensions}")
     except Exception as e:
         print(f"❌ Failed to initialize indexer: {e}")
         os.chdir(original_cwd)
@@ -233,7 +254,9 @@ async def main():
         "file_count": result.get("files_processed", 0),
         "symbol_count": result.get("symbols_indexed", 0),
         "index_time": elapsed,
-        "model": args.model,
+        "model": indexer.config.model_name,
+        "model_preset": args.preset if not args.model else "custom",
+        "model_dimensions": indexer.config.dimensions,
         "excluded_patterns": pattern_matcher.patterns[:10] if pattern_matcher.patterns else [],
         "total_excluded_patterns": len(pattern_matcher.patterns)
     }
@@ -291,8 +314,16 @@ async def main():
     
     # Download model if needed
     if result.get('symbols_indexed', 0) > 0:
-        print(f"\n📦 Note: The sentence transformer model '{args.model}'")
-        print(f"   has been downloaded and cached (~420MB).")
+        print(f"\n📦 Note: The sentence transformer model '{indexer.config.model_name}'")
+        print(f"   has been downloaded and cached.")
+        if args.preset == "fast" or indexer.config.model_name.endswith("all-MiniLM-L6-v2"):
+            print(f"   Model size: ~80MB (fast preset)")
+        elif args.preset == "balanced" or indexer.config.model_name.endswith("all-mpnet-base-v2"):
+            print(f"   Model size: ~420MB (balanced preset)")
+        elif args.preset == "accurate" or indexer.config.model_name.endswith("all-roberta-large-v1"):
+            print(f"   Model size: ~1.3GB (accurate preset)")
+        else:
+            print(f"   Model size varies by model")
     
     # Restore original working directory
     os.chdir(original_cwd)
