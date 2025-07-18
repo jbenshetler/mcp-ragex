@@ -634,10 +634,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "similarity_threshold": {
                         "type": "number",
-                        "description": "Minimum similarity score for semantic search results (0.0-1.0, default: 0.7)",
+                        "description": "Minimum similarity score for semantic search results (0.0-1.0, default: 0.25)",
                         "minimum": 0.0,
                         "maximum": 1.0,
-                        "default": 0.7
+                        "default": 0.25
                     },
                     "exclude_patterns": {
                         "type": "array",
@@ -683,7 +683,7 @@ async def handle_call_tool(
                 limit=arguments.get('limit', 50),
                 case_sensitive=arguments.get('case_sensitive', False),
                 include_symbols=arguments.get('include_symbols', False),
-                similarity_threshold=arguments.get('similarity_threshold', 0.7),
+                similarity_threshold=arguments.get('similarity_threshold', 0.25),
                 format=arguments.get('format', 'navigation')
             )
         elif 'pattern' in arguments:
@@ -702,7 +702,7 @@ async def handle_call_tool(
                 limit=arguments.get('limit', 50),
                 case_sensitive=arguments.get('case_sensitive', False),
                 include_symbols=arguments.get('include_symbols', False),
-                similarity_threshold=arguments.get('similarity_threshold', 0.7),
+                similarity_threshold=arguments.get('similarity_threshold', 0.25),
                 format=arguments.get('format', 'navigation')
             )
         else:
@@ -734,7 +734,7 @@ async def handle_intelligent_search(
     limit: int = 50,
     case_sensitive: bool = False,
     include_symbols: bool = False,  # For compatibility with Claude Code
-    similarity_threshold: float = 0.7,
+    similarity_threshold: float = 0.25,
     format: str = "navigation",
     **kwargs  # Catch any other unexpected parameters
 ) -> List[types.TextContent]:
@@ -955,6 +955,9 @@ async def execute_semantic_search(query: str, file_types: Optional[List[str]], p
                     "line": result["code"][:100] + "..." if len(result["code"]) > 100 else result["code"],
                     "similarity": similarity
                 })
+        
+        # Sort by similarity (highest first) to ensure best matches come first
+        matches.sort(key=lambda x: x['similarity'], reverse=True)
         
         logger.info(f"Semantic search completed: found {len(matches)} matches for '{query}'")
         
