@@ -91,8 +91,21 @@ After installation, register the MCP server from your project directory:
 
 ```bash
 cd /path/to/your/project
+
+# Option 1: Use the flexible wrapper (recommended)
+claude mcp add ragex /path/to/coderagmcp/mcp_ragex.sh --scope project
+
+# Option 2: Use the isolated environment directly
 claude mcp add ragex /path/to/coderagmcp/mcp_server_isolated.sh --scope project
 ```
+
+**Important**: After registering, restart Claude Code completely for the changes to take effect.
+
+#### Verify Semantic Search
+
+After registration and restart, verify semantic search is working:
+1. Check `/tmp/mcp_coderag.log` for "Semantic search ENABLED" message
+2. Test with: `search_code(query="your search terms", mode="semantic")`
 
 #### Alternative Registration (Legacy)
 ```bash

@@ -1,5 +1,6 @@
 #!/bin/bash
 # MCP Server wrapper - uses dedicated MCP venv and runs from current working directory
+# IMPORTANT: Uses exec to replace shell process and preserve stdio communication
 
 # Save current directory (where Claude launched from - the project to search)
 WORK_DIR="$(pwd)"
@@ -23,5 +24,6 @@ fi
 # Change to script directory (where server code is)
 cd "$SCRIPT_DIR"
 
-# Run the server with the dedicated MCP Python
-exec "$MCP_PYTHON" src/server.py
+# CRITICAL: Use exec to replace the shell process entirely
+# This ensures stdio is passed directly to Python without buffering
+exec "$MCP_PYTHON" -u src/server.py
