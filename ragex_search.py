@@ -41,7 +41,7 @@ except ImportError:
 
 
 class SearchClient:
-    def __init__(self):
+    def __init__(self, index_dir=None):
         self.pattern_matcher = PatternMatcher()
         self.searcher = RipgrepSearcher(self.pattern_matcher)
         self.enhancer = TreeSitterEnhancer(self.pattern_matcher)
@@ -51,7 +51,11 @@ class SearchClient:
         if semantic_available:
             try:
                 # Check if index exists
-                index_path = Path("./chroma_db")
+                if index_dir:
+                    index_path = Path(index_dir) / "chroma_db"
+                else:
+                    index_path = Path("./chroma_db")
+                    
                 if index_path.exists():
                     self.vector_store = CodeVectorStore(persist_directory=str(index_path))
                     stats = self.vector_store.get_statistics()
@@ -247,6 +251,7 @@ async def main():
     parser.add_argument('-B', '--before-context', type=int, default=0, help='Lines before match')
     parser.add_argument('--limit', type=int, default=50, help='Maximum results (default: 50)')
     parser.add_argument('--brief', action='store_true', help='Brief output without type annotations')
+    parser.add_argument('--index-dir', type=str, help='Directory containing chroma_db index (default: current directory)')
     
     args = parser.parse_args()
     
@@ -259,9 +264,11 @@ async def main():
         mode = "semantic"
     
     print(f"# Searching for '{args.query}' using {mode} mode", file=sys.stderr)
+    if args.index_dir:
+        print(f"# Using index from: {args.index_dir}", file=sys.stderr)
     
     # Initialize client
-    client = SearchClient()
+    client = SearchClient(index_dir=args.index_dir)
     
     # Perform search
     matches = []

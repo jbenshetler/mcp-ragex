@@ -921,28 +921,39 @@ async def execute_semantic_search(query: str, file_types: Optional[List[str]], p
     
     try:
         # Create query embedding
+        logger.info(f"Creating embedding for query: '{query}'")
         query_embedding = semantic_searcher['embedder'].embed_text(query)
+        logger.info(f"Query embedding shape: {query_embedding.shape}, first 5 values: {query_embedding[:5]}")
         
         # Search vector store
         where_filter = {}
         if file_types:
             where_filter["language"] = {"$in": file_types}
+            logger.info(f"Filtering by file types: {file_types}")
         
+        logger.info(f"Searching vector store with limit={limit}, where={where_filter}")
         results = semantic_searcher['vector_store'].search(
             query_embedding=query_embedding,
             limit=limit,
             where=where_filter if where_filter else None
         )
+        logger.info(f"Raw search returned {len(results.get('results', []))} results")
         
         # Convert to standard format
         matches = []
-        for result in results["results"]:
-            if result["distance"] <= (1.0 - similarity_threshold):  # Convert similarity to distance
+        logger.info(f"Filtering results with similarity_threshold={similarity_threshold} (distance <= {1.0 - similarity_threshold})")
+        for i, result in enumerate(results["results"]):
+            distance = result["distance"]
+            similarity = 1.0 - distance
+            if i < 5:  # Log first 5 for debugging
+                logger.info(f"  Result {i}: distance={distance:.4f}, similarity={similarity:.4f}, file={result['metadata']['file']}, name={result['metadata']['name']}")
+            
+            if distance <= (1.0 - similarity_threshold):  # Convert similarity to distance
                 matches.append({
                     "file": result["metadata"]["file"],
                     "line_number": result["metadata"]["line"],
                     "line": result["code"][:100] + "..." if len(result["code"]) > 100 else result["code"],
-                    "similarity": 1.0 - result["distance"]
+                    "similarity": similarity
                 })
         
         logger.info(f"Semantic search completed: found {len(matches)} matches for '{query}'")
