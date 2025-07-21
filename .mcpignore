@@ -3,6 +3,7 @@
 # Virtual environments (already in defaults, but being explicit)
 .venv/
 venv/
+.mcp_venv/
 
 # Test output
 test_files/

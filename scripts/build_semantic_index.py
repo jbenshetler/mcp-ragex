@@ -14,7 +14,7 @@ Usage:
 #     "chromadb>=0.4.0",
 #     "tqdm>=4.65.0",
 #     "numpy>=1.24.0",
-#     "tree-sitter>=0.20.0",
+#     "tree-sitter>=0.20.0,<0.24.0",
 #     "tree-sitter-python>=0.20.0",
 #     "tree-sitter-javascript>=0.20.0",
 #     "tree-sitter-typescript>=0.20.0",
