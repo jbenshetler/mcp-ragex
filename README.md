@@ -123,7 +123,7 @@ claude mcp remove ragex --scope project
 
 ```bash
 # Using uv (recommended)
-uv run python src/server.py
+uv run src/server.py
 
 # Or using the wrapper script
 ./mcp_coderag.sh
@@ -133,7 +133,7 @@ uv run python src/server.py
 
 ```bash
 # Run test suite
-uv run python tests/test_server.py
+uv run tests/test_server.py
 
 # Run with pytest (if installed)
 pytest tests/
@@ -176,7 +176,7 @@ If you prefer not to use the wrapper script:
 
 ```bash
 # From within the coderagmcp directory
-claude mcp add coderag uv run python src/server.py --scope project
+claude mcp add coderag uv run src/server.py --scope project
 ```
 
 ### Claude Desktop (App)
