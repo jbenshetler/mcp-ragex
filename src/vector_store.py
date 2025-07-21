@@ -75,30 +75,24 @@ class CodeVectorStore:
         
         logger.info(f"Collection '{self.collection_name}' ready. Current count: {self.collection.count()}")
     
-    def add_symbols(self, symbols: List[Dict], embeddings: np.ndarray) -> Dict[str, Any]:
-        """Add code symbols with their embeddings to the store
+    def _prepare_batch_data(self, symbols: List[Dict], start_idx: int = 0) -> tuple:
+        """Prepare a batch of symbols for ChromaDB storage
         
         Args:
-            symbols: List of symbol dictionaries
-            embeddings: Numpy array of embeddings
+            symbols: List of symbol dictionaries to process
+            start_idx: Starting index for unique ID generation
             
         Returns:
-            Dictionary with indexing statistics
+            Tuple of (ids, documents, metadatas) ready for ChromaDB
         """
-        if len(symbols) != len(embeddings):
-            raise ValueError(f"Number of symbols ({len(symbols)}) must match number of embeddings ({len(embeddings)})")
-        
-        if len(symbols) == 0:
-            return {"added": 0, "total": self.collection.count()}
-        
-        # Prepare data for ChromaDB
         ids = []
         documents = []
         metadatas = []
         
         for i, symbol in enumerate(symbols):
-            # Create unique ID - include type and index to avoid duplicates
-            symbol_id = f"{symbol['file']}:{symbol.get('line', 0)}:{symbol['type']}:{symbol['name']}:{i}"
+            # Create unique ID - include type and global index to avoid duplicates
+            global_idx = start_idx + i
+            symbol_id = f"{symbol['file']}:{symbol.get('line', 0)}:{symbol['type']}:{symbol['name']}:{global_idx}"
             ids.append(symbol_id)
             
             # Store code as document
@@ -126,21 +120,62 @@ class CodeVectorStore:
             
             metadatas.append(metadata)
         
-        # Add to collection
+        return ids, documents, metadatas
+    
+    def add_symbols(self, symbols: List[Dict], embeddings: np.ndarray) -> Dict[str, Any]:
+        """Add code symbols with their embeddings to the store
+        
+        Args:
+            symbols: List of symbol dictionaries
+            embeddings: Numpy array of embeddings
+            
+        Returns:
+            Dictionary with indexing statistics
+        """
+        if len(symbols) != len(embeddings):
+            raise ValueError(f"Number of symbols ({len(symbols)}) must match number of embeddings ({len(embeddings)})")
+        
+        if len(symbols) == 0:
+            return {"added": 0, "total": self.collection.count()}
+        
+        # ChromaDB has a maximum batch size limit
+        MAX_BATCH_SIZE = 5000  # Set slightly below 5461 limit for safety
+        
         logger.info(f"Adding {len(symbols)} symbols to vector store")
         
-        self.collection.add(
-            embeddings=embeddings.tolist(),  # ChromaDB expects list, not numpy array
-            documents=documents,
-            metadatas=metadatas,
-            ids=ids
-        )
+        # Process in batches if necessary
+        total_added = 0
+        num_batches = (len(symbols) + MAX_BATCH_SIZE - 1) // MAX_BATCH_SIZE
+        
+        for batch_num in range(num_batches):
+            batch_start = batch_num * MAX_BATCH_SIZE
+            batch_end = min(batch_start + MAX_BATCH_SIZE, len(symbols))
+            
+            # Extract batch data
+            batch_symbols = symbols[batch_start:batch_end]
+            batch_embeddings = embeddings[batch_start:batch_end]
+            
+            # Prepare batch for ChromaDB
+            ids, documents, metadatas = self._prepare_batch_data(batch_symbols, batch_start)
+            
+            # Add batch to collection
+            batch_size = len(batch_symbols)
+            logger.info(f"Adding batch {batch_num + 1}/{num_batches} ({batch_size} symbols)")
+            
+            self.collection.add(
+                embeddings=batch_embeddings.tolist(),  # ChromaDB expects list, not numpy array
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids
+            )
+            
+            total_added += batch_size
         
         new_count = self.collection.count()
-        logger.info(f"Added {len(symbols)} symbols. Total in store: {new_count}")
+        logger.info(f"Added {total_added} symbols. Total in store: {new_count}")
         
         return {
-            "added": len(symbols),
+            "added": total_added,
             "total": new_count
         }
     
