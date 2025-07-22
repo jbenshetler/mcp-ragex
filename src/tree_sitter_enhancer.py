@@ -192,9 +192,51 @@ class TreeSitterEnhancer:
                     value: (arrow_function
                         parameters: (formal_parameters) @arrow.params)) @arrow_func
                 
+                (variable_declarator
+                    name: (identifier) @var.name
+                    value: (function_expression
+                        name: (identifier)? @func_expr.name
+                        parameters: (formal_parameters) @func_expr.params)) @func_expr
+                
                 (method_definition
                     name: (property_identifier) @method.name
                     parameters: (formal_parameters) @method.params) @method
+                
+                ; Modern JS patterns
+                (lexical_declaration
+                    (variable_declarator
+                        name: (identifier) @const.name
+                        value: (arrow_function
+                            parameters: (formal_parameters) @const.params))) @const_arrow
+                
+                (lexical_declaration
+                    (variable_declarator
+                        name: (identifier) @const.name
+                        value: (function_expression
+                            parameters: (formal_parameters) @const.params))) @const_func
+                
+                ; Export patterns
+                (export_statement
+                    declaration: (lexical_declaration
+                        (variable_declarator
+                            name: (identifier) @export.name
+                            value: (arrow_function
+                                parameters: (formal_parameters) @export.params)))) @export_arrow
+                
+                (export_statement
+                    declaration: (function_declaration
+                        name: (identifier) @export_func.name
+                        parameters: (formal_parameters) @export_func.params)) @export_func
+                
+                ; Import statements
+                (import_statement
+                    source: (string) @import.source) @import
+                
+                (import_statement
+                    (import_clause
+                        (named_imports
+                            (import_specifier
+                                name: (identifier) @import.name)))) @named_import
             """),
             
             "typescript": self.languages["typescript"].query("""
@@ -635,21 +677,55 @@ class TreeSitterEnhancer:
                         end_byte=node.end_byte,
                     ))
             
-            elif capture_name in ["function", "arrow_func"]:
+            elif capture_name in ["function", "arrow_func", "func_expr", "const_arrow", "const_func", "export_arrow", "export_func"]:
+                # Determine the function name node based on capture type
+                func_name_node = None
+                func_node = node
+                
                 if capture_name == "function":
                     func_name_node = next((n for n, name in captures if name == "function.name" and n.parent == node), None)
-                else:  # arrow function
+                elif capture_name == "arrow_func":
                     func_name_node = next((n for n, name in captures if name == "var.name" and n.parent == node.parent), None)
+                elif capture_name == "func_expr":
+                    func_name_node = next((n for n, name in captures if name == "var.name" and n.parent == node.parent), None)
+                    # The actual function node is the value
+                    func_node = next((n for n, name in captures if name == "func_expr" and n.parent == node.parent), node)
+                elif capture_name in ["const_arrow", "const_func"]:
+                    func_name_node = next((n for n, name in captures if name == "const.name" and n.parent.parent == node), None)
+                    # Find the actual function node
+                    for n, name in captures:
+                        if name == "const.params" and n.parent.parent.parent == node:
+                            func_node = n.parent
+                            break
+                elif capture_name in ["export_arrow", "export_func"]:
+                    if capture_name == "export_arrow":
+                        func_name_node = next((n for n, name in captures if name == "export.name"), None)
+                    else:
+                        func_name_node = next((n for n, name in captures if name == "export_func.name"), None)
                 
                 if func_name_node:
                     func_name = self._extract_text(func_name_node, source)
-                    params_node = node.child_by_field_name("parameters")
+                    
+                    # Find parameters node
+                    params_node = None
+                    if capture_name in ["const_arrow", "const_func", "export_arrow"]:
+                        # Look for the associated params capture
+                        param_capture_name = {
+                            "const_arrow": "const.params",
+                            "const_func": "const.params",
+                            "export_arrow": "export.params"
+                        }.get(capture_name)
+                        if param_capture_name:
+                            params_node = next((n for n, name in captures if name == param_capture_name), None)
+                    else:
+                        params_node = func_node.child_by_field_name("parameters")
+                    
                     signature = self._extract_text(params_node, source) if params_node else "()"
                     
                     # Get return type for TypeScript
                     return_type = ""
                     if lang in ["typescript", "tsx"]:
-                        return_node = node.child_by_field_name("return_type")
+                        return_node = func_node.child_by_field_name("return_type")
                         if return_node:
                             return_type = ": " + self._extract_text(return_node, source)
                     
@@ -665,6 +741,40 @@ class TreeSitterEnhancer:
                         start_byte=node.start_byte,
                         end_byte=node.end_byte,
                     ))
+            
+            elif capture_name in ["import", "named_import"]:
+                if capture_name == "import":
+                    # Import the whole module/file
+                    source_node = next((n for n, name in captures if name == "import.source" and n.parent == node), None)
+                    if source_node:
+                        import_source = self._extract_text(source_node, source).strip('"\'')
+                        symbols.append(Symbol(
+                            name=f"import {import_source}",
+                            type="import",
+                            file=file_path,
+                            line=node.start_point[0] + 1,
+                            end_line=node.end_point[0] + 1,
+                            column=node.start_point[1],
+                            code=self._extract_text(node, source),
+                            start_byte=node.start_byte,
+                            end_byte=node.end_byte,
+                        ))
+                else:
+                    # Named imports
+                    import_names = [self._extract_text(n, source) for n, name in captures if name == "import.name"]
+                    for import_name in import_names:
+                        symbols.append(Symbol(
+                            name=import_name,
+                            type="import",
+                            file=file_path,
+                            line=node.start_point[0] + 1,
+                            end_line=node.end_point[0] + 1,
+                            column=node.start_point[1],
+                            signature=f"imported from module",
+                            code=self._extract_text(node, source),
+                            start_byte=node.start_byte,
+                            end_byte=node.end_byte,
+                        ))
         
         return symbols
     
