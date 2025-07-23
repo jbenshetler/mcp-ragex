@@ -1,6 +1,24 @@
 # CodeRAG MCP Server
 
-A secure, intelligent MCP (Model Context Protocol) server for code search with multiple search modes and semantic capabilities.
+A secure, intelligent **MCP (Model Context Protocol) server** for **Claude** and AI assistants, providing semantic code search using **RAG**, **tree-sitter**, and **ripgrep**. Search code using natural language, symbols, or regex patterns.
+
+## What is CodeRAG?
+
+CodeRAG is an **MCP server** that enhances **Claude Code** and other AI coding assistants with advanced code search capabilities. It combines:
+- **RAG (Retrieval-Augmented Generation)** for semantic code search
+- **Tree-sitter** for language-aware symbol search  
+- **Ripgrep** for blazing-fast regex search
+
+## Why CodeRAG?
+
+Unlike simple grep-based tools, CodeRAG understands code semantically:
+
+| Feature | grep/ripgrep | CodeRAG |
+|---------|-------------|---------|
+| Find "auth functions" | ❌ | ✅ Semantic search |
+| Find `validateUser()` | ✅ | ✅ Symbol-aware search |
+| Cross-language patterns | ❌ | ✅ Coming soon |
+| Natural language queries | ❌ | ✅ "functions that handle errors" |
 
 ## Features
 
@@ -27,6 +45,13 @@ A secure, intelligent MCP (Model Context Protocol) server for code search with m
 ## Quick Start
 
 ### Prerequisites
+1. **Install Claude Code**
+[![Install with Claude Code](https://img.shields.io/badge/Install-Claude_Code-blue)](https://claude.ai)
+
+```
+bash
+claude mcp add coderag https://github.com/YOUR_USERNAME/mcp-coderag
+```
 
 1. **Install ripgrep:**
    ```bash
@@ -40,7 +65,7 @@ A secure, intelligent MCP (Model Context Protocol) server for code search with m
    choco install ripgrep
    ```
 
-2. **Install Python dependencies:**
+1. **Install Python dependencies:**
    ```bash
    # Using uv (recommended)
    uv pip install -r requirements.txt
