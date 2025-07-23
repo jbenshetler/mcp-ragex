@@ -104,7 +104,7 @@ To enable semantic search capabilities:
 Install the MCP server with all dependencies in an isolated environment:
 
 ```bash
-cd /path/to/coderagmcp
+cd /path/to/mcp-ragex
 ./scripts/install_mcp_server.sh
 ```
 
@@ -118,10 +118,10 @@ After installation, register the MCP server from your project directory:
 cd /path/to/your/project
 
 # Option 1: Use the flexible wrapper (recommended)
-claude mcp add ragex /path/to/coderagmcp/mcp_ragex.sh --scope project
+claude mcp add ragex /path/to/mcp-ragex/mcp_ragex.sh --scope project
 
 # Option 2: Use the isolated environment directly
-claude mcp add ragex /path/to/coderagmcp/mcp_server_isolated.sh --scope project
+claude mcp add ragex /path/to/mcp-ragex/mcp_server_isolated.sh --scope project
 ```
 
 **Important**: After registering, restart Claude Code completely for the changes to take effect.
@@ -135,7 +135,7 @@ After registration and restart, verify semantic search is working:
 #### Alternative Registration (Legacy)
 ```bash
 # Uses current project's Python environment (may have missing dependencies)
-claude mcp add ragex /path/to/coderagmcp/mcp_coderag_pwd.sh --scope project
+claude mcp add ragex /path/to/mcp-ragex/mcp_coderag_pwd.sh --scope project
 ```
 
 #### Unregister MCP Server
@@ -173,12 +173,12 @@ pytest tests/
 Add the MCP server using the Claude Code CLI:
 
 ```bash
-claude mcp add coderag /home/jeff/clients/coderagmcp/mcp_coderag.sh --scope project
+claude mcp add coderag /home/jeff/clients/mcp-ragex/mcp_coderag.sh --scope project
 ```
 
 Expected output:
 ```
-Added stdio MCP server coderag with command: /home/jeff/clients/coderagmcp/mcp_coderag.sh  to project config
+Added stdio MCP server coderag with command: /home/jeff/clients/mcp-ragex/mcp_coderag.sh  to project config
 ```
 
 #### Option 2: Using .mcp.json
@@ -189,7 +189,7 @@ Create a `.mcp.json` file in your project root:
 {
   "mcpServers": {
     "coderag": {
-      "command": "/path/to/coderagmcp/mcp_coderag.sh"
+      "command": "/path/to/mcp-ragex/mcp_coderag.sh"
     }
   }
 }
@@ -200,7 +200,7 @@ Create a `.mcp.json` file in your project root:
 If you prefer not to use the wrapper script:
 
 ```bash
-# From within the coderagmcp directory
+# From within the mcp-ragex directory
 claude mcp add coderag uv run src/server.py --scope project
 ```
 
@@ -213,7 +213,7 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "coderag": {
       "command": "python",
-      "args": ["/path/to/coderagmcp/src/server.py"]
+      "args": ["/path/to/mcp-ragex/src/server.py"]
     }
   }
 }
