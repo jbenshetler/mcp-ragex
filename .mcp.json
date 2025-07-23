@@ -1,7 +1,0 @@
-{
-  "mcpServers": {
-    "coderag": {
-      "command": "/home/jeff/clients/coderagmcp/mcp_coderag.sh"
-    }
-  }
-}

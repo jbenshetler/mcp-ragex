@@ -94,3 +94,8 @@ dmypy.json
 # uv
 .uv/
 uv.lockchroma_db/**
+chroma_db/**
+.mcp.json
+.claude/settings.local.json
+chroma_db/chroma.sqlite3
+chroma_db/index_metadata.json
