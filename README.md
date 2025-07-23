@@ -44,35 +44,35 @@ Unlike simple grep-based tools, CodeRAG understands code semantically:
 
 ## Quick Start
 
+To set up CodeRAG MCP Server, you'll need to install Claude Code, ripgrep, and Python dependencies.
+
+
 ### Prerequisites
 1. **Install Claude Code**
 [![Install with Claude Code](https://img.shields.io/badge/Install-Claude_Code-blue)](https://claude.ai)
 
-```
-bash
-claude mcp add coderag https://github.com/YOUR_USERNAME/mcp-coderag
-```
+    ```bash
+    claude mcp add coderag [https://github.com/YOUR_USERNAME/mcp-coderag](https://github.com/YOUR_USERNAME/mcp-coderag)
+    ````
+2.  **Install ripgrep:**
+    ```bash
+    # macOS
+    brew install ripgrep
 
-1. **Install ripgrep:**
-   ```bash
-   # macOS
-   brew install ripgrep
-   
-   # Ubuntu/Debian
-   sudo apt-get install ripgrep
-   
-   # Windows
-   choco install ripgrep
-   ```
+    # Ubuntu/Debian
+    sudo apt-get install ripgrep
 
-1. **Install Python dependencies:**
-   ```bash
-   # Using uv (recommended)
-   uv pip install -r requirements.txt
-   
-   # Or using pip
-   pip install -r requirements.txt
-   ```
+    # Windows
+    choco install ripgrep
+    ```
+3.  **Install Python dependencies:**
+    ```bash
+    # Using uv (recommended)
+    uv pip install -r requirements.txt
+
+    # Or using pip
+    pip install -r requirements.txt
+    ```
 
 ### Setup Semantic Search (Optional)
 
@@ -377,7 +377,10 @@ search_code("async def", file_types=["py"], paths=["src"])
 
 ## Supported File Types
 
-`py`, `js`, `ts`, `java`, `cpp`, `c`, `go`, `rust`, `rb`, `php`, `cs`, `swift`, `kotlin`, `scala`, `r`, `lua`, `sh`, `yaml`, `json`, `xml`, `html`, `css`, `sql`, `md`, `txt`
+1. All file types are supported for regex search. 
+
+1. These file types are supported for symbol and semantic search:
+  `py`, `js`, `jsx`, `ts`, `tsx`, `cpp`, `c`, `html`, `css`
 
 ## File Exclusions
 
