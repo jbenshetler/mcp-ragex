@@ -88,10 +88,23 @@ DOCKER_ARGS=(
     "-e" "RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}"
 )
 
-# Add interactive flag for bash/shell commands
-if [ "$COMMAND" = "bash" ] || [ "$COMMAND" = "sh" ]; then
-    DOCKER_ARGS+=("-it")
-fi
+# Handle different command types
+case "$COMMAND" in
+    "bash"|"sh")
+        # Interactive shell needs TTY
+        DOCKER_ARGS+=("-it")
+        ;;
+    "serve"|"server")
+        # MCP server needs stdin/stdout but NO TTY (breaks JSON-RPC)
+        DOCKER_ARGS+=("-i")
+        ;;
+    *)
+        # Other commands can be interactive if terminal is available
+        if [ -t 0 ]; then
+            DOCKER_ARGS+=("-it")
+        fi
+        ;;
+esac
 
 # Handle special commands that don't need workspace
 case "$COMMAND" in

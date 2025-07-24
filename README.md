@@ -56,6 +56,22 @@ curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/mcp-ragex/main/install
 git clone https://github.com/YOUR_USERNAME/mcp-ragex.git
 cd mcp-ragex
 docker build -t ragex/mcp-server .
+./install.sh  # This installs the 'ragex' command to ~/.local/bin
+```
+
+**What gets installed:**
+- Docker image: `ragex/mcp-server:latest` (6.2GB)
+- CLI wrapper: `~/.local/bin/ragex` (handles Docker communication)
+- User volume: `ragex_user_${UID}` (stores your project indexes)
+
+**Post-installation:**
+```bash
+# Add to PATH if needed
+export PATH="$PATH:$HOME/.local/bin"
+
+# Verify installation
+ragex info
+which ragex  # Should show: /home/USERNAME/.local/bin/ragex
 ```
 
 ### 🔧 Manual Installation
@@ -104,7 +120,8 @@ ragex index . --preset balanced  # Different embedding model
 ragex info                       # Shows different project ID
 
 # Register with Claude Code (one-time setup)
-claude mcp add ragex ragex --scope project
+# The 'ragex' command was installed to ~/.local/bin by install.sh
+claude mcp add ragex $(which ragex) --scope project
 
 # List all your projects
 ragex list-projects
@@ -299,6 +316,25 @@ pytest tests/
 ```
 
 ## Docker Architecture
+
+### 🔌 MCP Communication Through Docker
+
+The MCP protocol uses stdin/stdout for communication. The `ragex` wrapper script handles this transparently:
+
+```bash
+# When Claude Code runs:
+claude mcp add ragex /home/user/.local/bin/ragex
+
+# It communicates like this:
+Claude Code ←→ ragex script ←→ Docker container ←→ MCP Server
+           stdin/stdout    stdin/stdout      stdin/stdout
+```
+
+**Key points:**
+- The `ragex` script acts as a bridge between Claude Code and the Docker container
+- For MCP server mode, Docker runs with `-i` (interactive) but NOT `-t` (no TTY)
+- TTY would break JSON-RPC communication by adding terminal control codes
+- The wrapper preserves stdin/stdout pipes for proper MCP protocol communication
 
 ### 🏗️ Container Structure
 
