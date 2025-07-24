@@ -5,16 +5,20 @@ services:
     image: ragex/mcp-server:latest
     volumes:
       - ${WORKSPACE:-$PWD}:/workspace:ro
-      - ragex-index:/data
+      - ragex-prod-data:/data
     environment:
       - LOG_LEVEL=WARNING
-      - DOCKER_CONTAINER=true
+      - DOCKER_CONTAINER=true  
+      - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
+      - WORKSPACE_PATH=${WORKSPACE:-$PWD}
+      - PROJECT_NAME=prod_$(echo "${WORKSPACE:-$PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
     command: serve
     stdin_open: true
     tty: true
     restart: unless-stopped
     mem_limit: 2g
     cpus: 1.0
+    user: "${UID:-1000}:${GID:-1000}"
     logging:
       driver: "json-file"
       options:
@@ -23,5 +27,6 @@ services:
         labels: "service=mcp-ragex"
 
 volumes:
-  ragex-index:
+  ragex-prod-data:
     driver: local
+    name: ragex_prod_data

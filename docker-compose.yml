@@ -8,28 +8,35 @@ services:
     image: ragex/mcp-server:dev
     volumes:
       - .:/workspace:ro                    # Current directory (read-only)
-      - ragex-data:/data                   # Persistent data
+      - ragex-dev-data:/data               # Project-specific data
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DOCKER_CONTAINER=true
       - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
-      - RAGEX_PERSIST_DIR=/data/chroma_db
+      - WORKSPACE_PATH=${PWD}
+      - PROJECT_NAME=dev_$(echo "${PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
     command: serve
     stdin_open: true
     tty: true
+    user: "${UID:-1000}:${GID:-1000}"
 
   # Development indexer
   indexer:
     image: ragex/mcp-server:dev
     volumes:
       - .:/workspace:ro
-      - ragex-data:/data
+      - ragex-dev-data:/data
     environment:
       - LOG_LEVEL=DEBUG
       - DOCKER_CONTAINER=true
+      - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
+      - WORKSPACE_PATH=${PWD}
+      - PROJECT_NAME=dev_$(echo "${PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
     command: index /workspace --force
     profiles: ["index"]
+    user: "${UID:-1000}:${GID:-1000}"
 
 volumes:
-  ragex-data:
+  ragex-dev-data:
     driver: local
+    name: ragex_dev_data

@@ -44,17 +44,29 @@ Unlike simple grep-based tools, CodeRAG understands code semantically:
 
 ## Quick Start
 
-To set up CodeRAG MCP Server, you'll need to install Claude Code, ripgrep, and Python dependencies.
+### 🐳 Docker Installation (Recommended)
 
+The fastest and most reliable way to get started is with Docker:
 
-### Prerequisites
+```bash
+# Option 1: Use the installation script (easiest)
+curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/mcp-ragex/main/install.sh | bash
+
+# Option 2: Manual setup
+git clone https://github.com/YOUR_USERNAME/mcp-ragex.git
+cd mcp-ragex
+docker build -t ragex/mcp-server .
+```
+
+### 🔧 Manual Installation
+
+For development or custom setups:
+
+#### Prerequisites
 1. **Install Claude Code**
 [![Install with Claude Code](https://img.shields.io/badge/Install-Claude_Code-blue)](https://claude.ai)
 
-    ```bash
-    claude mcp add coderag [https://github.com/YOUR_USERNAME/mcp-coderag](https://github.com/YOUR_USERNAME/mcp-coderag)
-    ````
-2.  **Install ripgrep:**
+2. **Install ripgrep:**
     ```bash
     # macOS
     brew install ripgrep
@@ -65,7 +77,7 @@ To set up CodeRAG MCP Server, you'll need to install Claude Code, ripgrep, and P
     # Windows
     choco install ripgrep
     ```
-3.  **Install Python dependencies:**
+3. **Install Python dependencies:**
     ```bash
     # Using uv (recommended)
     uv pip install -r requirements.txt
@@ -73,6 +85,129 @@ To set up CodeRAG MCP Server, you'll need to install Claude Code, ripgrep, and P
     # Or using pip
     pip install -r requirements.txt
     ```
+
+## Usage with Docker
+
+### 🚀 Quick Setup
+
+After installation, each project gets its own isolated data:
+
+```bash
+# Navigate to your first project
+cd /path/to/project1
+ragex index .                    # Creates project-specific index
+ragex info                       # Shows project details
+
+# Navigate to your second project  
+cd /path/to/project2
+ragex index . --preset balanced  # Different embedding model
+ragex info                       # Shows different project ID
+
+# Register with Claude Code (one-time setup)
+claude mcp add ragex ragex --scope project
+
+# List all your projects
+ragex list-projects
+```
+
+### 🔍 Available Commands
+
+```bash
+# Project Management
+ragex info                       # Show current project info
+ragex list-projects              # List all your projects
+ragex clean-project PROJECT_ID   # Remove specific project data
+
+# Indexing
+ragex index .                    # Index current project (fast model)
+ragex index . --preset balanced # Index with balanced model
+ragex index . --preset accurate # Index with accurate model
+
+# Searching
+ragex search "auth functions"    # Search current project
+ragex serve                      # Start MCP server (for Claude)
+
+# Development
+ragex bash                       # Get shell for debugging
+```
+
+### 🏗️ Project Isolation
+
+Each project gets its own isolated data:
+
+```bash
+# Example: Two different projects
+cd ~/work/api-server
+ragex index . --preset accurate  # Large model for work project
+# → Creates: ragex_1000_a1b2c3d4ef56789 
+
+cd ~/personal/blog  
+ragex index . --preset fast      # Fast model for personal project  
+# → Creates: ragex_1000_f9e8d7c6b5a43210
+
+ragex list-projects
+# • ragex_1000_a1b2c3d4ef56789 (~/work/api-server) [accurate]
+# • ragex_1000_f9e8d7c6b5a43210 (~/personal/blog) [fast]
+```
+
+### 🐳 Docker Compose (Development)
+
+For active development, use Docker Compose:
+
+```bash
+# Start development environment
+docker compose up -d
+
+# Watch logs
+docker compose logs -f
+
+# Build semantic index
+docker compose exec ragex python scripts/build_semantic_index.py /workspace --stats
+
+# Stop when done
+docker compose down
+```
+
+### 📦 Persistent Data
+
+Your data is organized for multi-project use:
+
+#### User-Level Storage
+- **Volume**: `ragex_user_1000` (where 1000 is your user ID)
+- **Models**: `/data/models/` (shared across all your projects)
+- **Projects**: `/data/projects/` (individual project indexes)
+
+#### Project-Level Storage
+```
+/data/
+├── models/                    # Shared embedding models (400MB-1.3GB)
+└── projects/
+    ├── ragex_1000_a1b2c3d4/   # Project 1 data
+    │   ├── chroma_db/         # Vector database
+    │   └── project_info.json  # Project metadata
+    └── ragex_1000_f9e8d7c6/   # Project 2 data
+        ├── chroma_db/
+        └── project_info.json
+```
+
+#### Volume Management
+```bash
+# List your projects
+ragex list-projects
+
+# Clean up specific project
+ragex clean-project ragex_1000_a1b2c3d4
+
+# Check volume usage
+docker volume ls | grep ragex_user_$(id -u)
+
+# Remove all your data (nuclear option)
+docker volume rm ragex_user_$(id -u)
+```
+
+## Manual Installation
+
+For development or when Docker isn't available:
 
 ### Setup Semantic Search (Optional)
 
@@ -143,7 +278,6 @@ claude mcp add ragex /path/to/mcp-ragex/mcp_coderag_pwd.sh --scope project
 claude mcp remove ragex --scope project
 ```
 
-
 ### Running the Server
 
 ```bash
@@ -164,64 +298,115 @@ uv run tests/test_server.py
 pytest tests/
 ```
 
+## Docker Architecture
+
+### 🏗️ Container Structure
+
+```
+/app/                     # Application code (read-only)
+├── src/                  # Source code
+├── scripts/              # Utility scripts
+├── requirements.txt      # Python dependencies
+└── entrypoint.sh        # Container entrypoint
+
+/data/                    # User-specific persistent data (volume)
+├── models/              # Shared embedding models (400MB-1.3GB)
+└── projects/            # Project-specific data
+    ├── ragex_1000_abc123/  # Project 1
+    │   ├── chroma_db/      # ChromaDB vector database  
+    │   └── project_info.json # Project metadata
+    └── ragex_1000_def456/  # Project 2
+        ├── chroma_db/
+        └── project_info.json
+
+/workspace/              # Your code (volume, read-only)
+└── [current project]    # Code to be indexed
+```
+
+### 🔧 Environment Variables
+
+Docker containers support these environment variables:
+
+```bash
+# Project identification (automatically set by wrapper)
+WORKSPACE_PATH=/path/to/your/project    # Workspace being indexed
+PROJECT_NAME=ragex_1000_abc123          # Generated project ID
+
+# Data directories (automatically configured)
+RAGEX_PROJECT_DATA_DIR=/data/projects/ragex_1000_abc123  # Project data
+RAGEX_CHROMA_PERSIST_DIR=/data/projects/ragex_1000_abc123/chroma_db  # ChromaDB
+TRANSFORMERS_CACHE=/data/models         # Shared model cache
+SENTENCE_TRANSFORMERS_HOME=/data/models # Sentence transformers cache
+
+# User configuration
+RAGEX_EMBEDDING_MODEL=fast              # Model preset (fast/balanced/accurate)
+RAGEX_CHROMA_COLLECTION=code_embeddings # Collection name
+
+# System configuration
+LOG_LEVEL=INFO                          # Log level
+DOCKER_CONTAINER=true                   # Indicates running in container
+```
+
+### 🐳 Production Deployment
+
+Use the production Docker Compose for deployment:
+
+```bash
+# Production setup with resource limits
+docker compose -f docker-compose.prod.yml up -d
+
+# Check status
+docker compose -f docker-compose.prod.yml ps
+
+# View logs
+docker compose -f docker-compose.prod.yml logs ragex
+```
+
 ## Integration
 
-### Claude Code (CLI)
+### 🖥️ Claude Code (CLI)
 
-#### Option 1: Using CLI Command (Recommended)
+#### Docker Integration (Recommended)
 
-Add the MCP server using the Claude Code CLI:
-
-```bash
-claude mcp add coderag /home/jeff/clients/mcp-ragex/mcp_coderag.sh --scope project
-```
-
-Expected output:
-```
-Added stdio MCP server coderag with command: /home/jeff/clients/mcp-ragex/mcp_coderag.sh  to project config
-```
-
-#### Option 2: Using .mcp.json
-
-Create a `.mcp.json` file in your project root:
-
-```json
-{
-  "mcpServers": {
-    "coderag": {
-      "command": "/path/to/mcp-ragex/mcp_coderag.sh"
-    }
-  }
-}
-```
-
-#### Option 3: Direct Python Command
-
-If you prefer not to use the wrapper script:
+Register the Docker-based MCP server:
 
 ```bash
-# From within the mcp-ragex directory
-claude mcp add coderag uv run src/server.py --scope project
+cd /path/to/your/project
+claude mcp add ragex /path/to/mcp-ragex/ragex --scope project
 ```
 
-### Claude Desktop (App)
+The `ragex` script automatically handles Docker execution and volume mounting.
+
+#### Manual Integration
+
+For manual/development setups:
+
+```bash
+# Option 1: Using wrapper script
+claude mcp add ragex /path/to/mcp-ragex/mcp_ragex.sh --scope project
+
+# Option 2: Direct Python command
+claude mcp add ragex uv run /path/to/mcp-ragex/src/server.py --scope project
+```
+
+### 🖱️ Claude Desktop (App)
 
 Add to your `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "coderag": {
-      "command": "python",
-      "args": ["/path/to/mcp-ragex/src/server.py"]
+    "ragex": {
+      "command": "/path/to/mcp-ragex/ragex",
+      "env": {
+        "RAGEX_DATA_DIR": "/path/to/persistent/data"
+      }
     }
   }
 }
 ```
 
-**Note:** After updating the configuration, restart Claude Code or Claude Desktop for the changes to take effect.
-
-### Verifying MCP Connection
+### ✅ Verifying MCP Connection
 
 After configuration, verify the MCP server is connected:
 
@@ -230,7 +415,7 @@ After configuration, verify the MCP server is connected:
 /mcp
 ```
 
-This will show the status of all configured MCP servers. You should see `coderag` in the list.
+This will show the status of all configured MCP servers. You should see `ragex` in the list.
 
 ## Usage Examples
 
@@ -508,16 +693,41 @@ Override or add exclusions for specific searches:
 - **Result limits**: Maximum 200 matches to prevent overload
 
 ### Resource Usage
-- **Memory**: ~300MB during semantic search, ~100MB baseline
-- **Storage**: ~1MB per 1000 symbols indexed
-- **Model cache**: ~420MB for sentence-transformer model
-- **Index size**: ~32MB for 77 symbols (typical small project)
 
-### Optimization Features
-- **Intelligent caching**: Tree-sitter results cached per file
-- **Efficient exclusions**: Skip unwanted files before processing
-- **Streaming JSON**: Large result sets processed incrementally
-- **Batch embeddings**: Process multiple symbols efficiently
+#### Docker Resource Requirements
+- **Memory**: 8GB RAM recommended (4GB minimum)
+- **CPU**: 2+ cores recommended for indexing
+- **Storage**: 
+  - Base image: ~6.2GB
+  - Data volume: ~1MB per 1000 symbols indexed
+  - Model cache: 80MB-1.3GB depending on preset
+- **GPU**: Optional, accelerates semantic search (requires nvidia-docker)
+
+#### Memory Usage by Component
+- **Base container**: ~100MB baseline
+- **During indexing**: ~500MB peak
+- **During semantic search**: ~300MB
+- **ChromaDB**: ~50MB for typical projects
+- **PyTorch models**: 80MB-1.3GB (cached in volume)
+
+### Docker Optimization Features
+- **Multi-stage builds**: Minimal runtime dependencies
+- **Volume caching**: Models persist between container restarts
+- **Resource limits**: Configurable memory/CPU limits in production
+- **Efficient layers**: Optimized Docker layer caching
+- **Non-root execution**: Security-first container design
+
+### Production Scaling
+```bash
+# Resource-limited production deployment
+docker compose -f docker-compose.prod.yml up -d
+
+# Monitor resource usage
+docker stats ragex_mcp_server
+
+# Scale for multiple projects (if needed)
+docker compose -f docker-compose.prod.yml up --scale ragex=3
+```
 
 ## Semantic Search Details
 
@@ -624,6 +834,97 @@ data/
 
 The system automatically excludes common directories like `.git`, `__pycache__`, etc.
 
+## Deployment & Operations
+
+### 🚀 Production Deployment
+
+#### Option 1: Docker Compose (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/YOUR_USERNAME/mcp-ragex.git
+cd mcp-ragex
+
+# Deploy with resource limits
+docker compose -f docker-compose.prod.yml up -d
+
+# Verify deployment
+docker compose -f docker-compose.prod.yml ps
+```
+
+#### Option 2: Kubernetes
+```yaml
+# Example Kubernetes deployment (k8s/deployment.yaml)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragex-mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ragex-mcp-server
+  template:
+    metadata:
+      labels:
+        app: ragex-mcp-server
+    spec:
+      containers:
+      - name: ragex
+        image: ragex/mcp-server:latest
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+        - name: ragex-data
+          mountPath: /data
+      volumes:
+      - name: ragex-data
+        persistentVolumeClaim:
+          claimName: ragex-data-pvc
+```
+
+### 📊 Monitoring & Logging
+
+#### Health Checks
+```bash
+# Check container health
+docker compose exec ragex python -c "import src.server; print('Server OK')"
+
+# Test MCP protocol
+echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}' | \
+  docker compose exec -T ragex python -m src.server
+```
+
+#### Log Management
+```bash
+# View real-time logs
+docker compose logs -f ragex
+
+# Export logs for analysis
+docker compose logs ragex > ragex-logs.txt
+
+# Container metrics
+docker stats ragex_mcp_server
+```
+
+#### Volume Management
+```bash
+# Backup semantic index
+docker run --rm -v ragex-data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/ragex-backup.tar.gz -C /data .
+
+# Restore from backup
+docker run --rm -v ragex-data:/data -v $(pwd):/backup \
+  alpine tar xzf /backup/ragex-backup.tar.gz -C /data
+
+# Reset data (forces model re-download)
+docker volume rm ragex-data
+```
+
 ## Future Enhancements
 
 ### Planned Features
@@ -632,6 +933,13 @@ The system automatically excludes common directories like `.git`, `__pycache__`,
 - [ ] **Cross-language search**: Find similar patterns across languages
 - [ ] **Search history**: Remember and optimize frequent queries
 - [ ] **Custom embeddings**: Train project-specific models
+
+### Docker & Infrastructure
+- [ ] **Multi-architecture builds**: ARM64 support for Apple Silicon
+- [ ] **Distroless images**: Even smaller container images
+- [ ] **GPU acceleration**: CUDA-enabled containers for faster indexing
+- [ ] **Kubernetes operators**: Automated deployment and scaling
+- [ ] **Health endpoints**: HTTP health checks for orchestration
 
 ### Performance Improvements
 - [ ] **Hybrid search**: Combine keyword and semantic results
