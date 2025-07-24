@@ -2,11 +2,14 @@
 """Test comment and docstring extraction for semantic search"""
 
 import asyncio
+import pytest
+
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.tree_sitter_enhancer import TreeSitterEnhancer
 
+@pytest.mark.asyncio
 async def test_comment_extraction():
     enhancer = TreeSitterEnhancer()
     

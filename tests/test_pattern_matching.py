@@ -4,6 +4,8 @@ Tests for pattern matching and file exclusions
 """
 
 import asyncio
+import pytest
+
 import tempfile
 from pathlib import Path
 import sys
@@ -112,6 +114,7 @@ def test_ripgrep_arg_generation():
     print("✓ Ripgrep argument generation test passed")
 
 
+@pytest.mark.asyncio
 async def test_search_with_exclusions():
     """Test that search actually excludes files"""
     searcher = RipgrepSearcher()

@@ -55,6 +55,8 @@ Container Structure:
 - Non-root user for security
 - Pre-downloaded language parsers to avoid runtime downloads
 - Flexible entrypoint for multiple commands
+- **Logging to stderr only** to prevent MCP protocol conflicts
+- **JSON structured logging** for container log aggregation
 
 ## Phase 2: Core Docker Implementation (4-5 hours)
 
@@ -115,6 +117,8 @@ ENV PYTHONUNBUFFERED=1
 ENV RAGEX_DATA_DIR=/data
 ENV TRANSFORMERS_CACHE=/data/models
 ENV SENTENCE_TRANSFORMERS_HOME=/data/models
+ENV DOCKER_CONTAINER=true
+ENV LOG_LEVEL=INFO
 
 # Copy and set entrypoint
 COPY --chown=coderag:coderag docker/entrypoint.sh /entrypoint.sh
@@ -214,7 +218,8 @@ services:
       - .:/workspace:ro                    # Current directory (read-only)
       - coderag-data:/data                # Persistent data
     environment:
-      - RAGEX_LOG_LEVEL=${RAGEX_LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DOCKER_CONTAINER=true
       - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
       - RAGEX_PERSIST_DIR=/data/chroma_db
     command: serve
@@ -230,7 +235,8 @@ services:
       - .:/workspace:ro
       - coderag-data:/data
     environment:
-      - RAGEX_LOG_LEVEL=DEBUG
+      - LOG_LEVEL=DEBUG
+      - DOCKER_CONTAINER=true
     command: index /workspace --force
     profiles: ["index"]
 
@@ -252,7 +258,8 @@ services:
       - ${WORKSPACE:-$PWD}:/workspace:ro
       - coderag-index:/data
     environment:
-      - RAGEX_LOG_LEVEL=WARNING
+      - LOG_LEVEL=WARNING
+      - DOCKER_CONTAINER=true
     command: serve
     stdin_open: true
     tty: true
@@ -282,12 +289,93 @@ volumes:
         "serve"
       ],
       "env": {
-        "RAGEX_LOG_LEVEL": "INFO"
+        "LOG_LEVEL": "INFO",
+        "DOCKER_CONTAINER": "true"
       }
     }
   }
 }
 ```
+
+### 3.4 Logging Configuration
+
+Since MCP servers communicate via stdout, all logging must go to stderr to prevent protocol corruption. The logging system adapts based on environment:
+
+#### Logging Strategy
+
+```python
+# src/utils/logging_setup.py
+import sys
+import logging
+import json
+import os
+from datetime import datetime
+
+class DockerFormatter(logging.Formatter):
+    """JSON formatter optimized for container logs"""
+    def format(self, record):
+        return json.dumps({
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'level': record.levelname,
+            'component': record.name,
+            'message': record.getMessage(),
+            'pid': os.getpid(),
+            **getattr(record, 'extra', {})
+        })
+
+def configure_logging():
+    """Configure logging based on environment"""
+    # ALWAYS use stderr to avoid MCP protocol conflicts
+    handler = logging.StreamHandler(sys.stderr)
+    
+    # Detect Docker environment
+    in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER')
+    
+    if in_docker:
+        # JSON format for container environments
+        handler.setFormatter(DockerFormatter())
+    else:
+        # Human-readable for local development
+        handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.handlers = []  # Clear existing handlers
+    root_logger.addHandler(handler)
+    root_logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
+    
+    # Quiet noisy libraries
+    for lib in ['sentence_transformers', 'chromadb', 'urllib3']:
+        logging.getLogger(lib).setLevel(logging.WARNING)
+```
+
+#### Docker Compose Logging
+
+```yaml
+# docker-compose.yml
+services:
+  coderag:
+    image: coderag/mcp-server:latest
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DOCKER_CONTAINER=true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=mcp-ragex"
+```
+
+#### Key Logging Principles
+
+1. **No stdout logging**: All logs to stderr to preserve MCP protocol
+2. **No file logging in containers**: Let Docker handle log management
+3. **Structured JSON logs**: Easy parsing for log aggregation tools
+4. **Environment-based configuration**: Control via LOG_LEVEL env var
+5. **Library noise reduction**: Suppress verbose third-party logs
 
 ## Phase 4: Testing & Validation (3-4 hours)
 
@@ -301,6 +389,8 @@ volumes:
 | MCP Protocol | Connect from Claude | Commands work |
 | Memory Limit | Index with 1GB limit | Graceful handling |
 | Concurrent | Multiple searches | No conflicts |
+| Logging | Check stderr output | JSON format in Docker |
+| Log Isolation | Verify stdout clean | No log contamination |
 
 ### 4.2 Performance Benchmarks
 

@@ -2,9 +2,12 @@
 """Test the enhanced tree-sitter symbol extraction"""
 
 import asyncio
+import pytest
+
 import json
 from src.tree_sitter_enhancer import TreeSitterEnhancer
 
+@pytest.mark.asyncio
 async def test_enhanced_extraction():
     enhancer = TreeSitterEnhancer()
     

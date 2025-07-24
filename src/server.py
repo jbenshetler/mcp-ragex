@@ -21,60 +21,31 @@ from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
 
-# Import Tree-sitter enhancer
+# Import Tree-sitter enhancer and utilities
 try:
     from .tree_sitter_enhancer import TreeSitterEnhancer
     from .pattern_matcher import PatternMatcher
+    from .utils import configure_logging, get_logger
 except ImportError:
     from tree_sitter_enhancer import TreeSitterEnhancer
     from pattern_matcher import PatternMatcher
+    from utils import configure_logging, get_logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("coderag-mcp")
+# Configure logging based on environment
+configure_logging()
 
-# Setup debug logging
-DEBUG_LOG_PATH = "/tmp/mcp_coderag.log"
+# Get logger for this module
+logger = get_logger("coderag-mcp")
 
-def setup_debug_logging():
-    """Setup debug logging to file"""
-    # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
-    # Create file handler
-    file_handler = logging.FileHandler(DEBUG_LOG_PATH, mode='w')
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-    
-    # Add to root logger to catch everything
-    root_logger = logging.getLogger()
-    root_logger.addHandler(file_handler)
-    
-    # Log startup info
-    logger.info("="*50)
-    logger.info("MCP CodeRAG Server Started")
-    logger.info(f"Time: {datetime.now()}")
-    logger.info(f"CWD: {os.getcwd()}")
-    logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
-    logger.info(f"Python: {sys.executable}")
-    logger.info(f"Arguments: {sys.argv}")
-    logger.info(f"Environment PATH: {os.environ.get('PATH', 'Not set')}")
-    logger.info("="*50)
-
-def cleanup_debug_log():
-    """Remove debug log on exit"""
-    if os.path.exists(DEBUG_LOG_PATH):
-        try:
-            os.remove(DEBUG_LOG_PATH)
-            print(f"Cleaned up debug log: {DEBUG_LOG_PATH}")
-        except Exception as e:
-            print(f"Failed to clean up debug log: {e}")
-
-# Setup debug logging
-setup_debug_logging()
-
-# Register cleanup on exit
-# atexit.register(cleanup_debug_log)  # Commented out for debugging
+# Log startup info
+logger.info("="*50)
+logger.info("MCP CodeRAG Server Started")
+logger.info(f"Time: {datetime.now()}")
+logger.info(f"CWD: {os.getcwd()}")
+logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
+logger.info(f"Python: {sys.executable}")
+logger.info(f"Arguments: {sys.argv}")
+logger.info("="*50)
 
 # Security constants
 MAX_RESULTS = 200
@@ -124,10 +95,10 @@ class RipgrepSearcher:
         return pattern
     
     def validate_paths(self, paths: List[str]) -> List[Path]:
-        """Validate and resolve search paths"""
+        """Validate and resolve search paths securely"""
         validated_paths = []
         # Use MCP_WORKING_DIR if set, otherwise current directory
-        cwd = Path(os.environ.get('MCP_WORKING_DIR', os.getcwd()))
+        cwd = Path(os.environ.get('MCP_WORKING_DIR', os.getcwd())).resolve()
         
         for path_str in paths:
             # Resolve relative to working directory
@@ -136,12 +107,20 @@ class RipgrepSearcher:
             else:
                 path = (cwd / path_str).resolve()
             
+            # Security check: ensure path is within project directory
+            try:
+                # Check if the resolved path is within the cwd
+                path.relative_to(cwd)
+            except ValueError:
+                # Path is outside project directory
+                logger.warning(f"Security: Path outside project directory blocked: {path}")
+                continue
+            
             # Ensure path exists
             if not path.exists():
                 logger.warning(f"Path does not exist: {path}")
                 continue
                 
-            # For now, allow any path (you can add security checks later)
             validated_paths.append(path)
         
         return validated_paths or [cwd]

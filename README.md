@@ -234,6 +234,65 @@ This will show the status of all configured MCP servers. You should see `coderag
 
 ## Usage Examples
 
+### **Example Semantic Search**
+This is what happened in the CLI:
+```
+● Let me try a broader semantic search:
+
+● Let me search for admin endpoints:
+ ⎿  Interrupted by user
+
+> /exit
+ ⎿  (no content)
+
+> Try the ragex semantic search again.
+
+● Task(Search for reindex endpoints)
+ ⎿  Done (8 tool uses · 79.3k tokens · 1m 32.2s)
+
+● Based on the search results, I found the department reindexing endpoints. The main force reindex endpoint is:
+
+ POST /admin/reindex/department in /docprocessor/workflows_api.py (line 834)
+
+```
+
+And this is what the Ctrl-R logs show:
+```
+● I'll search for the function that adds documents to OpenSearch and check the field structure, then verify all 11 documents have extracted text.
+
+● Task(Task: Find OpenSearch indexing function
+
+   Prompt: Search for the function that indexes documents to OpenSearch. Look for:
+   1. Functions that create or update documents in OpenSearch
+   2. The field names used when indexing, particularly for extracted text
+   3. Index operations, PUT or POST requests to OpenSearch
+   4. Document structure being sent to OpenSearch
+
+   Use search terms like:
+   - opensearch index document
+   - _doc PUT POST
+   - index_document
+   - create_document
+   - extracted_text content text)
+ ⎿  Search(pattern: "index.*document|create.*document|update.*document", path: "undefined")
+      ⎿  Found 55 files
+         /home/jeff/clients/search/contextsearch/tests/ui/README.md
+         /home/jeff/clients/search/contextsearch/tests/ocr/output_metadata.json
+         /home/jeff/clients/search/contextsearch/tests/ocr/output_rmeta_fixed.json
+         /home/jeff/clients/search/contextsearch/tests/needs_porting/test_workflow_implementation.py
+         /home/jeff/clients/search/contextsearch/tests/obsolete/test_workflow_celery_integration.py
+         /home/jeff/clients/search/contextsearch/tests/obsolete/test_workflow_integration.py
+         /home/jeff/clients/search/contextsearch/tests/docprocessor/test_workflows_real_files.py
+         /home/jeff/clients/search/contextsearch/tests/functional/cache/test_cache_repopulation.py
+         /home/jeff/clients/search/contextsearch/tests/functional/cache/test_comprehensive_cache_validation.py
+         /home/jeff/clients/search/contextsearch/tests/functional/integration/filesystem_scanner.py
+         /home/jeff/clients/search/contextsearch/tests/functional/nlp/test_batch_size_one.py
+         /home/jeff/clients/search/contextsearch/tests/functional/search/test_date_filtering.py
+         /home/jeff/clients/search/contextsearch/tests/functional/search/test_entity_filtering.py
+         /home/jeff/clients/search/contextsearch/tests/functional/search/test_force_reindexing.py
+         /home/jeff/clients/search/contextsearch/samples/simulate_tasks.py
+```
+
 ### 🔍 **Intelligent Search Modes**
 
 #### Auto-Detection (Recommended)

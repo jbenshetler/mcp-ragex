@@ -4,6 +4,8 @@ Test Tree-sitter integration and performance
 """
 
 import asyncio
+import pytest
+
 import time
 from pathlib import Path
 import sys
@@ -14,6 +16,7 @@ from tree_sitter_enhancer import TreeSitterEnhancer
 from server import RipgrepSearcher
 
 
+@pytest.mark.asyncio
 async def test_symbol_extraction():
     """Test basic symbol extraction"""
     print("Testing Tree-sitter symbol extraction...")
@@ -42,6 +45,7 @@ async def test_symbol_extraction():
                     print(f"    Signature: {symbol.signature}")
 
 
+@pytest.mark.asyncio
 async def test_search_enhancement():
     """Test search result enhancement"""
     print("\n\nTesting search result enhancement...")
@@ -80,6 +84,7 @@ async def test_search_enhancement():
                     print(f"  Signature: {ctx['signature']}")
 
 
+@pytest.mark.asyncio
 async def test_performance_at_scale():
     """Test performance with multiple files"""
     print("\n\nTesting performance at scale...")
@@ -129,6 +134,7 @@ async def test_performance_at_scale():
         print(f"Estimated time for 54k LOC (assuming ~275 LOC/file): {estimated_time:.1f}s")
 
 
+@pytest.mark.asyncio
 async def test_memory_usage():
     """Test memory usage with caching"""
     print("\n\nTesting memory usage...")

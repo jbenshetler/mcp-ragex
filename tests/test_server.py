@@ -7,8 +7,10 @@ import asyncio
 import json
 import subprocess
 from pathlib import Path
+import pytest
 
 
+@pytest.mark.asyncio
 async def test_direct_search():
     """Test the searcher directly without MCP protocol"""
     import sys
