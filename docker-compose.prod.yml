@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  ragex-mcp:
+    image: ragex/mcp-server:latest
+    volumes:
+      - ${WORKSPACE:-$PWD}:/workspace:ro
+      - ragex-index:/data
+    environment:
+      - LOG_LEVEL=WARNING
+      - DOCKER_CONTAINER=true
+    command: serve
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 1.0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=mcp-ragex"
+
+volumes:
+  ragex-index:
+    driver: local
