@@ -23,7 +23,6 @@ chroma_db/
 .mcpignore
 *.log
 .git/
-tests/
 docs/
 *.md
 !README.md
