@@ -15,31 +15,7 @@ COPY requirements.txt pyproject.toml ./
 # Install Python dependencies
 RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Stage 2: Test (optional stage for CI/CD)
-FROM python:3.10-slim AS test
-
-# Install test dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    ripgrep \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy dependencies from builder
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
-
-# Copy all code including tests
-COPY . .
-
-# Install test dependencies
-RUN pip install --no-cache-dir pytest pytest-cov
-
-# Run tests
-CMD ["python", "-m", "pytest", "tests/", "-v"]
-
-# Stage 3: Runtime
+# Stage 2: Runtime
 FROM python:3.10-slim
 
 # Install runtime dependencies
