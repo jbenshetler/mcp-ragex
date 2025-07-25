@@ -32,7 +32,7 @@ Unlike simple grep-based tools, CodeRAG understands code semantically:
 - **Fast code search** using ripgrep with regex support
 - **Security-first design** with input validation and path restrictions
 - **File type filtering** supporting 30+ programming languages
-- **File exclusion patterns** using gitignore syntax (.mcpignore support)
+- **Enhanced file exclusions** with multi-level .mcpignore support and comprehensive defaults
 - **Configurable limits** to prevent resource exhaustion
 - **JSON-RPC interface** following MCP standards
 
@@ -664,20 +664,38 @@ search_code("async def", file_types=["py"], paths=["src"])
 
 ## File Exclusions
 
-The server provides multiple ways to exclude files from search results:
+The server provides an enhanced ignore system with comprehensive defaults and multi-level support:
 
 ### Default Exclusions
-These patterns are automatically excluded (see full list in `src/pattern_matcher.py`):
-- `.venv/**`, `venv/**` - Virtual environments
-- `__pycache__/**`, `*.pyc` - Python cache files  
-- `node_modules/**` - Node.js dependencies
-- `.git/**` - Git repository data
-- `*.log`, `*.swp`, `*.swo` - Log and swap files
-- `.mypy_cache/**`, `.pytest_cache/**`, `.tox/**` - Python tool caches
-- `.DS_Store`, `Thumbs.db` - OS files
+MCP-RageX includes comprehensive default exclusions for:
+- **Python**: `.venv/**`, `__pycache__/**`, `*.pyc`, `.eggs/**`, `.tox/**`, etc.
+- **JavaScript/TypeScript**: `node_modules/**`, `*.tsbuildinfo`, `.npm/**`, etc.
+- **Build artifacts**: `build/**`, `dist/**`, `*.o`, `*.so`, `*.exe`, etc.
+- **IDEs**: `.vscode/**`, `.idea/**`, `*.swp`, etc.
+- **OS files**: `.DS_Store`, `Thumbs.db`, `._*`, etc.
+- **Media/Archives**: `*.jpg`, `*.mp4`, `*.zip`, etc.
+
+### Initialize .mcpignore
+When starting a new project, MCP-RageX can create a `.mcpignore` file with all defaults visible:
+
+```bash
+# Create comprehensive .mcpignore with categorized patterns
+ragex init
+
+# Create minimal .mcpignore (essential patterns only)
+ragex init --minimal
+
+# Add custom patterns
+ragex init --add "*.custom" --add "data/**"
+
+# Force overwrite existing file
+ragex init --force
+```
+
+**Note**: If no `.mcpignore` exists, the system uses built-in defaults and shows a warning suggesting to run `ragex init`. Set `RAGEX_IGNOREFILE_WARNING=false` to disable this warning.
 
 ### Custom Exclusions (.mcpignore)
-Create a `.mcpignore` file in your project root using gitignore syntax:
+Create or edit `.mcpignore` files using gitignore syntax:
 
 ```gitignore
 # Example .mcpignore
@@ -686,18 +704,39 @@ test_output/
 docs/**/*.generated.md
 !important.log  # Negation pattern (include this file)
 
-# Patterns are relative to project root
-src/generated/
-*.min.js
+# Project-specific patterns
+data/raw/**
+models/**
+*.pkl
+```
 
-# Invalid patterns are logged and skipped
+### Multi-Level Support
+You can create `.mcpignore` files in subdirectories for more specific control:
+
+```
+project/
+├── .mcpignore          # Root patterns
+├── src/
+│   └── .mcpignore      # Additional patterns for src/
+└── tests/
+    └── .mcpignore      # Override parent rules for tests/
+```
+
+Deeper `.mcpignore` files override parent rules, allowing fine-grained control.
+
+### Disabling Default Patterns
+For minimal setups, you can disable all default patterns programmatically:
+
+```python
+# When using the Python API directly
+manager = IgnoreManager("/path", use_defaults=False)
 ```
 
 **Notes:**
-- Place `.mcpignore` in your project root directory
 - Uses standard gitignore syntax
 - Invalid patterns are warned about but don't break the server
-- See `.mcpignore.example` for a comprehensive example
+- Patterns are matched relative to the `.mcpignore` file location
+- See `examples/.mcpignore.template` for a comprehensive example
 
 ### Search-time Exclusions
 Override or add exclusions for specific searches:
@@ -845,15 +884,25 @@ The semantic search system supports multiple embedding models with different tra
 
 ### File Exclusion (.mcpignore)
 
-Create a `.mcpignore` file in your project root to exclude files from indexing:
+The enhanced ignore system now provides comprehensive defaults and multi-level support:
+
+```bash
+# Initialize .mcpignore with visible defaults
+ragex init
+
+# The system will use built-in defaults if no .mcpignore exists
+# and show a warning (disable with RAGEX_IGNOREFILE_WARNING=false)
+```
+
+Example `.mcpignore` for additional project-specific exclusions:
 
 ```gitignore
-# Dependencies
+# Dependencies (already in defaults, shown for clarity)
 node_modules/
 venv/
 .venv/
 
-# Build outputs
+# Build outputs (already in defaults)
 dist/
 build/
 *.min.js
