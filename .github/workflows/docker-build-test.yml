@@ -57,10 +57,13 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
+        file: docker/app.Dockerfile
         push: false
         tags: mcp-ragex:test
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        build-args: |
+          BASE_IMAGE=ghcr.io/${{ github.repository }}-base:latest
         
     - name: Test Docker image
       run: |
