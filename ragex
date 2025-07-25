@@ -1,0 +1,135 @@
+#!/bin/bash
+# ragex - Smart Docker wrapper for MCP-RageX with project isolation
+set -e
+
+# Default configuration
+DOCKER_IMAGE="${RAGEX_DOCKER_IMAGE:-ragex/mcp-server:latest}"
+DOCKER_USER_ID=$(id -u)
+DOCKER_GROUP_ID=$(id -g)
+
+# Function to generate consistent project identifier
+generate_project_id() {
+    local workspace_path="$1"
+    local user_id="$2"
+    
+    # Create a consistent project ID based on user and absolute workspace path
+    local abs_path=$(cd "$workspace_path" 2>/dev/null && pwd || echo "$workspace_path")
+    local project_hash=$(echo "${user_id}:${abs_path}" | sha256sum | cut -d' ' -f1 | head -c 16)
+    echo "ragex_${user_id}_${project_hash}"
+}
+
+# Function to get project name for display
+get_project_name() {
+    local workspace_path="$1"
+    local abs_path=$(cd "$workspace_path" 2>/dev/null && pwd || echo "$workspace_path")
+    echo "$(basename "$abs_path")"
+}
+
+# Function to show usage
+show_usage() {
+    cat << EOF
+Usage: ragex [COMMAND] [OPTIONS]
+
+Commands:
+  serve              Start MCP server (default)
+  index [PATH]       Build semantic index for project
+  search QUERY       Search in current project
+  list-projects      List all projects for current user
+  clean-project ID   Remove project data
+  info               Show project information
+  bash               Get shell in container
+  
+Environment Variables:
+  RAGEX_EMBEDDING_MODEL    Embedding model preset (fast/balanced/accurate)
+  RAGEX_PROJECT_NAME       Override project name
+  RAGEX_DOCKER_IMAGE       Docker image to use
+  
+Examples:
+  ragex index .                    # Index current directory
+  ragex search "auth functions"    # Search current project
+  ragex list-projects              # Show all your projects
+  RAGEX_EMBEDDING_MODEL=balanced ragex index .  # Use balanced model
+EOF
+}
+
+# Parse command line arguments
+COMMAND="serve"
+if [ $# -gt 0 ]; then
+    COMMAND="$1"
+    shift
+fi
+
+# Handle help/usage
+if [ "$COMMAND" = "help" ] || [ "$COMMAND" = "--help" ] || [ "$COMMAND" = "-h" ]; then
+    show_usage
+    exit 0
+fi
+
+# Determine workspace path
+WORKSPACE_PATH="${PWD}"
+if [ "$COMMAND" = "index" ] && [ $# -gt 0 ]; then
+    WORKSPACE_PATH="$1"
+fi
+
+# Generate project-specific identifiers
+USER_VOLUME="ragex_user_${DOCKER_USER_ID}"
+PROJECT_ID=$(generate_project_id "$WORKSPACE_PATH" "$DOCKER_USER_ID")
+PROJECT_NAME=$(get_project_name "$WORKSPACE_PATH")
+
+# Build Docker command
+DOCKER_ARGS=(
+    "run"
+    "--rm"
+    "-u" "${DOCKER_USER_ID}:${DOCKER_GROUP_ID}"
+    "-v" "${USER_VOLUME}:/data"
+    "-v" "${WORKSPACE_PATH}:/workspace:ro"
+    "-e" "WORKSPACE_PATH=${WORKSPACE_PATH}"
+    "-e" "PROJECT_NAME=${PROJECT_ID}"
+    "-e" "RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}"
+)
+
+# Handle different command types
+case "$COMMAND" in
+    "bash"|"sh")
+        # Interactive shell needs TTY
+        DOCKER_ARGS+=("-it")
+        ;;
+    "serve"|"server")
+        # MCP server needs stdin/stdout but NO TTY (breaks JSON-RPC)
+        DOCKER_ARGS+=("-i")
+        ;;
+    *)
+        # Other commands can be interactive if terminal is available
+        if [ -t 0 ]; then
+            DOCKER_ARGS+=("-it")
+        fi
+        ;;
+esac
+
+# Handle special commands that don't need workspace
+case "$COMMAND" in
+    "list-projects"|"clean-project")
+        # Remove workspace volume for these commands
+        DOCKER_ARGS=(
+            "run"
+            "--rm"
+            "-u" "${DOCKER_USER_ID}:${DOCKER_GROUP_ID}"
+            "-v" "${USER_VOLUME}:/data"
+            "-e" "PROJECT_NAME=admin"
+        )
+        ;;
+    "info")
+        echo "🔧 RageX Project Information"
+        echo "   User ID: ${DOCKER_USER_ID}"
+        echo "   Workspace: ${WORKSPACE_PATH}"
+        echo "   Project ID: ${PROJECT_ID}"
+        echo "   Project Name: ${PROJECT_NAME}"
+        echo "   User Volume: ${USER_VOLUME}"
+        echo "   Docker Image: ${DOCKER_IMAGE}"
+        echo "   Embedding Model: ${RAGEX_EMBEDDING_MODEL:-fast}"
+        exit 0
+        ;;
+esac
+
+# Execute Docker command
+exec docker "${DOCKER_ARGS[@]}" "$DOCKER_IMAGE" "$COMMAND" "$@"
