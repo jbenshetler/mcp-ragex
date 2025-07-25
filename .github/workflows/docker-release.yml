@@ -80,8 +80,6 @@ jobs:
         include:
           - platform: linux/amd64
             arch: amd64
-          - platform: linux/arm64
-            arch: arm64
             
     steps:
     - name: Checkout code
@@ -148,19 +146,15 @@ jobs:
         VERSION=${{ needs.validate.outputs.version }}
         IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         
-        # Create versioned manifest
-        docker manifest create $IMAGE:$VERSION \
-          $IMAGE:$VERSION-amd64 \
-          $IMAGE:$VERSION-arm64
-          
-        docker manifest push $IMAGE:$VERSION
+        # For single arch, just tag the image directly
+        docker pull $IMAGE:$VERSION-amd64
+        docker tag $IMAGE:$VERSION-amd64 $IMAGE:$VERSION
+        docker push $IMAGE:$VERSION
         
         # Update latest tag if this is not a pre-release
         if [[ ! "$VERSION" =~ - ]]; then
-          docker manifest create $IMAGE:latest \
-            $IMAGE:$VERSION-amd64 \
-            $IMAGE:$VERSION-arm64
-          docker manifest push $IMAGE:latest
+          docker tag $IMAGE:$VERSION-amd64 $IMAGE:latest
+          docker push $IMAGE:latest
         fi
         
     - name: Generate release notes
@@ -179,12 +173,10 @@ jobs:
         
         # Architecture specific
         docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.version }}-amd64
-        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.version }}-arm64
         \`\`\`
         
         ### Supported Platforms
         - linux/amd64
-        - linux/arm64
         
         ### What's Changed
         See commit history since last release.
