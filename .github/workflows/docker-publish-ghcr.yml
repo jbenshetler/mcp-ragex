@@ -57,7 +57,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: docker/app.Dockerfile
+        file: Dockerfile
         platforms: linux/amd64
         push: true
         tags: ${{ steps.meta.outputs.tags }}
@@ -65,7 +65,6 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         build-args: |
-          BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}-base:latest
           BUILD_DATE=${{ github.event.repository.updated_at }}
           VCS_REF=${{ github.sha }}
           VERSION=${{ steps.meta.outputs.version }}

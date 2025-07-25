@@ -102,15 +102,13 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: docker/app.Dockerfile
+        file: Dockerfile
         platforms: ${{ matrix.platform }}
         push: true
         tags: |
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.version }}-${{ matrix.arch }}
         cache-from: type=gha,scope=${{ matrix.arch }}
         cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-        build-args: |
-          BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}-base:latest
         
     - name: Scan image for vulnerabilities
       uses: aquasecurity/trivy-action@master
