@@ -39,16 +39,27 @@ Commands:
   info               Show project information
   bash               Get shell in container
   
+  # Daemon commands for performance
+  start              Start persistent container daemon
+  stop               Stop persistent container daemon
+  status             Check daemon status
+  
 Environment Variables:
   RAGEX_EMBEDDING_MODEL    Embedding model preset (fast/balanced/accurate)
   RAGEX_PROJECT_NAME       Override project name
   RAGEX_DOCKER_IMAGE       Docker image to use
+  RAGEX_DAEMON_ENABLED     Enable daemon mode (true/false)
   
 Examples:
   ragex index .                    # Index current directory
   ragex search "auth functions"    # Search current project
   ragex list-projects              # Show all your projects
   RAGEX_EMBEDDING_MODEL=balanced ragex index .  # Use balanced model
+  
+  # Performance optimization with daemon
+  ragex start                      # Start daemon for fast execution
+  ragex search "query"             # Near-instant search
+  ragex stop                       # Stop daemon when done
 EOF
 }
 
@@ -75,6 +86,85 @@ fi
 USER_VOLUME="ragex_user_${DOCKER_USER_ID}"
 PROJECT_ID=$(generate_project_id "$WORKSPACE_PATH" "$DOCKER_USER_ID")
 PROJECT_NAME=$(get_project_name "$WORKSPACE_PATH")
+DAEMON_CONTAINER_NAME="ragex_daemon_${PROJECT_ID}"
+
+# Function to check if daemon is running
+is_daemon_running() {
+    docker ps -q -f "name=${DAEMON_CONTAINER_NAME}" | grep -q .
+}
+
+# Function to start daemon
+start_daemon() {
+    if is_daemon_running; then
+        return 0
+    fi
+    
+    echo "🚀 Starting ragex daemon for ${PROJECT_NAME}..."
+    docker run -d \
+        --name "${DAEMON_CONTAINER_NAME}" \
+        -u "${DOCKER_USER_ID}:${DOCKER_GROUP_ID}" \
+        -v "${USER_VOLUME}:/data" \
+        -v "${WORKSPACE_PATH}:/workspace:ro" \
+        -e "WORKSPACE_PATH=${WORKSPACE_PATH}" \
+        -e "PROJECT_NAME=${PROJECT_ID}" \
+        -e "RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}" \
+        -e "HOST_HOME=${HOME}" \
+        "${DOCKER_IMAGE}" daemon > /dev/null
+    
+    # Wait for daemon to be ready
+    sleep 2
+    
+    if is_daemon_running; then
+        echo "✅ Daemon started successfully"
+        return 0
+    else
+        echo "❌ Failed to start daemon"
+        return 1
+    fi
+}
+
+# Function to stop daemon
+stop_daemon() {
+    if ! is_daemon_running; then
+        echo "ℹ️  No daemon running for ${PROJECT_NAME}"
+        return 0
+    fi
+    
+    echo "🛑 Stopping ragex daemon..."
+    docker stop "${DAEMON_CONTAINER_NAME}" > /dev/null
+    docker rm "${DAEMON_CONTAINER_NAME}" > /dev/null
+    echo "✅ Daemon stopped"
+}
+
+# Function to get daemon status
+daemon_status() {
+    if is_daemon_running; then
+        echo "✅ Daemon is running for ${PROJECT_NAME}"
+        docker ps -f "name=${DAEMON_CONTAINER_NAME}" --format "table {{.ID}}\t{{.Status}}\t{{.Names}}"
+    else
+        echo "❌ No daemon running for ${PROJECT_NAME}"
+    fi
+}
+
+# Function to execute command via daemon
+exec_via_daemon() {
+    local cmd="$1"
+    shift
+    
+    # Start daemon if not running
+    if ! is_daemon_running; then
+        start_daemon || return 1
+    fi
+    
+    # Determine if we need TTY
+    local EXEC_FLAGS="-i"
+    if [ -t 0 ] && [ "$cmd" != "serve" ] && [ "$cmd" != "server" ]; then
+        EXEC_FLAGS="-it"
+    fi
+    
+    # Execute command via docker exec
+    docker exec $EXEC_FLAGS "${DAEMON_CONTAINER_NAME}" "$cmd" "$@"
+}
 
 # Build Docker command
 DOCKER_ARGS=(
@@ -106,10 +196,26 @@ case "$COMMAND" in
         ;;
 esac
 
+# Handle daemon-specific commands
+case "$COMMAND" in
+    "start")
+        start_daemon
+        exit $?
+        ;;
+    "stop")
+        stop_daemon
+        exit $?
+        ;;
+    "status")
+        daemon_status
+        exit $?
+        ;;
+esac
+
 # Handle special commands that don't need workspace
 case "$COMMAND" in
     "list-projects"|"clean-project")
-        # Remove workspace volume for these commands
+        # These commands don't use daemon, run directly
         DOCKER_ARGS=(
             "run"
             "--rm"
@@ -117,6 +223,7 @@ case "$COMMAND" in
             "-v" "${USER_VOLUME}:/data"
             "-e" "PROJECT_NAME=admin"
         )
+        exec docker "${DOCKER_ARGS[@]}" "$DOCKER_IMAGE" "$COMMAND" "$@"
         ;;
     "info")
         echo "🔧 RageX Project Information"
@@ -127,9 +234,20 @@ case "$COMMAND" in
         echo "   User Volume: ${USER_VOLUME}"
         echo "   Docker Image: ${DOCKER_IMAGE}"
         echo "   Embedding Model: ${RAGEX_EMBEDDING_MODEL:-fast}"
+        echo ""
+        daemon_status
         exit 0
         ;;
 esac
 
-# Execute Docker command
-exec docker "${DOCKER_ARGS[@]}" "$DOCKER_IMAGE" "$COMMAND" "$@"
+# For all other commands, use daemon if available
+case "$COMMAND" in
+    "init"|"index"|"search"|"serve"|"server"|"bash"|"sh"|"register")
+        # These commands benefit from daemon mode
+        exec_via_daemon "$COMMAND" "$@"
+        ;;
+    *)
+        # Unknown commands also go through daemon
+        exec_via_daemon "$COMMAND" "$@"
+        ;;
+esac

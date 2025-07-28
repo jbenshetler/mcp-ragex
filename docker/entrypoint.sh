@@ -301,6 +301,12 @@ except Exception as e:
     "bash"|"sh")
         exec "$@"
         ;;
+    "daemon")
+        # Long-running daemon mode for fast command execution
+        setup_project_data "$@"
+        export PYTHONPATH=/app:$PYTHONPATH
+        exec python -m src.daemon
+        ;;
     *)
         # Default to MCP server
         setup_project_data "$@"
