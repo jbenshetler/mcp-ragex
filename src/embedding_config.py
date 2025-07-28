@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Centralized embedding configuration system for CodeRAG MCP.
+Centralized embedding configuration system for RAGex MCP.
 
 This module provides a unified configuration for embedding models and ChromaDB settings,
 supporting environment variable overrides and predefined model presets.

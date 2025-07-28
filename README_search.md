@@ -1,6 +1,6 @@
 # RageX Search Client
 
-A command-line search tool for the CodeRAG indexed codebase with grep-like output.
+A command-line search tool for the RAGex indexed codebase with grep-like output.
 
 ## Usage
 

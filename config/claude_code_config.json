@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "coderag": {
+    "ragex": {
       "command": "uv",
-      "args": ["run", "python", "/home/jeff/clients/coderagmcp/src/server.py"],
+      "args": ["run", "python", "/home/jeff/clients/ragexmcp/src/server.py"],
       "env": {},
-      "cwd": "/home/jeff/clients/coderagmcp"
+      "cwd": "/home/jeff/clients/ragexmcp"
     }
   }
 }

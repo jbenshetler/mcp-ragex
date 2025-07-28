@@ -67,7 +67,7 @@ async def example_usage():
     print("\nIntegration with Claude Desktop (claude_desktop_config.json):")
     print(json.dumps({
         "mcpServers": {
-            "coderag": {
+            "ragex": {
                 "command": "python",
                 "args": [str(Path(__file__).parent / "server.py")],
                 "env": {}

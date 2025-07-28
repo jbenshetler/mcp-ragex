@@ -1,1 +1,1 @@
-# CodeRAG MCP Server
+# RAGex MCP Server

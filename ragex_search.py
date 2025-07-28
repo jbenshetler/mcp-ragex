@@ -23,7 +23,7 @@ logging.basicConfig(level=getattr(logging, log_level, logging.WARN), format='%(m
 
 # Suppress verbose logging from all components unless overridden
 for logger_name in [
-    "coderag-mcp", "pattern-matcher", "vector-store", "embedding-manager",
+    "ragex-mcp", "pattern-matcher", "vector-store", "embedding-manager",
     "sentence_transformers", "code-indexer", "mcp-ragex", "src.ignore.manager",
     "ignore.manager", "embedding-config", "chromadb", "transformers", "torch"
 ]:

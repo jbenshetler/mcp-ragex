@@ -1,8 +1,8 @@
-# Docker Migration Plan for CodeRAG MCP Server
+# Docker Migration Plan for RAGex MCP Server
 
 ## Overview
 
-This document outlines the migration plan to containerize the CodeRAG MCP Server for open-source distribution. The primary goal is to eliminate environment-related issues and provide a consistent, reproducible setup for all users.
+This document outlines the migration plan to containerize the RAGex MCP Server for open-source distribution. The primary goal is to eliminate environment-related issues and provide a consistent, reproducible setup for all users.
 
 ## Motivation
 
@@ -89,28 +89,28 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN useradd -m -u 1000 coderag
+RUN useradd -m -u 1000 ragex
 
 WORKDIR /app
 
 # Copy dependencies from builder
-COPY --from=builder /root/.local /home/coderag/.local
-ENV PATH=/home/coderag/.local/bin:$PATH
+COPY --from=builder /root/.local /home/ragex/.local
+ENV PATH=/home/ragex/.local/bin:$PATH
 
 # Copy application code
-COPY --chown=coderag:coderag src/ ./src/
-COPY --chown=coderag:coderag scripts/ ./scripts/
-COPY --chown=coderag:coderag pyproject.toml ./
+COPY --chown=ragex:ragex src/ ./src/
+COPY --chown=ragex:ragex scripts/ ./scripts/
+COPY --chown=ragex:ragex pyproject.toml ./
 
 # Pre-download tree-sitter language parsers
 RUN python -c "import tree_sitter_python, tree_sitter_javascript, tree_sitter_typescript"
 
 # Create data directories
 RUN mkdir -p /data/chroma_db /data/models && \
-    chown -R coderag:coderag /data
+    chown -R ragex:ragex /data
 
 # Switch to non-root user
-USER coderag
+USER ragex
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -121,7 +121,7 @@ ENV DOCKER_CONTAINER=true
 ENV LOG_LEVEL=INFO
 
 # Copy and set entrypoint
-COPY --chown=coderag:coderag docker/entrypoint.sh /entrypoint.sh
+COPY --chown=ragex:ragex docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 ```
@@ -209,14 +209,14 @@ docs/
 version: '3.8'
 
 services:
-  coderag:
+  ragex:
     build:
       context: .
       dockerfile: Dockerfile
-    image: coderag/mcp-server:dev
+    image: ragex/mcp-server:dev
     volumes:
       - .:/workspace:ro                    # Current directory (read-only)
-      - coderag-data:/data                # Persistent data
+      - ragex-data:/data                # Persistent data
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DOCKER_CONTAINER=true
@@ -230,10 +230,10 @@ services:
 
   # Development indexer
   indexer:
-    image: coderag/mcp-server:dev
+    image: ragex/mcp-server:dev
     volumes:
       - .:/workspace:ro
-      - coderag-data:/data
+      - ragex-data:/data
     environment:
       - LOG_LEVEL=DEBUG
       - DOCKER_CONTAINER=true
@@ -241,7 +241,7 @@ services:
     profiles: ["index"]
 
 volumes:
-  coderag-data:
+  ragex-data:
     driver: local
 ```
 
@@ -252,11 +252,11 @@ volumes:
 version: '3.8'
 
 services:
-  coderag-mcp:
-    image: coderag/mcp-server:latest
+  ragex-mcp:
+    image: ragex/mcp-server:latest
     volumes:
       - ${WORKSPACE:-$PWD}:/workspace:ro
-      - coderag-index:/data
+      - ragex-index:/data
     environment:
       - LOG_LEVEL=WARNING
       - DOCKER_CONTAINER=true
@@ -268,7 +268,7 @@ services:
     cpus: 1.0
 
 volumes:
-  coderag-index:
+  ragex-index:
     driver: local
 ```
 
@@ -277,15 +277,15 @@ volumes:
 ```json
 {
   "mcpServers": {
-    "coderag": {
+    "ragex": {
       "command": "docker",
       "args": [
         "run",
         "-i",
         "--rm",
         "-v", "${PWD}:/workspace:ro",
-        "-v", "coderag-data:/data",
-        "coderag/mcp-server:latest",
+        "-v", "ragex-data:/data",
+        "ragex/mcp-server:latest",
         "serve"
       ],
       "env": {
@@ -356,8 +356,8 @@ def configure_logging():
 ```yaml
 # docker-compose.yml
 services:
-  coderag:
-    image: coderag/mcp-server:latest
+  ragex:
+    image: ragex/mcp-server:latest
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DOCKER_CONTAINER=true
@@ -401,18 +401,18 @@ services:
 # Test indexing performance
 time docker run --rm \
     -v $(pwd):/workspace:ro \
-    -v coderag-test:/data \
-    coderag/mcp-server:latest \
+    -v ragex-test:/data \
+    ragex/mcp-server:latest \
     index /workspace --force
 
 # Test search performance
 time docker run --rm \
-    -v coderag-test:/data \
-    coderag/mcp-server:latest \
+    -v ragex-test:/data \
+    ragex/mcp-server:latest \
     search "function definition"
 
 # Measure image size
-docker images coderag/mcp-server:latest
+docker images ragex/mcp-server:latest
 ```
 
 ### 4.3 Integration Tests
@@ -427,7 +427,7 @@ def test_mcp_protocol():
     result = subprocess.run([
         "docker", "run", "--rm",
         "-v", f"{os.getcwd()}:/workspace:ro",
-        "coderag/mcp-server:latest",
+        "ragex/mcp-server:latest",
         "serve"
     ], input=b'{"method": "search", "params": {"query": "test"}}',
        capture_output=True)
@@ -446,7 +446,7 @@ def test_mcp_protocol():
 # install.sh
 set -e
 
-echo "🚀 Installing CodeRAG MCP Server..."
+echo "🚀 Installing RAGex MCP Server..."
 
 # Check Docker
 if ! command -v docker &> /dev/null; then
@@ -463,19 +463,19 @@ fi
 
 # Pull latest image
 echo "📦 Pulling latest image..."
-docker pull coderag/mcp-server:latest
+docker pull ragex/mcp-server:latest
 
 # Create volume for persistent data
 echo "💾 Creating data volume..."
-docker volume create coderag-data
+docker volume create ragex-data
 
 # Create helper script
 INSTALL_DIR="${HOME}/.local/bin"
 mkdir -p "$INSTALL_DIR"
 
-cat > "${INSTALL_DIR}/coderag" << 'EOF'
+cat > "${INSTALL_DIR}/ragex" << 'EOF'
 #!/bin/bash
-# CodeRAG CLI wrapper
+# RAGex CLI wrapper
 
 # Default to current directory for workspace
 WORKSPACE="${WORKSPACE:-$(pwd)}"
@@ -483,12 +483,12 @@ WORKSPACE="${WORKSPACE:-$(pwd)}"
 # Run Docker container
 docker run -it --rm \
   -v "${WORKSPACE}:/workspace:ro" \
-  -v "coderag-data:/data" \
+  -v "ragex-data:/data" \
   -e "RAGEX_LOG_LEVEL=${RAGEX_LOG_LEVEL:-INFO}" \
-  coderag/mcp-server:latest "$@"
+  ragex/mcp-server:latest "$@"
 EOF
 
-chmod +x "${INSTALL_DIR}/coderag"
+chmod +x "${INSTALL_DIR}/ragex"
 
 # Check if directory is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -502,26 +502,26 @@ echo "✅ Installation complete!"
 echo ""
 echo "Quick start:"
 echo "  1. cd your-project"
-echo "  2. coderag index ."
+echo "  2. ragex index ."
 echo "  3. Configure Claude with MCP settings"
 echo ""
-echo "For more info: https://github.com/user/coderag-mcp"
+echo "For more info: https://github.com/user/ragex-mcp"
 ```
 
 ### 5.2 README Updates
 
 ```markdown
-# CodeRAG MCP Server
+# RAGex MCP Server
 
 ## Quick Start (Docker)
 
 ```bash
 # Install
-curl -sSL https://raw.githubusercontent.com/user/coderag-mcp/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/user/ragex-mcp/main/install.sh | bash
 
 # Index your project
 cd your-project
-coderag index .
+ragex index .
 
 # Configure Claude
 Add to Claude's MCP settings (see below)
@@ -529,9 +529,9 @@ Add to Claude's MCP settings (see below)
 
 ## Commands
 
-- `coderag index [path]` - Build search index
-- `coderag serve` - Start MCP server
-- `coderag search "query"` - Search codebase
+- `ragex index [path]` - Build search index
+- `ragex serve` - Start MCP server
+- `ragex search "query"` - Search codebase
 
 ## MCP Configuration
 
@@ -540,13 +540,13 @@ Add to your Claude MCP settings:
 ```json
 {
   "mcpServers": {
-    "coderag": {
+    "ragex": {
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
         "-v", "${PWD}:/workspace:ro",
-        "-v", "coderag-data:/data",
-        "coderag/mcp-server:latest"
+        "-v", "ragex-data:/data",
+        "ragex/mcp-server:latest"
       ]
     }
   }

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines a comprehensive plan to enhance the semantic search capabilities of the CodeRAG MCP server. The current implementation only indexes symbols (functions, classes, methods) which misses critical context like imports, module-level constants, environment variables, and documentation.
+This document outlines a comprehensive plan to enhance the semantic search capabilities of the RAGex MCP server. The current implementation only indexes symbols (functions, classes, methods) which misses critical context like imports, module-level constants, environment variables, and documentation.
 
 ## Current Limitations
 

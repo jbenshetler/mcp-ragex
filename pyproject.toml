@@ -1,5 +1,5 @@
 [project]
-name = "coderag-mcp"
+name = "ragex-mcp"
 version = "0.1.0"
 description = "MCP server for code search using ripgrep"
 requires-python = ">=3.10"

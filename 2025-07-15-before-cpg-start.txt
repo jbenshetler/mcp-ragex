@@ -3,7 +3,7 @@
 │                                                   │
 │   /help for help, /status for your current setup  │
 │                                                   │
-│   cwd: /home/jeff/clients/coderagmcp              │
+│   cwd: /home/jeff/clients/ragexmcp              │
 ╰───────────────────────────────────────────────────╯
 ● Compact summary (ctrl+r to expand)
   ⎿  Read src/server.py (957 lines)
@@ -16,20 +16,20 @@
   ⎿  Compacted. ctrl+r to see full summary
 
 > Make the log clearer as to whether it's performing a regex, symbol, or semantic search or some combination. 
-  2025-07-15 15:41:20,756 - coderag-mcp - INFO - Search request: pattern='workflow.*manager.*remove.*lock|workflow.*manager.*clear.*queue', file_types=['python'], paths=['.']
-  2025-07-15 15:41:20,802 - coderag-mcp - INFO - Search completed in 0.045 seconds
-  2025-07-15 15:41:20,802 - coderag-mcp - INFO - Found 0 matches, returning 0
+  2025-07-15 15:41:20,756 - ragex-mcp - INFO - Search request: pattern='workflow.*manager.*remove.*lock|workflow.*manager.*clear.*queue', file_types=['python'], paths=['.']
+  2025-07-15 15:41:20,802 - ragex-mcp - INFO - Search completed in 0.045 seconds
+  2025-07-15 15:41:20,802 - ragex-mcp - INFO - Found 0 matches, returning 0
   2025-07-15 15:41:25,142 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
-  2025-07-15 15:41:25,156 - coderag-mcp - INFO - Search request: pattern='get_workflow_manager', file_types=['python'], paths=['.']
-  2025-07-15 15:41:25,183 - coderag-mcp - INFO - Search completed in 0.027 seconds
-  2025-07-15 15:41:25,184 - coderag-mcp - INFO - Found 28 matches, returning 28
+  2025-07-15 15:41:25,156 - ragex-mcp - INFO - Search request: pattern='get_workflow_manager', file_types=['python'], paths=['.']
+  2025-07-15 15:41:25,183 - ragex-mcp - INFO - Search completed in 0.027 seconds
+  2025-07-15 15:41:25,184 - ragex-mcp - INFO - Found 28 matches, returning 28
   2025-07-15 15:41:30,066 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
-  2025-07-15 15:41:30,079 - coderag-mcp - INFO - Search request: pattern='remove.*workflow.*lock|clear.*workflow.*lock', file_types=['python'], paths=['.']
-  2025-07-15 15:41:30,124 - coderag-mcp - INFO - Search completed in 0.044 seconds
-  2025-07-15 15:41:30,124 - coderag-mcp - INFO - Found 0 matches, returning 0
+  2025-07-15 15:41:30,079 - ragex-mcp - INFO - Search request: pattern='remove.*workflow.*lock|clear.*workflow.*lock', file_types=['python'], paths=['.']
+  2025-07-15 15:41:30,124 - ragex-mcp - INFO - Search completed in 0.044 seconds
+  2025-07-15 15:41:30,124 - ragex-mcp - INFO - Found 0 matches, returning 0
   2025-07-15 15:41:45,124 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
-  2025-07-15 15:41:45,139 - coderag-mcp - INFO - Search request: pattern='class WorkflowManager', file_types=['python'], paths=['.']
-  2025-07-15 15:41:45,173 - coderag-mcp - INFO - Search completed in 0.032 seconds
+  2025-07-15 15:41:45,139 - ragex-mcp - INFO - Search request: pattern='class WorkflowManager', file_types=['python'], paths=['.']
+  2025-07-15 15:41:45,173 - ragex-mcp - INFO - Search completed in 0.032 seconds
 
 ● I'll update the logging to clearly indicate which search mode is being used. Looking at the logs, I can see that the current system is converting pattern-based searches to intelligent
   searches, but the mode detection isn't being logged clearly enough.
@@ -117,7 +117,7 @@
   This makes it much clearer what type of search is happening at each step.
 
 > I told CC to prefer 'query' to 'pattern' and got this error:
-  coderag - search_code (MCP)(query: "WorkflowManager purge or remove tasks from queue methods", file_types: ["python"], include_symbols: true)
+  ragex - search_code (MCP)(query: "WorkflowManager purge or remove tasks from queue methods", file_types: ["python"], include_symbols: true)
     ⎿  Error: Input validation error: 'pattern' is a required property
 
 ● I see the issue. The tool is still defined with pattern as a required parameter in the @app.list_tools() function. Let me update the tool definition to use query instead:
@@ -171,7 +171,7 @@
 
   This way it's backward compatible with how Claude Code currently works while still providing the enhanced search capabilities.
 
-> coderag - search_code (MCP)(pattern: "class WorkflowManager", file_types: ["python"], include_symbols: true)
+> ragex - search_code (MCP)(pattern: "class WorkflowManager", file_types: ["python"], include_symbols: true)
     ⎿  Error: RipgrepSearcher.search() got an unexpected keyword argument 'include_symbols
 
 ● I see the issue. The RipgrepSearcher.search() method doesn't have an include_symbols parameter, but we're passing it in the execute_symbol_search() function. Let me fix this:
@@ -179,13 +179,13 @@
 ● Update(src/server.py)
   ⎿  (No changes)
 
-> coderag - search_code (MCP)(pattern: "class WorkflowManager", file_types: ["python"], include_symbols: true)
+> ragex - search_code (MCP)(pattern: "class WorkflowManager", file_types: ["python"], include_symbols: true)
     ⎿  Error: RipgrepSearcher.search() got an unexpected keyword argument 'include_symbols
   Here are the logs:
-  2025-07-15 16:37:10,264 - coderag-mcp - INFO - 🔄 CONVERTING pattern search to intelligent search: 'class WorkflowManager'
-  2025-07-15 16:37:10,265 - coderag-mcp - INFO - 🔍 AUTO-DETECTED → SYMBOL search: 'class WorkflowManager'
-  2025-07-15 16:37:10,266 - coderag-mcp - INFO - Enhanced query: 'class WorkflowManager' → 'WorkflowManager'
-  2025-07-15 16:37:10,266 - coderag-mcp - INFO - 🎯 EXECUTING symbol search with Tree-sitter
+  2025-07-15 16:37:10,264 - ragex-mcp - INFO - 🔄 CONVERTING pattern search to intelligent search: 'class WorkflowManager'
+  2025-07-15 16:37:10,265 - ragex-mcp - INFO - 🔍 AUTO-DETECTED → SYMBOL search: 'class WorkflowManager'
+  2025-07-15 16:37:10,266 - ragex-mcp - INFO - Enhanced query: 'class WorkflowManager' → 'WorkflowManager'
+  2025-07-15 16:37:10,266 - ragex-mcp - INFO - 🎯 EXECUTING symbol search with Tree-sitter
 
 ● I see the issue. When Claude Code calls search_code with include_symbols: true, that parameter is being passed through to handle_intelligent_search() which then tries to pass it to
   searcher.search(). Let me trace through the code and fix this:
@@ -254,7 +254,7 @@
 
   So go ahead and try the search again - it should work now with the clearer logging showing which search mode is being used!
 
-> coderag - search_code (MCP)(pattern: "class WorkflowManager", file_types: ["python"])
+> ragex - search_code (MCP)(pattern: "class WorkflowManager", file_types: ["python"])
     ⎿  Error: RipgrepSearcher.search() got an unexpected keyword argument 'include_symbols'
 
 ● I see the issue. Even though we removed include_symbols from the two places we found, Claude Code is still passing it as a parameter. Let me check where this parameter is being passed
@@ -332,9 +332,9 @@
   - 🎯 EXECUTING symbol search with Tree-sitter
 
 > This prompt did not return any hits with semantic search. Explain why semantic search failed but the other searches succeeded:
-  Use coderag to perform a semantic search for reading environment variables in the file monitor.py. Show me the lines.
+  Use ragex to perform a semantic search for reading environment variables in the file monitor.py. Show me the lines.
 
-  ● coderag - search_code (MCP)(pattern: "reading environment variables configuration settings getenv environ", paths: ["docmonitor/monitor.py"], include_symbols: true, format: 
+  ● ragex - search_code (MCP)(pattern: "reading environment variables configuration settings getenv environ", paths: ["docmonitor/monitor.py"], include_symbols: true, format: 
   "navigation")
     ⎿  ## Search Results: 'code reading environment variables configuration settings getenv environ'
 
@@ -343,7 +343,7 @@
 
   ● Let me try a more specific semantic search:
 
-  ● coderag - search_code (MCP)(pattern: "environment variable os.environ", paths: ["docmonitor/monitor.py"], format: "navigation")
+  ● ragex - search_code (MCP)(pattern: "environment variable os.environ", paths: ["docmonitor/monitor.py"], format: "navigation")
     ⎿  ## Search Results: 'environment variable os.environ'
 
        **Summary**: 0 matches in 0 files
@@ -351,7 +351,7 @@
 
   ● Let me use a regex search instead:
 
-  ● coderag - search_code (MCP)(pattern: "os\\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL", paths: ["docmonitor/monitor.py"], format: "navigation", -n: 
+  ● ragex - search_code (MCP)(pattern: "os\\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL", paths: ["docmonitor/monitor.py"], format: "navigation", -n: 
   "true")
     ⎿  ## Search Results: 'os\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL'
 
@@ -380,26 +380,26 @@
     - SCAN_INTERVAL: Used on lines 316, 326 for periodic scanning
   Here are the logs
   2025-07-15 16:46:58,694 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
-  2025-07-15 16:46:58,702 - coderag-mcp - INFO - 🔄 CONVERTING pattern search to intelligent search: 'reading environment variables configuration settings getenv environ'
-  2025-07-15 16:46:58,703 - coderag-mcp - INFO - 🔍 AUTO-DETECTED → SEMANTIC search: 'reading environment variables configuration settings getenv environ'
-  2025-07-15 16:46:58,703 - coderag-mcp - INFO - Enhanced query: 'reading environment variables configuration settings getenv environ' → 'code reading environment variables configuration
+  2025-07-15 16:46:58,702 - ragex-mcp - INFO - 🔄 CONVERTING pattern search to intelligent search: 'reading environment variables configuration settings getenv environ'
+  2025-07-15 16:46:58,703 - ragex-mcp - INFO - 🔍 AUTO-DETECTED → SEMANTIC search: 'reading environment variables configuration settings getenv environ'
+  2025-07-15 16:46:58,703 - ragex-mcp - INFO - Enhanced query: 'reading environment variables configuration settings getenv environ' → 'code reading environment variables configuration
    settings getenv environ'
-  2025-07-15 16:46:58,703 - coderag-mcp - INFO - 🧠 EXECUTING semantic search with embeddings
+  2025-07-15 16:46:58,703 - ragex-mcp - INFO - 🧠 EXECUTING semantic search with embeddings
   2025-07-15 16:47:03,644 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
-  2025-07-15 16:47:03,659 - coderag-mcp - INFO - 🔄 CONVERTING pattern search to intelligent search: 'environment variable os.environ'
-  2025-07-15 16:47:03,659 - coderag-mcp - INFO - 🔍 AUTO-DETECTED → REGEX search: 'environment variable os.environ'
-  2025-07-15 16:47:03,659 - coderag-mcp - INFO - ⚡ EXECUTING regex search with ripgrep
-  2025-07-15 16:47:03,659 - coderag-mcp - INFO - 🔍 REGEX search: pattern='environment variable os.environ', file_types=None, paths=['docmonitor/monitor.py']
-  2025-07-15 16:47:03,671 - coderag-mcp - INFO - Search completed in 0.012 seconds
-  2025-07-15 16:47:03,672 - coderag-mcp - INFO - Found 0 matches, returning 0
+  2025-07-15 16:47:03,659 - ragex-mcp - INFO - 🔄 CONVERTING pattern search to intelligent search: 'environment variable os.environ'
+  2025-07-15 16:47:03,659 - ragex-mcp - INFO - 🔍 AUTO-DETECTED → REGEX search: 'environment variable os.environ'
+  2025-07-15 16:47:03,659 - ragex-mcp - INFO - ⚡ EXECUTING regex search with ripgrep
+  2025-07-15 16:47:03,659 - ragex-mcp - INFO - 🔍 REGEX search: pattern='environment variable os.environ', file_types=None, paths=['docmonitor/monitor.py']
+  2025-07-15 16:47:03,671 - ragex-mcp - INFO - Search completed in 0.012 seconds
+  2025-07-15 16:47:03,672 - ragex-mcp - INFO - Found 0 matches, returning 0
   2025-07-15 16:47:08,993 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
-  2025-07-15 16:47:09,001 - coderag-mcp - INFO - 🔄 CONVERTING pattern search to intelligent search: 'os\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL'
-  2025-07-15 16:47:09,002 - coderag-mcp - INFO - 🔍 AUTO-DETECTED → REGEX search: 'os\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL'
-  2025-07-15 16:47:09,002 - coderag-mcp - INFO - ⚡ EXECUTING regex search with ripgrep
-  2025-07-15 16:47:09,002 - coderag-mcp - INFO - 🔍 REGEX search: pattern='os\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL', file_types=None, 
+  2025-07-15 16:47:09,001 - ragex-mcp - INFO - 🔄 CONVERTING pattern search to intelligent search: 'os\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL'
+  2025-07-15 16:47:09,002 - ragex-mcp - INFO - 🔍 AUTO-DETECTED → REGEX search: 'os\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL'
+  2025-07-15 16:47:09,002 - ragex-mcp - INFO - ⚡ EXECUTING regex search with ripgrep
+  2025-07-15 16:47:09,002 - ragex-mcp - INFO - 🔍 REGEX search: pattern='os\.environ|getenv|BASE_DIR|OPENSEARCH_URL|EXCLUDED_DIRECTORIES|SCAN_INTERVAL', file_types=None, 
   paths=['docmonitor/monitor.py']
-  2025-07-15 16:47:09,016 - coderag-mcp - INFO - Search completed in 0.014 seconds
-  2025-07-15 16:47:09,016 - coderag-mcp - INFO - Found 19 matches, returning 19
+  2025-07-15 16:47:09,016 - ragex-mcp - INFO - Search completed in 0.014 seconds
+  2025-07-15 16:47:09,016 - ragex-mcp - INFO - Found 19 matches, returning 19
 
 ● Looking at the logs, I can explain why semantic search failed while regex search succeeded:
 
@@ -462,8 +462,8 @@
 ● Bash(uv run python -c "
       from src.vector_store import CodeVectorStore…)
   ⎿  Unique files in index (11 total):                                
-       - /home/jeff/clients/coderagmcp/scripts/build_semantic_index.py
-       - /home/jeff/clients/coderagmcp/src/embedding_manager.py
+       - /home/jeff/clients/ragexmcp/scripts/build_semantic_index.py
+       - /home/jeff/clients/ragexmcp/src/embedding_manager.py
      … +11 lines (ctrl+r to expand)
 
 ● Now let's check the index metadata to see what paths were indexed:
@@ -473,9 +473,9 @@
 
 ● The Issue is Clear
 
-  The semantic index was built only for the /home/jeff/clients/coderagmcp directory (the coderagmcp project itself), but not for the directory containing monitor.py.
+  The semantic index was built only for the /home/jeff/clients/ragexmcp directory (the ragexmcp project itself), but not for the directory containing monitor.py.
 
-  The index contains only 11 files from the coderagmcp project:
+  The index contains only 11 files from the ragexmcp project:
   - Build scripts
   - Source files (server.py, indexer.py, etc.)
   - Test files
@@ -486,7 +486,7 @@
 
   To include monitor.py in the semantic search, you need to rebuild the index for the directory containing that file:
 
-  cd /home/jeff/clients/coderagmcp
+  cd /home/jeff/clients/ragexmcp
   uv run scripts/build_semantic_index.py /path/to/directory/containing/monitor.py --force
 
   Or if you want to index multiple directories:
@@ -500,7 +500,7 @@
 > Either there is an error in the index script or you read the wrong chroma DB. Verify you read the chromaDB in /home/jeff/clients/search/contextsearch/opensearch/scripts/docmanager. 
   That is definitely where I ran the index and it returned the correct number and type of files when I created it.
 
-● You're absolutely right! I was checking the wrong ChromaDB. The semantic index was built in the docmanager directory, not in the coderagmcp directory. Let me check the correct
+● You're absolutely right! I was checking the wrong ChromaDB. The semantic index was built in the docmanager directory, not in the ragexmcp directory. Let me check the correct
   database:
 
 ● Read(../search/contextsearch/opensearch/scripts/docmanager/chroma_db/index_metadata.json)
@@ -516,7 +516,7 @@
 ● Bash(cd /home/jeff/clients/search/contextsearch/opensearch/scripts/docmanager && uv run python -c "
       import sys…)
   ⎿  Error: cd to '/home/jeff/clients/search/contextsearch/opensearch/scripts/docmanager' was blocked. For security, Claude Code may only change directories to child directories of the 
-     allowed working directories for this session (including '/home/jeff/clients/coderagmcp').
+     allowed working directories for this session (including '/home/jeff/clients/ragexmcp').
 
 ● Let me run it from the current directory but point to the correct ChromaDB:
 
@@ -573,11 +573,11 @@
   The Architecture Issue
 
   Looking at the code, the MCP server needs to be running from the directory where it was called to use the correct semantic index. When Claude Code runs the MCP server from
-  /home/jeff/clients/coderagmcp, it uses the ChromaDB in that directory, not the one in the docmanager directory.
+  /home/jeff/clients/ragexmcp, it uses the ChromaDB in that directory, not the one in the docmanager directory.
 
   This is why:
   - You built the index in docmanager with 71 files and 1014 symbols
-  - But the MCP server is using the coderagmcp ChromaDB with only 11 files and 77 symbols
+  - But the MCP server is using the ragexmcp ChromaDB with only 11 files and 77 symbols
 
   Solutions
 
@@ -602,7 +602,7 @@
   1. Problem Analysis
 
   - When you run Claude Code from /home/jeff/clients/search/contextsearch/opensearch/scripts/docmanager, the MCP server should use ./chroma_db in that directory
-  - Currently, it's using the ChromaDB from where the server code is located (/home/jeff/clients/coderagmcp)
+  - Currently, it's using the ChromaDB from where the server code is located (/home/jeff/clients/ragexmcp)
 
   2. Fix Strategy
 
@@ -829,7 +829,7 @@
   ⎿  Wrote 208 lines to doc/enhanced_semantic_search_plan.md                                                                                                                              
      # Enhanced Semantic Search Plan
      ## Overview
-     This document outlines a comprehensive plan to enhance the semantic search capabilities of the CodeRAG MCP server. The current implementation only indexes symbols (functions,
+     This document outlines a comprehensive plan to enhance the semantic search capabilities of the RAGex MCP server. The current implementation only indexes symbols (functions,
      classes, methods) which misses critical context like imports, module-level constants, environment variables, and documentation.
      ## Current Limitations
      1. **Missing Module-Level Code**
@@ -851,7 +851,7 @@
      ☐ Update embedding strategy for different content types
      ☐ Add incremental indexing for file changes
 
-● I've created a comprehensive plan document at /home/jeff/clients/coderagmcp/doc/enhanced_semantic_search_plan.md. The plan addresses the key limitations you identified:
+● I've created a comprehensive plan document at /home/jeff/clients/ragexmcp/doc/enhanced_semantic_search_plan.md. The plan addresses the key limitations you identified:
 
   1. Import visibility - The enhanced system will index all import statements, making it possible to search for "files using pandas" or "AWS integration"
   2. Configuration patterns - Module-level constants and environment variables will be indexed with special handling, so searches like "environment variable configuration" will work
@@ -934,7 +934,7 @@
 
 ● Write(doc/cpg_implementation_plan.md)
   ⎿  Wrote 403 lines to doc/cpg_implementation_plan.md                                                                                                                                    
-     # Code Property Graph Implementation Plan for CodeRAG MCP
+     # Code Property Graph Implementation Plan for RAGex MCP
      ## Executive Summary
      This plan outlines the implementation of a lightweight Code Property Graph (CPG) to enhance semantic search capabilities. The CPG will capture code relationships (imports, calls,
      data flow) that are currently invisible to the vector embedding approach.
@@ -1001,20 +1001,20 @@
 
   Option 1: Copy the Codebase + CLAUDE.md (Recommended)
 
-  1. Copy the entire coderagmcp directory:
-  cp -r /home/jeff/clients/coderagmcp /home/jeff/clients/coderagmcp-dev
+  1. Copy the entire ragexmcp directory:
+  cp -r /home/jeff/clients/ragexmcp /home/jeff/clients/ragexmcp-dev
   2. The CLAUDE.md file will come with it, which contains the project-specific instructions I follow
   3. Start Claude Code from the new directory:
-  cd /home/jeff/clients/coderagmcp-dev
+  cd /home/jeff/clients/ragexmcp-dev
   claude
 
   Option 2: Create a Fresh Clone + Copy CLAUDE.md
 
   If it's a git repo:
-  git clone /home/jeff/clients/coderagmcp /home/jeff/clients/coderagmcp-dev
-  cd /home/jeff/clients/coderagmcp-dev
+  git clone /home/jeff/clients/ragexmcp /home/jeff/clients/ragexmcp-dev
+  cd /home/jeff/clients/ragexmcp-dev
   # Copy over any uncommitted work like CLAUDE.md
-  cp /home/jeff/clients/coderagmcp/CLAUDE.md .
+  cp /home/jeff/clients/ragexmcp/CLAUDE.md .
 
   Option 3: Use --resume Feature
 

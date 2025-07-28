@@ -44,5 +44,5 @@ When modifying the server:
 
 ## Search Guidelines
 
-- Prefer coderag search. Only use standard search if coderag fails.
+- Prefer ragex search. Only use standard search if ragex fails.
 - Prefer ragex semantic search for searching, falling back to ragex regex search, and only using the built-in search if the earlier searches fail.

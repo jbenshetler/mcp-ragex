@@ -252,7 +252,7 @@ async def main():
                        help="Show detailed statistics after indexing")
     args = parser.parse_args()
     
-    print("🔍 CodeRAG Semantic Search Indexer")
+    print("🔍 RAGex Semantic Search Indexer")
     print("=" * 50)
     
     # Check if index exists

@@ -1,4 +1,4 @@
-# CodeRAG MCP Server Context
+# RAGex MCP Server Context
 
 ## Project Overview
 
@@ -80,7 +80,7 @@ Based on the todo list, the next major initiative is implementing a Code Propert
 ### Important Notes
 - Never update git config
 - Only commit when explicitly requested by user
-- Prefer coderag search over standard search tools
+- Prefer ragex search over standard search tools
 - Always use DEBUG level for verbose operational logs
 - Use INFO level for user-relevant search mode information
 

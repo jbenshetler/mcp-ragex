@@ -232,7 +232,7 @@ def create_enhanced_embedding(node, cpg):
 
 ## Recommendation
 
-For CodeRAG MCP, implement a **lightweight CPG** focused on:
+For RAGex MCP, implement a **lightweight CPG** focused on:
 1. **Import/dependency graph** (immediate value, low cost)
 2. **Call graph** (high value for understanding code flow)
 3. **Basic data flow** (for configuration tracking)

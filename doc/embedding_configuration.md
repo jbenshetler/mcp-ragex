@@ -1,6 +1,6 @@
 # Embedding Configuration Guide
 
-This guide explains how to configure the embedding models used by CodeRAG MCP's semantic search system.
+This guide explains how to configure the embedding models used by RAGex MCP's semantic search system.
 
 ## Overview
 

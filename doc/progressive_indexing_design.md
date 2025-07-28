@@ -200,7 +200,7 @@ RAGEX_INDEX_HIGH_WATER_MARK=1000   # Pause indexing if queue > this
 ### 1. First Run (No Index)
 ```
 $ ./run_server.sh
-🚀 CodeRAG MCP Server starting...
+🚀 RAGex MCP Server starting...
 📊 No index found - starting progressive indexing
 📁 Found 1,847 files to index
 🏗️ Building index in background (10% complete)

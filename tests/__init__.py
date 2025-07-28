@@ -1,1 +1,1 @@
-# Tests for CodeRAG MCP Server
+# Tests for RAGex MCP Server

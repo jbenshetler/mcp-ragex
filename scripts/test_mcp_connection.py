@@ -148,7 +148,7 @@ def main():
         print(f"Isolated wrapper not found: {isolated_wrapper}")
     
     # Test the original wrapper
-    original_wrapper = script_dir / "mcp_coderag_pwd.sh"
+    original_wrapper = script_dir / "mcp_ragex_pwd.sh"
     if original_wrapper.exists():
         test_wrapper_script(original_wrapper)
 

@@ -19,28 +19,28 @@ from pathlib import Path
 from datetime import datetime
 import sys
 
-# Add parent directory to path to find coderagmcp modules
+# Add parent directory to path to find ragexmcp modules
 script_dir = Path(__file__).parent
-coderagmcp_dir = script_dir.parent
+ragexmcp_dir = script_dir.parent
 
-# Change to the coderagmcp directory so relative imports work
+# Change to the ragexmcp directory so relative imports work
 import os
 original_cwd = os.getcwd()
-os.chdir(str(coderagmcp_dir))
+os.chdir(str(ragexmcp_dir))
 
-# Add both the coderagmcp directory and src to path
-sys.path.insert(0, str(coderagmcp_dir))
-sys.path.insert(0, str(coderagmcp_dir / "src"))
+# Add both the ragexmcp directory and src to path
+sys.path.insert(0, str(ragexmcp_dir))
+sys.path.insert(0, str(ragexmcp_dir / "src"))
 
 try:
     from src.vector_store import CodeVectorStore
     from src.pattern_matcher import PatternMatcher
 except ImportError as e:
-    print(f"❌ Cannot import required modules from coderagmcp directory.")
+    print(f"❌ Cannot import required modules from ragexmcp directory.")
     print(f"   Script location: {script_dir}")
-    print(f"   CodeRAG directory: {coderagmcp_dir}")
+    print(f"   RAGex directory: {ragexmcp_dir}")
     print(f"   Error: {e}")
-    print(f"   Make sure the coderagmcp directory contains src/vector_store.py and src/pattern_matcher.py")
+    print(f"   Make sure the ragexmcp directory contains src/vector_store.py and src/pattern_matcher.py")
     os.chdir(original_cwd)
     sys.exit(1)
 

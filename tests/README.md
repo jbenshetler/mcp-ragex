@@ -1,6 +1,6 @@
-# CodeRAG MCP Tests
+# RAGex MCP Tests
 
-This directory contains tests for the CodeRAG MCP server.
+This directory contains tests for the RAGex MCP server.
 
 ## Test Files
 

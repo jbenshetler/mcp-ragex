@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-echo "Installing MCP CodeRAG Server..."
+echo "Installing MCP RAGex Server..."
 echo "Project root: $PROJECT_ROOT"
 
 # Change to project root

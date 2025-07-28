@@ -1,4 +1,4 @@
-# Code Property Graph Implementation Plan for CodeRAG MCP
+# Code Property Graph Implementation Plan for RAGex MCP
 
 ## Executive Summary
 
