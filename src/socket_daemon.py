@@ -262,7 +262,7 @@ class RagexSocketDaemon:
         import subprocess
         import sys
         
-        cmd = [sys.executable, 'scripts/build_semantic_index.py'] + args
+        cmd = [sys.executable, '/app/scripts/build_semantic_index.py'] + args
         
         env = os.environ.copy()
         env['PYTHONPATH'] = '/app:' + env.get('PYTHONPATH', '')

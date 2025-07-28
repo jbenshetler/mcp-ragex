@@ -317,9 +317,13 @@ except Exception as e:
         export PYTHONPATH=/app:$PYTHONPATH
         export RAGEX_DAEMON_INITIALIZED=1
         
+        # Change to workspace directory so commands run in the correct context
+        cd /workspace
+        
         echo "🚀 Starting RageX socket daemon..."
         echo "📊 Project: ${PROJECT_NAME}"
         echo "💾 Data dir: ${RAGEX_PROJECT_DATA_DIR}"
+        echo "📁 Working directory: $(pwd)"
         
         # Start the socket daemon
         exec python -m src.socket_daemon
