@@ -11,8 +11,18 @@ check_workspace() {
     fi
 }
 
+# Check if we're running inside the daemon (docker exec)
+is_daemon_exec() {
+    # If RAGEX_DAEMON_INITIALIZED is set, we're in a docker exec
+    [ -n "${RAGEX_DAEMON_INITIALIZED}" ]
+}
+
 # Function to setup project-specific data directories
 setup_project_data() {
+    # Skip if already initialized (running via docker exec in daemon)
+    if is_daemon_exec; then
+        return 0
+    fi
     # Generate project identifier from workspace path (if available) or use default
     if [ -d "/workspace" ] && [ -n "$(ls -A /workspace 2>/dev/null)" ]; then
         # Use a hash of the workspace path for consistent project identification
@@ -305,7 +315,43 @@ except Exception as e:
         # Long-running daemon mode for fast command execution
         setup_project_data "$@"
         export PYTHONPATH=/app:$PYTHONPATH
-        exec python -m src.daemon
+        export RAGEX_DAEMON_INITIALIZED=1
+        
+        # Start Python with pre-loaded modules and keep it running
+        exec python -c "
+import os
+import sys
+import time
+
+print('🚀 Loading RageX daemon...')
+start_time = time.time()
+
+# Pre-load heavy dependencies
+import numpy as np
+import torch
+import chromadb
+import sentence_transformers
+import tree_sitter
+
+# Pre-load our modules
+import src.server
+import src.embedding_manager
+import src.vector_store
+import src.pattern_matcher
+import ragex_search
+import scripts.build_semantic_index
+
+load_time = time.time() - start_time
+print(f'✅ Dependencies loaded in {load_time:.2f}s')
+print('📊 Project:', os.environ.get('PROJECT_NAME', 'unknown'))
+print('💾 Data dir:', os.environ.get('RAGEX_PROJECT_DATA_DIR', 'unknown'))
+print('')
+print('Daemon ready for commands via docker exec')
+
+# Keep the process alive
+while True:
+    time.sleep(3600)
+"
         ;;
     *)
         # Default to MCP server
