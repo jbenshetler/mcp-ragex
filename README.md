@@ -1,19 +1,19 @@
-# CodeRAG MCP Server
+# RAGex MCP Server
 
 A secure, intelligent **MCP (Model Context Protocol) server** for **Claude** and AI assistants, providing semantic code search using **RAG**, **tree-sitter**, and **ripgrep**. Search code using natural language, symbols, or regex patterns.
 
-## What is CodeRAG?
+## What is RAGex?
 
-CodeRAG is an **MCP server** that enhances **Claude Code** and other AI coding assistants with advanced code search capabilities. It combines:
+RAGex is an **MCP server** that enhances **Claude Code** and other AI coding assistants with advanced code search capabilities. It combines:
 - **RAG (Retrieval-Augmented Generation)** for semantic code search
 - **Tree-sitter** for language-aware symbol search  
 - **Ripgrep** for blazing-fast regex search
 
-## Why CodeRAG?
+## Why RAGex?
 
-Unlike simple grep-based tools, CodeRAG understands code semantically:
+Unlike simple grep-based tools, RAGex understands code semantically:
 
-| Feature | grep/ripgrep | CodeRAG |
+| Feature | grep/ripgrep | RAGex |
 |---------|-------------|---------|
 | Find "auth functions" | ❌ | ✅ Semantic search |
 | Find `validateUser()` | ✅ | ✅ Symbol-aware search |
@@ -281,13 +281,13 @@ claude mcp add ragex /path/to/mcp-ragex/mcp_server_isolated.sh --scope project
 #### Verify Semantic Search
 
 After registration and restart, verify semantic search is working:
-1. Check `/tmp/mcp_coderag.log` for "Semantic search ENABLED" message
+1. Check `/tmp/mcp_ragex.log` for "Semantic search ENABLED" message
 2. Test with: `search_code(query="your search terms", mode="semantic")`
 
 #### Alternative Registration (Legacy)
 ```bash
 # Uses current project's Python environment (may have missing dependencies)
-claude mcp add ragex /path/to/mcp-ragex/mcp_coderag_pwd.sh --scope project
+claude mcp add ragex /path/to/mcp-ragex/mcp_ragex_pwd.sh --scope project
 ```
 
 #### Unregister MCP Server
@@ -302,7 +302,7 @@ claude mcp remove ragex --scope project
 uv run src/server.py
 
 # Or using the wrapper script
-./mcp_coderag.sh
+./mcp_ragex.sh
 ```
 
 ### Testing

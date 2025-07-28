@@ -41,11 +41,11 @@ except ImportError:
 configure_logging()
 
 # Get logger for this module
-logger = get_logger("coderag-mcp")
+logger = get_logger("ragex-mcp")
 
 # Log startup info
 logger.info("="*50)
-logger.info("MCP CodeRAG Server Started")
+logger.info("MCP RAGex Server Started")
 logger.info(f"Time: {datetime.now()}")
 logger.info(f"CWD: {os.getcwd()}")
 logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
@@ -275,7 +275,7 @@ class RipgrepSearcher:
 
 
 # Initialize server
-app = Server("coderag-mcp")
+app = Server("ragex-mcp")
 
 # Initialize shared pattern matcher
 pattern_matcher = PatternMatcher()
@@ -1005,7 +1005,7 @@ async def execute_semantic_search(query: str, file_types: Optional[List[str]], p
     if not semantic_available or not semantic_searcher:
         error_msg = "Semantic search is not available. "
         error_msg += "ChromaDB index may not be found or dependencies missing. "
-        error_msg += "Check /tmp/mcp_coderag.log for initialization details."
+        error_msg += "Check /tmp/mcp_ragex.log for initialization details."
         logger.error(error_msg)
         return {
             "success": False,
@@ -1157,7 +1157,7 @@ async def format_search_results(result: Dict, limit: int, format: str) -> List[t
         # Add debugging info if semantic search was attempted but failed
         if result.get("search_mode") == "semantic" and result.get("requested_mode") == "semantic":
             response_text += "\n**Debugging info**: Semantic search was attempted but may have failed.\n"
-            response_text += "Check /tmp/mcp_coderag.log for details about ChromaDB initialization.\n"
+            response_text += "Check /tmp/mcp_ragex.log for details about ChromaDB initialization.\n"
         
         # Show error if semantic search was unavailable
         if result.get("semantic_unavailable"):
@@ -1179,7 +1179,7 @@ async def main():
             read_stream,
             write_stream,
             InitializationOptions(
-                server_name="coderag-mcp",
+                server_name="ragex-mcp",
                 server_version="0.1.0",
                 capabilities=app.get_capabilities(
                     notification_options=NotificationOptions(),

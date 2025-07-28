@@ -73,6 +73,8 @@ case "$1" in
         shift
         # Pass the workspace directory and ensure correct persist dir
         export RAGEX_INDEX_PATH="/workspace"
+        # Suppress .mcpignore warnings for index command
+        export RAGEX_IGNOREFILE_WARNING=false
         
         # Parse arguments properly
         path=""

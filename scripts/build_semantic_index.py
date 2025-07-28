@@ -25,34 +25,46 @@ Usage:
 import asyncio
 import sys
 import time
+import os
 from pathlib import Path
 from datetime import datetime
 import json
 import argparse
 import logging
 
-# Add parent directory to path to find coderagmcp modules
+# Configure logging based on environment variable
+log_level = os.environ.get('RAGEX_LOG_LEVEL', 'WARN').upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.WARN), format='%(message)s')
+
+# Suppress verbose logging from all components unless overridden
+for logger_name in [
+    "code-indexer", "pattern-matcher", "vector-store", "embedding-manager",
+    "sentence_transformers", "src.ignore.manager", "ignore.manager", 
+    "embedding-config", "chromadb", "transformers", "torch"
+]:
+    logging.getLogger(logger_name).setLevel(getattr(logging, log_level, logging.WARN))
+
+# Add parent directory to path to find ragex modules
 script_dir = Path(__file__).parent
-coderagmcp_dir = script_dir.parent
+ragex_dir = script_dir.parent
 
-# Change to the coderagmcp directory so relative imports work
-import os
+# Change to the ragex directory so relative imports work
 original_cwd = os.getcwd()
-os.chdir(str(coderagmcp_dir))
+os.chdir(str(ragex_dir))
 
-# Add both the coderagmcp directory and src to path
-sys.path.insert(0, str(coderagmcp_dir))
-sys.path.insert(0, str(coderagmcp_dir / "src"))
+# Add both the ragex directory and src to path
+sys.path.insert(0, str(ragex_dir))
+sys.path.insert(0, str(ragex_dir / "src"))
 
 try:
     from src.indexer import CodeIndexer
     from src.pattern_matcher import PatternMatcher
 except ImportError as e:
-    print(f"❌ Cannot import required modules from coderagmcp directory.")
+    print(f"❌ Cannot import required modules from ragex directory.")
     print(f"   Script location: {script_dir}")
-    print(f"   CodeRAG directory: {coderagmcp_dir}")
+    print(f"   RAGex directory: {ragex_dir}")
     print(f"   Error: {e}")
-    print(f"   Make sure the coderagmcp directory contains src/indexer.py and src/pattern_matcher.py")
+    print(f"   Make sure the ragex directory contains src/indexer.py and src/pattern_matcher.py")
     os.chdir(original_cwd)
     sys.exit(1)
 
@@ -68,6 +80,29 @@ logger = logging.getLogger("build-index")
 # Enable debug logging for pattern matcher only
 pattern_logger = logging.getLogger("pattern-matcher")
 pattern_logger.setLevel(logging.INFO)  # Changed from DEBUG to reduce noise
+
+
+def container_to_host_path(path: str) -> str:
+    """Convert container path to host path for display."""
+    # Get the workspace path from environment (passed from host)
+    workspace_host = os.environ.get('WORKSPACE_PATH', '')
+    
+    # If the path starts with /workspace, replace it with the host path
+    if isinstance(path, Path):
+        path = str(path)
+    
+    if path.startswith('/workspace/'):
+        relative_path = path[11:]  # Remove '/workspace/'
+        if workspace_host:
+            return os.path.join(workspace_host, relative_path)
+        else:
+            # Fallback to relative path
+            return relative_path
+    elif path == '/workspace':
+        return workspace_host or '.'
+    
+    # Return as-is if not a workspace path
+    return path
 
 
 async def main():
@@ -87,7 +122,7 @@ async def main():
                        help="Model preset: fast, balanced, or accurate (default: fast)")
     args = parser.parse_args()
     
-    print("🔍 CodeRAG Semantic Search Indexer")
+    print("🔍 RAGex Semantic Search Indexer")
     print("=" * 50)
     
     # Resolve paths relative to the original working directory
@@ -284,7 +319,7 @@ async def main():
     if result.get('failed_files'):
         print(f"\n⚠️  Failed to process {len(result['failed_files'])} files:")
         for f in result['failed_files'][:5]:
-            print(f"   - {f}")
+            print(f"   - {container_to_host_path(f)}")
         if len(result['failed_files']) > 5:
             print(f"   ... and {len(result['failed_files']) - 5} more")
     

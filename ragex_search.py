@@ -35,6 +35,26 @@ from src.server import RipgrepSearcher
 from src.tree_sitter_enhancer import TreeSitterEnhancer
 from src.pattern_matcher import PatternMatcher
 
+
+def container_to_host_path(path: str) -> str:
+    """Convert container path to host path for display."""
+    # Get the workspace path from environment (passed from host)
+    workspace_host = os.environ.get('WORKSPACE_PATH', '')
+    
+    # If the path starts with /workspace, replace it with the host path
+    if path.startswith('/workspace/'):
+        relative_path = path[11:]  # Remove '/workspace/'
+        if workspace_host:
+            return os.path.join(workspace_host, relative_path)
+        else:
+            # Fallback to relative path
+            return relative_path
+    elif path == '/workspace':
+        return workspace_host or '.'
+    
+    # Return as-is if not a workspace path
+    return path
+
 # Try to import semantic search components
 try:
     from src.embedding_manager import EmbeddingManager
@@ -170,7 +190,7 @@ class SearchClient:
     def format_output(self, matches, before_context=0, after_context=0, mode="regex", show_type=True):
         """Format matches in grep-like output"""
         for match in matches:
-            file_path = match['file']
+            file_path = container_to_host_path(match['file'])
             line_num = match['line']
             
             # For semantic search, show the symbol with context
@@ -186,7 +206,8 @@ class SearchClient:
                     # Show context before the symbol
                     if before_context > 0:
                         start = max(1, line_num - before_context)
-                        context_before = self.read_file_lines(file_path, start, line_num - 1)
+                        # Use original container path for reading
+                        context_before = self.read_file_lines(match['file'], start, line_num - 1)
                         for i, line in enumerate(context_before, start=start):
                             print(f"{file_path}:{i}-{line.rstrip()}")
                     
@@ -200,7 +221,7 @@ class SearchClient:
                         # Calculate end line of symbol
                         symbol_end_line = line_num + len(symbol_lines) - 1
                         end = symbol_end_line + after_context
-                        context_after = self.read_file_lines(file_path, symbol_end_line + 1, end)
+                        context_after = self.read_file_lines(match['file'], symbol_end_line + 1, end)
                         for i, line in enumerate(context_after, start=symbol_end_line + 1):
                             print(f"{file_path}:{i}+{line.rstrip()}")
                 else:
@@ -221,7 +242,7 @@ class SearchClient:
                     print(f"{file_path}:{line_num}:{match['line_content'].rstrip()}")
                 else:
                     # Read the line from file
-                    lines = self.read_file_lines(file_path, line_num, line_num)
+                    lines = self.read_file_lines(match['file'], line_num, line_num)
                     if lines:
                         print(f"{file_path}:{line_num}:{lines[0].rstrip()}")
                 
@@ -230,14 +251,14 @@ class SearchClient:
                     # Show before context
                     if before_context > 0:
                         start = max(1, line_num - before_context)
-                        context_before = self.read_file_lines(file_path, start, line_num - 1)
+                        context_before = self.read_file_lines(match['file'], start, line_num - 1)
                         for i, line in enumerate(context_before, start=start):
                             print(f"{file_path}:{i}-{line.rstrip()}")
                     
                     # Show after context
                     if after_context > 0:
                         end = line_num + after_context
-                        context_after = self.read_file_lines(file_path, line_num + 1, end)
+                        context_after = self.read_file_lines(match['file'], line_num + 1, end)
                         for i, line in enumerate(context_after, start=line_num + 1):
                             print(f"{file_path}:{i}+{line.rstrip()}")
             

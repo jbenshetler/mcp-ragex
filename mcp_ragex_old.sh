@@ -1,5 +1,5 @@
 #!/bin/bash
-# MCP Server wrapper script for CodeRAG
+# MCP Server wrapper script for RAGex
 # This runs the server from the current working directory
 
 # Get the directory where this script is located

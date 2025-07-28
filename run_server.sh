@@ -21,7 +21,7 @@ fi
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Run the server
-echo "Starting CodeRAG MCP Server..."
+echo "Starting RAGex MCP Server..."
 echo "Using ripgrep: $(which rg)"
 echo "Working directory: $(pwd)"
 echo ""
