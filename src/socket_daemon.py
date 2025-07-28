@@ -266,6 +266,7 @@ class RagexSocketDaemon:
         
         env = os.environ.copy()
         env['PYTHONPATH'] = '/app:' + env.get('PYTHONPATH', '')
+        env['RAGEX_WORKING_DIR'] = '/workspace'  # Tell the script to use /workspace as working dir
         
         result = await asyncio.create_subprocess_exec(
             *cmd,

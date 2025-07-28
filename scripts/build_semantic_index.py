@@ -49,7 +49,8 @@ script_dir = Path(__file__).parent
 ragex_dir = script_dir.parent
 
 # Change to the ragex directory so relative imports work
-original_cwd = os.getcwd()
+# Use RAGEX_WORKING_DIR if set (when running via socket daemon)
+original_cwd = os.environ.get('RAGEX_WORKING_DIR', os.getcwd())
 os.chdir(str(ragex_dir))
 
 # Add both the ragex directory and src to path
