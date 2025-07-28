@@ -317,41 +317,14 @@ except Exception as e:
         export PYTHONPATH=/app:$PYTHONPATH
         export RAGEX_DAEMON_INITIALIZED=1
         
-        # Start Python with pre-loaded modules and keep it running
-        exec python -c "
-import os
-import sys
-import time
-
-print('🚀 Loading RageX daemon...')
-start_time = time.time()
-
-# Pre-load heavy dependencies
-import numpy as np
-import torch
-import chromadb
-import sentence_transformers
-import tree_sitter
-
-# Pre-load our modules
-import src.server
-import src.embedding_manager
-import src.vector_store
-import src.pattern_matcher
-import ragex_search
-import scripts.build_semantic_index
-
-load_time = time.time() - start_time
-print(f'✅ Dependencies loaded in {load_time:.2f}s')
-print('📊 Project:', os.environ.get('PROJECT_NAME', 'unknown'))
-print('💾 Data dir:', os.environ.get('RAGEX_PROJECT_DATA_DIR', 'unknown'))
-print('')
-print('Daemon ready for commands via docker exec')
-
-# Keep the process alive
-while True:
-    time.sleep(3600)
-"
+        echo "🚀 RageX daemon started"
+        echo "📊 Project: ${PROJECT_NAME}"
+        echo "💾 Data dir: ${RAGEX_PROJECT_DATA_DIR}"
+        echo ""
+        echo "Daemon ready for commands via docker exec"
+        
+        # Keep the container alive
+        exec sleep infinity
         ;;
     *)
         # Default to MCP server

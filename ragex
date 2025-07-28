@@ -70,6 +70,12 @@ if [ $# -gt 0 ]; then
     shift
 fi
 
+# Debug output (commented out for production)
+# if [ "${RAGEX_DEBUG}" = "true" ]; then
+#     echo "[DEBUG] Command: $COMMAND, Args: $@" >&2
+#     echo "[DEBUG] Docker image: ${DOCKER_IMAGE}" >&2
+# fi
+
 # Handle help/usage
 if [ "$COMMAND" = "help" ] || [ "$COMMAND" = "--help" ] || [ "$COMMAND" = "-h" ]; then
     show_usage
@@ -100,10 +106,10 @@ start_daemon() {
     fi
     
     echo "🚀 Starting ragex daemon for ${PROJECT_NAME}..."
-    if [ "${RAGEX_DEBUG}" = "true" ]; then
-        echo "[DEBUG] Starting daemon container: ${DAEMON_CONTAINER_NAME}" >&2
-        echo "[DEBUG] Docker image: ${DOCKER_IMAGE}" >&2
-    fi
+    # if [ "${RAGEX_DEBUG}" = "true" ]; then
+    #     echo "[DEBUG] Starting daemon container: ${DAEMON_CONTAINER_NAME}" >&2
+    #     echo "[DEBUG] Docker image: ${DOCKER_IMAGE}" >&2
+    # fi
     
     docker run -d \
         --name "${DAEMON_CONTAINER_NAME}" \
@@ -114,7 +120,7 @@ start_daemon() {
         -e "PROJECT_NAME=${PROJECT_ID}" \
         -e "RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}" \
         -e "HOST_HOME=${HOME}" \
-        "${DOCKER_IMAGE}" daemon > /dev/null 2>&1
+        "${DOCKER_IMAGE}" daemon > /dev/null
     
     # Wait for daemon to be ready
     sleep 2
@@ -156,21 +162,22 @@ exec_via_daemon() {
     local cmd="$1"
     shift
     
-    # Debug output
-    if [ "${RAGEX_DEBUG}" = "true" ]; then
-        echo "[DEBUG] exec_via_daemon: cmd=$cmd, daemon_name=${DAEMON_CONTAINER_NAME}" >&2
-    fi
+    # Debug output (commented out for production)
+    # if [ "${RAGEX_DEBUG}" = "true" ]; then
+    #     echo "[DEBUG] exec_via_daemon: cmd=$cmd, daemon_name=${DAEMON_CONTAINER_NAME}" >&2
+    # fi
     
     # Start daemon if not running
     if ! is_daemon_running; then
-        if [ "${RAGEX_DEBUG}" = "true" ]; then
-            echo "[DEBUG] Daemon not running, starting..." >&2
-        fi
+        # if [ "${RAGEX_DEBUG}" = "true" ]; then
+        #     echo "[DEBUG] Daemon not running, starting..." >&2
+        # fi
         start_daemon || return 1
     else
-        if [ "${RAGEX_DEBUG}" = "true" ]; then
-            echo "[DEBUG] Daemon already running" >&2
-        fi
+        # if [ "${RAGEX_DEBUG}" = "true" ]; then
+        #     echo "[DEBUG] Daemon already running" >&2
+        # fi
+        :  # No-op to ensure else block has content
     fi
     
     # Determine if we need TTY
@@ -179,11 +186,11 @@ exec_via_daemon() {
         EXEC_FLAGS="-it"
     fi
     
-    # Execute command via docker exec
-    if [ "${RAGEX_DEBUG}" = "true" ]; then
-        echo "[DEBUG] Running: docker exec $EXEC_FLAGS ${DAEMON_CONTAINER_NAME} $cmd $@" >&2
-    fi
-    docker exec $EXEC_FLAGS "${DAEMON_CONTAINER_NAME}" "$cmd" "$@"
+    # Execute command via docker exec through entrypoint.sh
+    # if [ "${RAGEX_DEBUG}" = "true" ]; then
+    #     echo "[DEBUG] Running: docker exec $EXEC_FLAGS ${DAEMON_CONTAINER_NAME} /entrypoint.sh $cmd $@" >&2
+    # fi
+    docker exec $EXEC_FLAGS "${DAEMON_CONTAINER_NAME}" /entrypoint.sh "$cmd" "$@"
 }
 
 # Build Docker command
