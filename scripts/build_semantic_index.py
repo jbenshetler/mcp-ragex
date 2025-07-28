@@ -309,9 +309,9 @@ async def main():
             logger.warning(f"Could not get detailed stats: {e}")
     
     print(f"\n💡 Next steps:")
-    print(f"   1. Start the MCP server: cd {coderagmcp_dir} && ./run_server.sh")
-    print(f"   2. Use semantic_search in Claude Code")
-    print(f"   3. Re-run this script when codebase changes significantly")
+    print(f"   1. Register with Claude Code: ragex register claude")
+    print(f"   2. Use ragex search commands in Claude Code")
+    print(f"   3. Re-index when codebase changes: ragex index . --force")
     
     # Download model if needed
     if result.get('symbols_indexed', 0) > 0:

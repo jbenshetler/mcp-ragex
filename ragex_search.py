@@ -29,8 +29,7 @@ for logger_name in [
 ]:
     logging.getLogger(logger_name).setLevel(getattr(logging, log_level, logging.WARN))
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Path setup handled by PYTHONPATH in Docker, no need to manipulate sys.path
 
 from src.server import RipgrepSearcher
 from src.tree_sitter_enhancer import TreeSitterEnhancer

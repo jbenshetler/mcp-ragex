@@ -195,6 +195,14 @@ class CodeIndexer:
         Returns:
             Dictionary with indexing statistics
         """
+        # Check for ignore file in the first directory path (if any directories provided)
+        for path_str in paths:
+            path = Path(path_str).resolve()
+            if path.is_dir():
+                # Check and warn once for the top-level directory being indexed
+                PatternMatcher.check_ignore_file(path)
+                break
+        
         # Check if index exists
         stats = self.vector_store.get_statistics()
         if not force and stats['total_symbols'] > 0:

@@ -253,20 +253,8 @@ class IgnoreManager:
         # Find all ignore files
         ignore_files = self._file_loader.find_ignore_files(self.root_path)
         
-        # Check if we should warn about missing root .mcpignore
-        root_ignore = self.root_path / self.ignore_filename
-        if not root_ignore.exists() and self.default_patterns:
-            # Check environment variable
-            warn_env = os.environ.get('RAGEX_IGNOREFILE_WARNING', 'true').lower()
-            should_warn = warn_env not in ('false', '0', 'no', 'off')
-            
-            if should_warn:
-                logger.warning(
-                    f"No {self.ignore_filename} found at {self.root_path}. "
-                    f"Using built-in default exclusions. "
-                    f"Run 'ragex init' to create {self.ignore_filename} with defaults. "
-                    f"Set RAGEX_IGNOREFILE_WARNING=false to disable this warning."
-                )
+        # Note: Warning about missing ignore files is now handled at a higher level
+        # by PatternMatcher.check_ignore_file() to avoid duplicate warnings
         
         logger.info(f"Found {len(ignore_files)} ignore files")
         

@@ -8,17 +8,17 @@ backward compatibility with the original API.
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Union
 
 import pathspec
 
 # Import the enhanced ignore system
 try:
+    from src.ignore import IgnoreManager, IGNORE_FILENAME
+    from src.ignore.constants import DEFAULT_EXCLUSIONS as ENHANCED_DEFAULT_EXCLUSIONS
+except ImportError:
     from .ignore import IgnoreManager, IGNORE_FILENAME
     from .ignore.constants import DEFAULT_EXCLUSIONS as ENHANCED_DEFAULT_EXCLUSIONS
-except ImportError:
-    from ignore import IgnoreManager, IGNORE_FILENAME
-    from ignore.constants import DEFAULT_EXCLUSIONS as ENHANCED_DEFAULT_EXCLUSIONS
 
 logger = logging.getLogger("pattern-matcher")
 
@@ -31,6 +31,35 @@ class PatternMatcher:
     backward compatibility. All the new features (multi-level .mcpignore files,
     comprehensive defaults, hot reloading) are available through this class.
     """
+    
+    @classmethod
+    def check_ignore_file(cls, directory: Union[str, Path]) -> bool:
+        """
+        Check if an ignore file exists in the given directory and warn if not.
+        
+        Args:
+            directory: Directory to check for ignore file
+            
+        Returns:
+            True if ignore file exists, False otherwise
+        """
+        directory = Path(directory)
+        ignore_file = directory / IGNORE_FILENAME
+        
+        if not ignore_file.exists():
+            # Check environment variable
+            warn_env = os.environ.get('RAGEX_IGNOREFILE_WARNING', 'true').lower()
+            should_warn = warn_env not in ('false', '0', 'no', 'off')
+            
+            if should_warn:
+                logger.warning(
+                    f"No {IGNORE_FILENAME} found at {directory}. "
+                    f"Using built-in default exclusions. "
+                    f"Run 'ragex init' to create {IGNORE_FILENAME} with defaults. "
+                    f"Set RAGEX_IGNOREFILE_WARNING=false to disable this warning."
+                )
+            return False
+        return True
     
     # Keep old defaults for reference/compatibility
     # The enhanced system has much more comprehensive defaults

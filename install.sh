@@ -54,6 +54,7 @@ Commands:
   index <path>         Index a directory for semantic search
   info                 Show project information and statistics
   list-projects        List all indexed projects
+  register             Show registration options for AI assistants
   search <query>       Search indexed code (semantic search)
   search-symbol <name> Search for function/class names
   search-regex <pat>   Search using regular expressions
@@ -101,6 +102,7 @@ DOCKER_ARGS+=(
     "-e" "WORKSPACE_PATH=${WORKSPACE_PATH}"
     "-e" "PROJECT_NAME=${PROJECT_ID}"
     "-e" "RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}"
+    "-e" "HOST_HOME=${HOME}"
 )
 
 if [ "$1" = "bash" ] || [ "$1" = "sh" ]; then

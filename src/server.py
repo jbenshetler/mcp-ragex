@@ -23,16 +23,16 @@ import mcp.types as types
 
 # Import Tree-sitter enhancer and utilities
 try:
+    from src.tree_sitter_enhancer import TreeSitterEnhancer
+    from src.pattern_matcher import PatternMatcher
+    from src.utils import configure_logging, get_logger
+    from src.watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
+except ImportError:
     from .tree_sitter_enhancer import TreeSitterEnhancer
     from .pattern_matcher import PatternMatcher
     from .utils import configure_logging, get_logger
-    from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
-except ImportError:
-    from tree_sitter_enhancer import TreeSitterEnhancer
-    from pattern_matcher import PatternMatcher
-    from utils import configure_logging, get_logger
     try:
-        from watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
+        from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
     except ImportError:
         WATCHDOG_AVAILABLE = False
         WatchdogMonitor = None
@@ -333,19 +333,16 @@ try:
     import os
     from pathlib import Path
     
-    # Add the current directory to the path for imports
-    current_dir = Path(__file__).parent
-    if str(current_dir) not in sys.path:
-        sys.path.insert(0, str(current_dir))
-    
-    # Try importing the semantic search modules
+    # Try importing the semantic search modules with absolute imports
     try:
-        from embedding_manager import EmbeddingManager
-        from vector_store import CodeVectorStore
-        from indexer import CodeIndexer
+        from src.embedding_manager import EmbeddingManager
+        from src.vector_store import CodeVectorStore
+        from src.indexer import CodeIndexer
     except ImportError:
-        # If that fails, try with full path
-        import importlib.util
+        # Try relative imports as fallback
+        from .embedding_manager import EmbeddingManager
+        from .vector_store import CodeVectorStore
+        from .indexer import CodeIndexer
         
         def load_module(name, path):
             spec = importlib.util.spec_from_file_location(name, path)

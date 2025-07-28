@@ -55,12 +55,10 @@ EOF
     fi
 }
 
-# Initialize project-specific data directories
-setup_project_data "$@"
-
 # Handle different commands
 case "$1" in
     "init")
+        setup_project_data "$@"
         check_workspace
         # Create .mcpignore in the workspace
         if [ -f "/workspace/.mcpignore" ]; then
@@ -70,6 +68,7 @@ case "$1" in
         fi
         ;;
     "index")
+        setup_project_data "$@"
         check_workspace
         shift
         # Pass the workspace directory and ensure correct persist dir
@@ -106,9 +105,11 @@ case "$1" in
         exec python scripts/build_semantic_index.py "$path" "${args[@]}"
         ;;
     "serve"|"server")
+        setup_project_data "$@"
         exec python -m src.server
         ;;
     "search")
+        setup_project_data "$@"
         shift
         export RAGEX_CHROMA_PERSIST_DIR="${RAGEX_PROJECT_DATA_DIR}/chroma_db"
         # Suppress .mcpignore warnings for search commands
@@ -152,7 +153,107 @@ case "$1" in
             exit 1
         fi
         ;;
+    "register")
+        shift
+        # Handle register command and subcommands
+        case "$1" in
+            "claude")
+                shift
+                # Parse arguments
+                scope="project"  # default
+                eval_mode=false
+                while [ $# -gt 0 ]; do
+                    case "$1" in
+                        --scope)
+                            shift
+                            if [ -n "$1" ]; then
+                                scope="$1"
+                                shift
+                            else
+                                echo "❌ Error: --scope requires an argument (project or global)" >&2
+                                exit 1
+                            fi
+                            ;;
+                        --eval)
+                            eval_mode=true
+                            shift
+                            ;;
+                        *)
+                            echo "❌ Error: Unknown argument: $1" >&2
+                            echo "Usage: ragex register claude [--scope project|global] [--eval]" >&2
+                            exit 1
+                            ;;
+                    esac
+                done
+                
+                # Validate scope
+                if [ "$scope" != "project" ] && [ "$scope" != "global" ]; then
+                    echo "❌ Error: Invalid scope '$scope'. Must be 'project' or 'global'" >&2
+                    exit 1
+                fi
+                
+                # Get host home directory (passed through Docker)
+                # Use HOST_HOME if available, otherwise fall back to constructing path
+                if [ -n "${HOST_HOME}" ]; then
+                    RAGEX_BIN="${HOST_HOME}/.local/bin/ragex"
+                else
+                    # Fallback: construct from USER if HOST_HOME not set
+                    RAGEX_BIN="/home/${USER}/.local/bin/ragex"
+                fi
+                
+                # Build the command
+                if [ "$scope" = "global" ]; then
+                    REGISTER_CMD="claude mcp add ragex ${RAGEX_BIN}"
+                else
+                    REGISTER_CMD="claude mcp add ragex ${RAGEX_BIN} --scope project"
+                fi
+                
+                # Output based on mode
+                if [ "$eval_mode" = true ]; then
+                    # Machine-readable output for eval
+                    echo "$REGISTER_CMD"
+                else
+                    # Human-readable output
+                    echo "📝 To register MCP-RageX with Claude Code:"
+                    echo ""
+                    echo "  $REGISTER_CMD"
+                    echo ""
+                    echo "Run this command in your terminal to enable ragex in Claude Code."
+                    if [ "$scope" = "project" ]; then
+                        echo "This will enable ragex commands for all your projects."
+                    else
+                        echo "This will enable ragex commands globally."
+                    fi
+                fi
+                ;;
+            "")
+                # Show available registration options
+                echo "🔧 MCP-RageX Registration"
+                echo ""
+                echo "Available registration targets:"
+                echo "  claude    - Register with Claude Code"
+                echo ""
+                echo "Usage:"
+                echo "  ragex register              # Show this help"
+                echo "  ragex register claude       # Register with Claude Code (project scope)"
+                echo "  ragex register claude --scope global   # Register globally"
+                echo "  ragex register claude --scope project  # Explicitly set project scope"
+                echo "  ragex register claude --eval           # Output command only (for eval)"
+                echo ""
+                echo "Examples:"
+                echo "  ragex register claude            # Show registration instructions"
+                echo "  eval \$(ragex register claude --eval)  # Register automatically"
+                ;;
+            *)
+                echo "❌ Error: Unknown registration target: $1"
+                echo "Available targets: claude"
+                echo "Run 'ragex register' for more information."
+                exit 1
+                ;;
+        esac
+        ;;
     "info")
+        setup_project_data "$@"
         # Show project info without needing workspace
         if [ -f "${RAGEX_PROJECT_DATA_DIR}/project_info.json" ]; then
             echo "📊 Project Information:"
@@ -186,6 +287,7 @@ except Exception as e:
         fi
         ;;
     "search-symbol"|"search-regex")
+        setup_project_data "$@"
         shift
         export RAGEX_CHROMA_PERSIST_DIR="${RAGEX_PROJECT_DATA_DIR}/chroma_db"
         # Suppress .mcpignore warnings for search commands
@@ -199,6 +301,7 @@ except Exception as e:
         ;;
     *)
         # Default to MCP server
+        setup_project_data "$@"
         exec python -m src.server "$@"
         ;;
 esac

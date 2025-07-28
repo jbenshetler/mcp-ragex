@@ -40,7 +40,7 @@ RUN mkdir -p /workspace && chown ragex:ragex /workspace
 USER ragex
 
 # Environment variables
-ENV PYTHONPATH=/app:/app/src
+ENV PYTHONPATH=/app
 ENV PATH=/home/ragex/.local/bin:$PATH
 ENV RAGEX_MODELS_DIR=/data/models
 ENV RAGEX_CHROMA_PERSIST_DIR=/data/chroma_db

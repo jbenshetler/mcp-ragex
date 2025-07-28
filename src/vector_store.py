@@ -12,9 +12,9 @@ import logging
 from pathlib import Path
 
 try:
-    from .embedding_config import EmbeddingConfig
+    from src.embedding_config import EmbeddingConfig
 except ImportError:
-    from embedding_config import EmbeddingConfig
+    from .embedding_config import EmbeddingConfig
 
 logger = logging.getLogger("vector-store")
 
