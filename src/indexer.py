@@ -9,26 +9,20 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable, Union
 import logging
 from tqdm import tqdm
+import warnings
 
-try:
-    from .tree_sitter_enhancer import TreeSitterEnhancer
-    from .embedding_manager import EmbeddingManager
-    from .vector_store import CodeVectorStore
-    from .pattern_matcher import PatternMatcher
-except ImportError:
-    # Fallback for direct execution
-    from tree_sitter_enhancer import TreeSitterEnhancer
-    from embedding_manager import EmbeddingManager
-    from vector_store import CodeVectorStore
-    from pattern_matcher import PatternMatcher
+# Suppress the specific FutureWarning about encoder_attention_mask
+warnings.filterwarnings("ignore", message=".*encoder_attention_mask.*is deprecated.*", category=FutureWarning)
+
+from src.tree_sitter_enhancer import TreeSitterEnhancer
+from src.embedding_manager import EmbeddingManager
+from src.vector_store import CodeVectorStore
+from src.pattern_matcher import PatternMatcher
 
 logger = logging.getLogger("code-indexer")
 
 
-try:
-    from .embedding_config import EmbeddingConfig
-except ImportError:
-    from embedding_config import EmbeddingConfig
+from src.embedding_config import EmbeddingConfig
 
 
 class CodeIndexer:
@@ -73,7 +67,11 @@ class CodeIndexer:
             self.config._persist_directory = persist_directory
         
         # Initialize components with shared config
-        self.tree_sitter = TreeSitterEnhancer()
+        try:
+            self.tree_sitter = TreeSitterEnhancer()
+        except Exception as e:
+            logger.warning(f"Tree-sitter enhancer disabled due to: {e}")
+            self.tree_sitter = None
         self.embedder = EmbeddingManager(config=self.config)
         self.vector_store = CodeVectorStore(config=self.config)
         self.pattern_matcher = PatternMatcher()
@@ -106,6 +104,10 @@ class CodeIndexer:
                 if path.suffix in self.supported_extensions:
                     all_files.append(path)
             elif path.is_dir():
+                # Set pattern matcher working directory to the directory being indexed
+                # This ensures patterns like .venv/** work correctly
+                self.pattern_matcher.set_working_directory(str(path))
+                
                 # Directory - search recursively
                 for ext in self.supported_extensions:
                     for file_path in path.rglob(f"*{ext}"):

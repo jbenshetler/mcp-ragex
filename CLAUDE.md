@@ -13,6 +13,7 @@ This is a Model Context Protocol (MCP) server that provides code search function
 - **Install dependencies**: `pip install -r requirements.txt` or `pip install -e .`
 - **Run python programs**: `uv run`
 - **Install packages**: `uv install`
+- Use uv to install Python packages, not pip.
 
 ## Architecture
 

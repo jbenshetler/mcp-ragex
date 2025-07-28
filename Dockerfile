@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM python:3.10-slim as builder
+FROM python:3.10-slim AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -52,7 +52,7 @@ RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV RAGEX_DATA_DIR=/data
-ENV TRANSFORMERS_CACHE=/data/models
+ENV HF_HOME=/data/models
 ENV SENTENCE_TRANSFORMERS_HOME=/data/models
 ENV DOCKER_CONTAINER=true
 ENV LOG_LEVEL=INFO

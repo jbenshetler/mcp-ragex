@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 Pattern matching for file exclusions using gitignore-style patterns
+
+This module now uses the enhanced ignore system internally while maintaining
+backward compatibility with the original API.
 """
 
 import logging
@@ -9,12 +12,28 @@ from typing import List, Optional, Dict, Any, Tuple
 
 import pathspec
 
+# Import the enhanced ignore system
+try:
+    from .ignore import IgnoreManager, IGNORE_FILENAME
+    from .ignore.constants import DEFAULT_EXCLUSIONS as ENHANCED_DEFAULT_EXCLUSIONS
+except ImportError:
+    from ignore import IgnoreManager, IGNORE_FILENAME
+    from ignore.constants import DEFAULT_EXCLUSIONS as ENHANCED_DEFAULT_EXCLUSIONS
+
 logger = logging.getLogger("pattern-matcher")
 
 
 class PatternMatcher:
-    """Handles gitignore-style pattern matching for file exclusions"""
+    """
+    Handles gitignore-style pattern matching for file exclusions
     
+    This class now uses the enhanced ignore system internally while maintaining
+    backward compatibility. All the new features (multi-level .mcpignore files,
+    comprehensive defaults, hot reloading) are available through this class.
+    """
+    
+    # Keep old defaults for reference/compatibility
+    # The enhanced system has much more comprehensive defaults
     DEFAULT_EXCLUSIONS = [
         ".venv/**",
         "venv/**",
@@ -43,126 +62,84 @@ class PatternMatcher:
         """
         self._validation_report = None
         self.working_directory = Path.cwd()  # Default to current working directory
-        self.patterns = self._load_all_patterns(custom_patterns)
-        self.spec = self._compile_patterns(self.patterns)
+        self._custom_patterns = custom_patterns or []
+        
+        # Initialize the enhanced ignore manager
+        self._init_ignore_manager()
+        
+        # For backward compatibility, populate these attributes
+        self.patterns = self._get_all_patterns()
+        self.spec = None  # No longer used, but kept for compatibility
+        
+    def _init_ignore_manager(self):
+        """Initialize the enhanced ignore manager"""
+        # Create ignore manager with custom patterns added to defaults
+        self._ignore_manager = IgnoreManager(
+            root_path=self.working_directory,
+            default_patterns=self._custom_patterns,  # These are added to defaults
+            auto_discover=True,
+            use_defaults=True  # Always use comprehensive defaults
+        )
+    
+    def _get_all_patterns(self) -> List[str]:
+        """Get all patterns for backward compatibility"""
+        # Get patterns that apply at the working directory level
+        patterns = self._ignore_manager.get_patterns_for_path(self.working_directory)
+        
+        # Also populate validation report if we have a root .mcpignore
+        self._read_mcpignore()
+        
+        return patterns
     
     def _load_all_patterns(self, custom_patterns: Optional[List[str]]) -> List[str]:
-        """Load patterns in priority order"""
-        all_patterns = []
+        """
+        Load patterns in priority order
         
-        # 1. Start with defaults
-        all_patterns.extend(self.DEFAULT_EXCLUSIONS)
-        
-        # 2. Add .mcpignore patterns if file exists
-        mcpignore_patterns = self._read_mcpignore()
-        all_patterns.extend(mcpignore_patterns)
-        
-        # 3. Add any custom patterns from API
-        if custom_patterns:
-            all_patterns.extend(custom_patterns)
-        
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_patterns = []
-        for pattern in all_patterns:
-            if pattern not in seen:
-                seen.add(pattern)
-                unique_patterns.append(pattern)
-        
-        logger.info(f"Loaded {len(unique_patterns)} unique exclusion patterns")
-        logger.debug(f"All patterns: {unique_patterns}")
-        return unique_patterns
+        This method is kept for backward compatibility but now just returns
+        the patterns from the enhanced ignore manager.
+        """
+        return self._get_all_patterns()
     
     def _read_mcpignore(self) -> List[str]:
-        """Read and validate patterns from .mcpignore file"""
-        mcpignore_path = self.working_directory / ".mcpignore"
-        if not mcpignore_path.exists():
-            return []
+        """
+        Read and validate patterns from .mcpignore file
         
-        valid_patterns = []
-        invalid_patterns = []
-        warnings = []
+        This method is kept for backward compatibility. The enhanced system
+        handles all .mcpignore reading internally with multi-level support.
+        """
+        # Get validation report from the enhanced system
+        all_reports = self._ignore_manager.validate_all()
+        mcpignore_path = self.working_directory / IGNORE_FILENAME
         
-        try:
-            logger.info(f"Reading .mcpignore from: {mcpignore_path}")
-            with open(mcpignore_path, 'r', encoding='utf-8') as f:
-                for line_num, line in enumerate(f, 1):
-                    original_line = line.rstrip('\n\r')
-                    line = line.strip()
-                    
-                    # Skip empty lines and comments
-                    if not line or line.startswith('#'):
-                        continue
-                    
-                    # Check for common mistakes
-                    if '\\' in line and not line.startswith('\\'):
-                        warnings.append(
-                            f"Line {line_num}: Pattern '{line}' contains backslash. "
-                            "Use forward slashes for paths."
-                        )
-                    
-                    if line.startswith('/') and len(line) > 1 and not line.startswith('/*'):
-                        warnings.append(
-                            f"Line {line_num}: Pattern '{line}' starts with /. "
-                            "This only matches from the root. Did you mean '{line[1:]}'?"
-                        )
-                    
-                    # Validate pattern
-                    try:
-                        # Test if pattern is valid by creating a temporary PathSpec
-                        pathspec.PathSpec.from_lines('gitwildmatch', [line])
-                        valid_patterns.append(line)
-                        logger.debug(f"Added .mcpignore pattern: {line}")
-                    except (pathspec.patterns.GitWildMatchPatternError, ValueError) as e:
-                        invalid_patterns.append((line_num, line, str(e)))
-                        logger.warning(
-                            f".mcpignore line {line_num}: Invalid pattern '{line}' - {e}"
-                        )
+        if mcpignore_path in all_reports:
+            info = all_reports[mcpignore_path]
+            
+            # Convert to old validation report format
+            self._validation_report = {
+                "valid_count": len(info.valid_patterns),
+                "invalid_patterns": [
+                    (err.line, err.pattern, err.message)
+                    for err in info.errors
+                ],
+                "warnings": [
+                    f"Line {warn.line}: {warn.message}"
+                    for warn in info.warnings
+                ],
+            }
+            
+            return info.valid_patterns
         
-        except Exception as e:
-            logger.error(f"Error reading .mcpignore: {e}")
-            return []
-        
-        # Log warnings
-        for warning in warnings:
-            logger.warning(f".mcpignore: {warning}")
-        
-        # Log summary if there were errors
-        if invalid_patterns:
-            logger.warning(
-                f"Found {len(invalid_patterns)} invalid patterns in .mcpignore, "
-                f"continuing with {len(valid_patterns)} valid patterns"
-            )
-        
-        # Store validation report for later use
-        self._validation_report = {
-            "valid_count": len(valid_patterns),
-            "invalid_patterns": invalid_patterns,
-            "warnings": warnings,
-        }
-        
-        return valid_patterns
+        return []
     
     def _compile_patterns(self, patterns: List[str]) -> Optional[pathspec.PathSpec]:
-        """Compile patterns with individual error handling"""
-        if not patterns:
-            return None
+        """
+        Compile patterns with individual error handling
         
-        valid_patterns = []
-        for pattern in patterns:
-            try:
-                # Validate each pattern individually
-                pathspec.PathSpec.from_lines('gitwildmatch', [pattern])
-                valid_patterns.append(pattern)
-            except (pathspec.patterns.GitWildMatchPatternError, ValueError) as e:
-                logger.warning(f"Skipping invalid pattern '{pattern}': {e}")
-        
-        if valid_patterns:
-            try:
-                return pathspec.PathSpec.from_lines('gitwildmatch', valid_patterns)
-            except Exception as e:
-                logger.error(f"Failed to compile patterns: {e}")
-                return None
+        This method is kept for backward compatibility but is no longer used
+        internally. The enhanced system handles pattern compilation.
+        """
+        # The enhanced system handles all pattern compilation
+        # This is kept for compatibility but returns None
         return None
     
     def set_working_directory(self, working_directory: str):
@@ -175,9 +152,11 @@ class PatternMatcher:
         self.working_directory = Path(working_directory)
         logger.info(f"Set working directory to: {self.working_directory}")
         
-        # Reload patterns with new working directory
-        self.patterns = self._load_all_patterns(None)
-        self.spec = self._compile_patterns(self.patterns)
+        # Reinitialize the enhanced ignore manager with new directory
+        self._init_ignore_manager()
+        
+        # Update patterns for backward compatibility
+        self.patterns = self._get_all_patterns()
         
         # Debug: Show what patterns were loaded
         logger.debug(f"Reloaded patterns: {self.patterns}")
@@ -192,22 +171,8 @@ class PatternMatcher:
         Returns:
             True if file should be excluded, False otherwise
         """
-        if not self.spec:
-            return False
-        
-        # Convert to relative path from working directory
-        try:
-            path = Path(file_path)
-            if path.is_absolute():
-                path = path.relative_to(self.working_directory)
-            
-            # Check if path matches any exclusion pattern
-            result = self.spec.match_file(str(path))
-            logger.debug(f"Exclusion check for {path}: {result}")
-            return result
-        except Exception as e:
-            logger.debug(f"Error checking exclusion for {file_path}: {e}")
-            return False
+        # Use the enhanced ignore manager
+        return self._ignore_manager.should_ignore(file_path)
     
     def get_ripgrep_args(self) -> List[str]:
         """
@@ -218,7 +183,10 @@ class PatternMatcher:
         """
         args = []
         
-        for pattern in self.patterns:
+        # Get all patterns from the enhanced system
+        patterns = self._get_all_patterns()
+        
+        for pattern in patterns:
             # Handle negation patterns (ripgrep uses ! prefix for exclusion)
             if pattern.startswith('!'):
                 # Double negation: include this pattern
@@ -243,98 +211,83 @@ class PatternMatcher:
         Returns:
             Validation report with patterns, errors, and suggestions
         """
-        mcpignore_path = Path.cwd() / ".mcpignore"
-        if not mcpignore_path.exists():
+        # Get all validation reports from the enhanced system
+        all_reports = self._ignore_manager.validate_all()
+        
+        # Get the root .mcpignore report
+        mcpignore_path = self.working_directory / IGNORE_FILENAME
+        
+        if mcpignore_path not in all_reports:
             return {
                 "exists": False,
                 "path": str(mcpignore_path),
                 "error": "File not found"
             }
         
+        info = all_reports[mcpignore_path]
+        
+        # Build report in the old format for backward compatibility
         report = {
             "exists": True,
             "path": str(mcpignore_path),
-            "valid_patterns": [],
-            "invalid_patterns": [],
+            "valid_patterns": [
+                {"line": i+1, "pattern": p}
+                for i, p in enumerate(info.valid_patterns)
+            ],
+            "invalid_patterns": [
+                {
+                    "line": err.line,
+                    "pattern": err.pattern,
+                    "error": err.message
+                }
+                for err in info.errors
+            ],
             "warnings": [],
             "suggestions": [],
-            "stats": {
-                "total_lines": 0,
-                "comment_lines": 0,
-                "empty_lines": 0,
-                "pattern_lines": 0,
-            }
+            "stats": info.stats
         }
         
-        try:
-            with open(mcpignore_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            
-            report["stats"]["total_lines"] = len(lines)
-            
-            for line_num, line in enumerate(lines, 1):
-                original_line = line.rstrip('\n\r')
-                stripped = line.strip()
+        # Add warnings and suggestions in verbose mode
+        if verbose and info.warnings:
+            for warn in info.warnings:
+                report["warnings"].append({
+                    "line": warn.line,
+                    "pattern": warn.pattern,
+                    "warning": warn.message
+                })
                 
-                if not stripped:
-                    report["stats"]["empty_lines"] += 1
-                    continue
-                
-                if stripped.startswith('#'):
-                    report["stats"]["comment_lines"] += 1
-                    continue
-                
-                report["stats"]["pattern_lines"] += 1
-                
-                # Validate pattern
-                try:
-                    pathspec.PathSpec.from_lines('gitwildmatch', [stripped])
-                    report["valid_patterns"].append({
-                        "line": line_num,
-                        "pattern": stripped
+                # Extract suggestions from warning messages
+                if "Consider using" in warn.message:
+                    report["suggestions"].append({
+                        "line": warn.line,
+                        "pattern": warn.pattern,
+                        "suggestion": warn.message
                     })
-                except Exception as e:
-                    report["invalid_patterns"].append({
-                        "line": line_num,
-                        "pattern": stripped,
-                        "error": str(e)
-                    })
-                
-                # Additional checks for verbose mode
-                if verbose:
-                    # Check for absolute paths
-                    if stripped.startswith('/') and len(stripped) > 1:
-                        report["warnings"].append({
-                            "line": line_num,
-                            "pattern": stripped,
-                            "warning": "Absolute path - only matches from repository root"
-                        })
-                    
-                    # Check for Windows-style paths
-                    if '\\' in stripped and not stripped.startswith('\\'):
-                        report["warnings"].append({
-                            "line": line_num,
-                            "pattern": stripped,
-                            "warning": "Contains backslash - use forward slashes"
-                        })
-                    
-                    # Check for overly broad patterns
-                    if stripped in ['*', '**', '**/*']:
-                        report["warnings"].append({
-                            "line": line_num,
-                            "pattern": stripped,
-                            "warning": "Very broad pattern - will exclude many files"
-                        })
-                    
-                    # Suggest improvements
-                    if stripped.endswith('/') and not stripped.endswith('**/'):
-                        report["suggestions"].append({
-                            "line": line_num,
-                            "pattern": stripped,
-                            "suggestion": f"Consider using '{stripped}**' to match all contents"
-                        })
-        
-        except Exception as e:
-            report["error"] = f"Failed to read file: {e}"
         
         return report
+    
+    # Additional methods for enhanced functionality
+    
+    def reload_ignore_files(self):
+        """
+        Reload all ignore files (useful after external changes)
+        
+        This exposes the hot-reload functionality of the enhanced system.
+        """
+        self._ignore_manager.reload_all()
+        self.patterns = self._get_all_patterns()
+        logger.info("Reloaded all ignore files")
+    
+    def notify_file_changed(self, file_path: str):
+        """
+        Notify the system that an ignore file has changed
+        
+        This enables hot-reloading when ignore files are modified.
+        
+        Args:
+            file_path: Path to the changed ignore file
+        """
+        self._ignore_manager.notify_file_changed(file_path)
+        # Update patterns for backward compatibility
+        self.patterns = self._get_all_patterns()
+        logger.info(f"Reloaded patterns after change to: {file_path}")

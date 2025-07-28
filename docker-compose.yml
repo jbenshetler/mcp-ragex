@@ -4,7 +4,9 @@ services:
   ragex:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/app.Dockerfile
+      args:
+        BASE_IMAGE: ghcr.io/jbenshetler/mcp-ragex-base:latest
     image: ragex/mcp-server:dev
     volumes:
       - .:/workspace:ro                    # Current directory (read-only)

@@ -17,9 +17,13 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Pull latest image
-echo "📦 Pulling latest image..."
-docker pull ragex/mcp-server:latest
+# Pull latest image (skip if using local image)
+if [ -z "$RAGEX_IMAGE" ]; then
+    echo "📦 Pulling latest image..."
+    docker pull ghcr.io/jbenshetler/mcp-ragex:latest
+else
+    echo "📦 Using local image: $RAGEX_IMAGE"
+fi
 
 # Create user-specific data volume
 USER_ID=$(id -u)
@@ -33,16 +37,45 @@ mkdir -p "$INSTALL_DIR"
 
 # Copy the smart wrapper script
 echo "📝 Installing ragex wrapper..."
-if command -v curl &> /dev/null; then
-    curl -sSL "https://raw.githubusercontent.com/YOUR_USERNAME/mcp-ragex/main/ragex" > "${INSTALL_DIR}/ragex"
-elif command -v wget &> /dev/null; then
-    wget -qO "${INSTALL_DIR}/ragex" "https://raw.githubusercontent.com/YOUR_USERNAME/mcp-ragex/main/ragex"
-else
-    # Fallback: create basic wrapper
-    cat > "${INSTALL_DIR}/ragex" << 'EOF'
+cat > "${INSTALL_DIR}/ragex" << 'EOF'
 #!/bin/bash
 # MCP-RageX CLI wrapper with project isolation
 set -e
+
+# Show help if no arguments or --help
+if [ $# -eq 0 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    cat << 'HELPEOF'
+MCP-RageX - AI-powered code search server
+
+Usage: ragex <command> [options]
+
+Commands:
+  init                 Initialize .mcpignore in current directory
+  index <path>         Index a directory for semantic search
+  info                 Show project information and statistics
+  list-projects        List all indexed projects
+  search <query>       Search indexed code (semantic search)
+  search-symbol <name> Search for function/class names
+  search-regex <pat>   Search using regular expressions
+  bash                 Start interactive shell in container
+  sh                   Start sh shell in container
+
+Environment Variables:
+  RAGEX_EMBEDDING_MODEL  Model to use: 'fast' (default) or 'accurate'
+
+Examples:
+  ragex init                    # Create .mcpignore file
+  ragex index .                 # Index current directory
+  ragex search "auth logic"     # Semantic search
+  ragex search-symbol parseURL  # Find function/class
+  ragex info                    # Show project stats
+
+Register with Claude Code:
+  claude mcp add ragex $(which ragex) --scope project
+
+HELPEOF
+    exit 0
+fi
 
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
@@ -55,7 +88,16 @@ DOCKER_ARGS=(
     "run" "--rm"
     "-u" "${USER_ID}:${GROUP_ID}"
     "-v" "${USER_VOLUME}:/data"
-    "-v" "${WORKSPACE_PATH}:/workspace:ro"
+)
+
+# Mount workspace as read-write for init command, read-only for others
+if [ "$1" = "init" ]; then
+    DOCKER_ARGS+=("-v" "${WORKSPACE_PATH}:/workspace:rw")
+else
+    DOCKER_ARGS+=("-v" "${WORKSPACE_PATH}:/workspace:ro")
+fi
+
+DOCKER_ARGS+=(
     "-e" "WORKSPACE_PATH=${WORKSPACE_PATH}"
     "-e" "PROJECT_NAME=${PROJECT_ID}"
     "-e" "RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}"
@@ -65,9 +107,8 @@ if [ "$1" = "bash" ] || [ "$1" = "sh" ]; then
     DOCKER_ARGS+=("-it")
 fi
 
-exec docker "${DOCKER_ARGS[@]}" ragex/mcp-server:latest "$@"
+exec docker "${DOCKER_ARGS[@]}" ${RAGEX_IMAGE:-ghcr.io/jbenshetler/mcp-ragex:latest} "$@"
 EOF
-fi
 
 chmod +x "${INSTALL_DIR}/ragex"
 
@@ -92,4 +133,4 @@ echo ""
 echo "📝 Register with Claude Code:"
 echo "  claude mcp add ragex $(which ragex) --scope project"
 echo ""
-echo "For more info: https://github.com/anthropics/mcp-ragex"
+echo "For more info: https://github.com/jbenshetler/mcp-ragex"

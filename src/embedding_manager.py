@@ -8,6 +8,10 @@ from typing import List, Dict, Optional, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import logging
+import warnings
+
+# Suppress the specific FutureWarning about encoder_attention_mask
+warnings.filterwarnings("ignore", message=".*encoder_attention_mask.*is deprecated.*", category=FutureWarning)
 
 try:
     from .embedding_config import EmbeddingConfig, ModelConfig

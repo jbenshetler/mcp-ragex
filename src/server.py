@@ -26,10 +26,16 @@ try:
     from .tree_sitter_enhancer import TreeSitterEnhancer
     from .pattern_matcher import PatternMatcher
     from .utils import configure_logging, get_logger
+    from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
 except ImportError:
     from tree_sitter_enhancer import TreeSitterEnhancer
     from pattern_matcher import PatternMatcher
     from utils import configure_logging, get_logger
+    try:
+        from watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
+    except ImportError:
+        WATCHDOG_AVAILABLE = False
+        WatchdogMonitor = None
 
 # Configure logging based on environment
 configure_logging()
@@ -273,6 +279,38 @@ app = Server("coderag-mcp")
 
 # Initialize shared pattern matcher
 pattern_matcher = PatternMatcher()
+
+# Initialize watchdog monitor if available and enabled
+watchdog_monitor = None
+if WATCHDOG_AVAILABLE and os.environ.get("RAGEX_ENABLE_WATCHDOG", "false").lower() in ("true", "1", "yes"):
+    try:
+        # Access the internal ignore manager from pattern matcher
+        ignore_manager = pattern_matcher._ignore_manager
+        watchdog_monitor = WatchdogMonitor(ignore_manager, debounce_seconds=1.0)
+        
+        def on_ignore_change(file_path: str):
+            logger.info(f"Detected change to ignore file: {file_path}")
+            # The ignore manager will automatically reload
+            
+        watchdog_monitor.start(on_change_callback=on_ignore_change)
+        logger.info("Watchdog monitoring enabled for .mcpignore files")
+        
+        # Register cleanup
+        def cleanup_watchdog():
+            if watchdog_monitor and watchdog_monitor.is_running():
+                logger.info("Stopping watchdog monitor...")
+                watchdog_monitor.stop()
+                
+        atexit.register(cleanup_watchdog)
+        
+    except Exception as e:
+        logger.warning(f"Failed to initialize watchdog monitor: {e}")
+        watchdog_monitor = None
+else:
+    if not WATCHDOG_AVAILABLE:
+        logger.debug("Watchdog package not installed - hot reload disabled")
+    else:
+        logger.debug("Watchdog monitoring disabled (set RAGEX_ENABLE_WATCHDOG=true to enable)")
 
 # Initialize components with same pattern matcher
 searcher = RipgrepSearcher(pattern_matcher)
@@ -638,6 +676,36 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["query"],
             },
         ),
+        types.Tool(
+            name="get_search_capabilities",
+            description="Get detailed information about available search modes and current capabilities",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        types.Tool(
+            name="search_code_simple", 
+            description="Simple search interface - just provide a query and let the system handle everything",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Your search query in any format",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        types.Tool(
+            name="get_watchdog_status",
+            description="Get the status of the watchdog file monitor for .mcpignore hot reloading",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]
 
 @app.call_tool()
@@ -696,6 +764,9 @@ async def handle_call_tool(
         if not query:
             raise ValueError("Missing query argument")
         return await handle_simple_search(query)
+    
+    elif name == "get_watchdog_status":
+        return await handle_watchdog_status()
     
     else:
         raise ValueError(f"Unknown tool: {name}")
@@ -778,6 +849,56 @@ async def handle_intelligent_search(
     
     # Navigation format 
     return await format_search_results(result, limit, format)
+
+
+async def handle_watchdog_status() -> List[types.TextContent]:
+    """Get watchdog monitor status"""
+    
+    logger.info("🔍 Watchdog status requested")
+    
+    status_lines = ["# Watchdog Monitor Status\n"]
+    
+    # Check if watchdog is available
+    if not WATCHDOG_AVAILABLE:
+        status_lines.append("❌ **Watchdog not available**: Package not installed")
+        status_lines.append("   Install with: `pip install watchdog` or `uv pip install watchdog`")
+        return [types.TextContent(type="text", text="\n".join(status_lines))]
+    
+    # Check if watchdog is enabled
+    watchdog_enabled = os.environ.get("RAGEX_ENABLE_WATCHDOG", "false").lower() in ("true", "1", "yes")
+    if not watchdog_enabled:
+        status_lines.append("⚠️  **Watchdog disabled**: Not enabled via environment variable")
+        status_lines.append("   Enable with: `export RAGEX_ENABLE_WATCHDOG=true`")
+        return [types.TextContent(type="text", text="\n".join(status_lines))]
+    
+    # Check if monitor is running
+    if watchdog_monitor and watchdog_monitor.is_running():
+        status_lines.append("✅ **Watchdog active**: Monitoring for .mcpignore changes")
+        status_lines.append(f"   Debounce period: {watchdog_monitor.debounce_seconds}s")
+        
+        # Get watched paths
+        watched_paths = watchdog_monitor.get_watched_paths()
+        status_lines.append(f"\n📁 **Watched directories** ({len(watched_paths)}):")
+        for path in watched_paths:
+            status_lines.append(f"   - {path}")
+            
+        # Get ignore files being monitored
+        ignore_files = pattern_matcher._ignore_manager.get_ignore_files()
+        status_lines.append(f"\n📄 **Active .mcpignore files** ({len(ignore_files)}):")
+        for file in ignore_files:
+            status_lines.append(f"   - {file}")
+            
+    else:
+        status_lines.append("❌ **Watchdog not running**: Failed to initialize or stopped")
+        
+    # Add configuration info
+    status_lines.append("\n## Configuration")
+    status_lines.append(f"- Ignore filename: `{pattern_matcher._ignore_manager.ignore_filename}`")
+    status_lines.append(f"- Root path: `{pattern_matcher._ignore_manager.root_path}`")
+    status_lines.append(f"- Multi-level support: ✅ Enabled")
+    status_lines.append(f"- Hot reload: {'✅ Active' if watchdog_monitor and watchdog_monitor.is_running() else '❌ Inactive'}")
+    
+    return [types.TextContent(type="text", text="\n".join(status_lines))]
 
 
 async def handle_search_capabilities() -> List[types.TextContent]:

@@ -16,13 +16,18 @@ from pathlib import Path
 import re
 import logging
 
-# Suppress verbose logging from dependencies
-logging.getLogger("coderag-mcp").setLevel(logging.ERROR)
-logging.getLogger("pattern-matcher").setLevel(logging.ERROR)
-logging.getLogger("vector-store").setLevel(logging.ERROR)
-logging.getLogger("embedding-manager").setLevel(logging.ERROR)
-logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-logging.getLogger("code-indexer").setLevel(logging.ERROR)
+# Configure logging based on environment variable
+import os
+log_level = os.environ.get('RAGEX_LOG_LEVEL', 'WARN').upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.WARN), format='%(message)s')
+
+# Suppress verbose logging from all components unless overridden
+for logger_name in [
+    "coderag-mcp", "pattern-matcher", "vector-store", "embedding-manager",
+    "sentence_transformers", "code-indexer", "mcp-ragex", "src.ignore.manager",
+    "ignore.manager", "embedding-config", "chromadb", "transformers", "torch"
+]:
+    logging.getLogger(logger_name).setLevel(getattr(logging, log_level, logging.WARN))
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))

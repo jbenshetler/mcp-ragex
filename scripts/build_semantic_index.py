@@ -78,8 +78,9 @@ async def main():
                        help="Force rebuild even if index exists")
     parser.add_argument("--stats", action="store_true", 
                        help="Show detailed statistics after indexing")
-    parser.add_argument("--persist-dir", default="./chroma_db",
-                       help="Directory for ChromaDB storage (default: ./chroma_db)")
+    parser.add_argument("--persist-dir", 
+                       default=os.getenv('RAGEX_CHROMA_PERSIST_DIR', './chroma_db'),
+                       help="Directory for ChromaDB storage (default: $RAGEX_CHROMA_PERSIST_DIR or ./chroma_db)")
     parser.add_argument("--model", default=None,
                        help="Sentence transformer model to use (deprecated, use --preset)")
     parser.add_argument("--preset", choices=["fast", "balanced", "accurate"], default="fast",

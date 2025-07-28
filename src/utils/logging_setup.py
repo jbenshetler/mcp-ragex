@@ -61,8 +61,8 @@ def configure_logging(
         backup_count: Number of backup files to keep
         quiet_libraries: Suppress verbose third-party library logs
     """
-    # Determine log level
-    level = log_level or os.environ.get('LOG_LEVEL', 'INFO')
+    # Determine log level (RAGEX_LOG_LEVEL takes precedence over LOG_LEVEL)
+    level = log_level or os.environ.get('RAGEX_LOG_LEVEL') or os.environ.get('LOG_LEVEL', 'WARN')
     
     # Clear any existing handlers
     root_logger = logging.getLogger()

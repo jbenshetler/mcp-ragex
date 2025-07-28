@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from functools import lru_cache
 
+import sys
 import tree_sitter
-from tree_sitter import Language, Parser
+from tree_sitter import Language, Parser, Query, QueryCursor
 import tree_sitter_python as tspython
 import tree_sitter_javascript as tsjavascript
 import tree_sitter_typescript as tstypescript
@@ -93,7 +94,7 @@ class TreeSitterEnhancer:
         
         # Python queries
         self.queries = {
-            "python": self.languages["python"].query("""
+            "python": Query(self.languages["python"], """
                 (class_definition
                     name: (identifier) @class.name
                     body: (block) @class.body) @class
@@ -178,7 +179,7 @@ class TreeSitterEnhancer:
                         (string) @module_doc.content)) @module_doc
             """),
             
-            "javascript": self.languages["javascript"].query("""
+            "javascript": Query(self.languages["javascript"], """
                 (class_declaration
                     name: (identifier) @class.name
                     body: (class_body) @class.body) @class
@@ -239,7 +240,7 @@ class TreeSitterEnhancer:
                                 name: (identifier) @import.name)))) @named_import
             """),
             
-            "typescript": self.languages["typescript"].query("""
+            "typescript": Query(self.languages["typescript"], """
                 (class_declaration
                     name: (type_identifier) @class.name
                     body: (class_body) @class.body) @class
@@ -330,21 +331,23 @@ class TreeSitterEnhancer:
         
         symbols = []
         query = self.queries[lang]
-        captures = query.captures(tree.root_node)
+        
+        # Use modern tree-sitter API with QueryCursor
+        # Create a cursor for the query
+        cursor = QueryCursor(query)
+        # Get captures using the cursor
+        captures_dict = cursor.captures(tree.root_node)
+        
+        # Convert to list format for compatibility with existing code
+        captures = []
+        for capture_name, nodes in captures_dict.items():
+            for node in nodes:
+                captures.append((node, capture_name))
+                
+        logger.debug(f"Using tree-sitter with QueryCursor API, found {len(captures)} captures")
         
         # Debug: Check what captures returns
         logger.debug(f"Captures type: {type(captures)}, length: {len(captures) if hasattr(captures, '__len__') else 'N/A'}")
-        if captures:
-            logger.debug(f"Captures keys: {list(captures.keys()) if isinstance(captures, dict) else 'Not a dict'}")
-        
-        # Convert captures dict to list of tuples for processing
-        if isinstance(captures, dict):
-            # Tree-sitter returns a dict mapping capture names to lists of nodes
-            capture_list = []
-            for capture_name, nodes in captures.items():
-                for node in nodes:
-                    capture_list.append((node, capture_name))
-            captures = capture_list
         
         # Process captures based on language
         if lang == "python":
