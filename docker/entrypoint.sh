@@ -312,19 +312,17 @@ except Exception as e:
         exec "$@"
         ;;
     "daemon")
-        # Long-running daemon mode for fast command execution
+        # Long-running daemon mode with socket server for fast command execution
         setup_project_data "$@"
         export PYTHONPATH=/app:$PYTHONPATH
         export RAGEX_DAEMON_INITIALIZED=1
         
-        echo "🚀 RageX daemon started"
+        echo "🚀 Starting RageX socket daemon..."
         echo "📊 Project: ${PROJECT_NAME}"
         echo "💾 Data dir: ${RAGEX_PROJECT_DATA_DIR}"
-        echo ""
-        echo "Daemon ready for commands via docker exec"
         
-        # Keep the container alive
-        exec sleep infinity
+        # Start the socket daemon
+        exec python -m src.socket_daemon
         ;;
     *)
         # Default to MCP server

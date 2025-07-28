@@ -125,6 +125,16 @@ start_daemon() {
     # Wait for daemon to be ready
     sleep 2
     
+    # Wait for socket to be created (up to 10 seconds)
+    local wait_count=0
+    while [ $wait_count -lt 10 ]; do
+        if docker exec "${DAEMON_CONTAINER_NAME}" test -S /tmp/ragex.sock 2>/dev/null; then
+            break
+        fi
+        sleep 1
+        wait_count=$((wait_count + 1))
+    done
+    
     if is_daemon_running; then
         echo "✅ Daemon started successfully"
         return 0
@@ -186,11 +196,11 @@ exec_via_daemon() {
         EXEC_FLAGS="-it"
     fi
     
-    # Execute command via docker exec through entrypoint.sh
+    # Execute command via docker exec using socket client
     # if [ "${RAGEX_DEBUG}" = "true" ]; then
-    #     echo "[DEBUG] Running: docker exec $EXEC_FLAGS ${DAEMON_CONTAINER_NAME} /entrypoint.sh $cmd $@" >&2
+    #     echo "[DEBUG] Running: docker exec $EXEC_FLAGS ${DAEMON_CONTAINER_NAME} python -m src.socket_client $cmd $@" >&2
     # fi
-    docker exec $EXEC_FLAGS "${DAEMON_CONTAINER_NAME}" /entrypoint.sh "$cmd" "$@"
+    docker exec $EXEC_FLAGS "${DAEMON_CONTAINER_NAME}" python -m src.socket_client "$cmd" "$@"
 }
 
 # Build Docker command
