@@ -7,6 +7,7 @@ backward compatibility with the original API.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple, Union
 
@@ -179,7 +180,7 @@ class PatternMatcher:
             working_directory: Path to the working directory
         """
         self.working_directory = Path(working_directory)
-        logger.info(f"Set working directory to: {self.working_directory}")
+        logger.debug(f"Set working directory to: {self.working_directory}")
         
         # Reinitialize the enhanced ignore manager with new directory
         self._init_ignore_manager()

@@ -67,7 +67,7 @@ class EnhancedPatternMatcher(PatternMatcher):
             working_directory: Path to the working directory
         """
         self.working_directory = Path(working_directory)
-        logger.info(f"Set working directory to: {self.working_directory}")
+        logger.debug(f"Set working directory to: {self.working_directory}")
         
         # Reinitialize ignore manager with new directory
         self._init_ignore_manager()
