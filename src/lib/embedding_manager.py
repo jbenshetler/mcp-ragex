@@ -14,7 +14,7 @@ import warnings
 warnings.filterwarnings("ignore", message=".*encoder_attention_mask.*is deprecated.*", category=FutureWarning)
 
 try:
-    from src.embedding_config import EmbeddingConfig, ModelConfig
+    from src.lib.embedding_config import EmbeddingConfig, ModelConfig
 except ImportError:
     from .embedding_config import EmbeddingConfig, ModelConfig
 

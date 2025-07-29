@@ -36,6 +36,8 @@ class RagexSocketDaemon:
         self.running = True
         self.start_time = time.time()
         self.command_count = 0
+        self.handlers = {}
+        self.shared_modules = {}
         
         # Set up signal handlers
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -144,38 +146,13 @@ class RagexSocketDaemon:
         }
     
     async def _handle_search(self, args: list) -> Dict[str, Any]:
-        """Handle search command using subprocess"""
-        import subprocess
+        """Handle search command using pre-loaded handler"""
+        # Get or create search handler
+        if 'search' not in self.handlers:
+            from src.daemon.handlers.search import SearchHandler
+            self.handlers['search'] = SearchHandler(self.shared_modules)
         
-        # Get project data dir from environment
-        project_data_dir = os.environ.get('RAGEX_PROJECT_DATA_DIR')
-        if not project_data_dir:
-            project_name = os.environ.get('PROJECT_NAME', 'default_project')
-            project_data_dir = f'/data/projects/{project_name}'
-        
-        cmd = [sys.executable, '/app/ragex_search.py', '--index-dir', project_data_dir] + args
-        
-        env = os.environ.copy()
-        env['PYTHONPATH'] = '/app:' + env.get('PYTHONPATH', '')
-        env['RAGEX_CHROMA_PERSIST_DIR'] = f'{project_data_dir}/chroma_db'
-        env['RAGEX_IGNOREFILE_WARNING'] = 'false'
-        env['RAGEX_DISABLE_LOGGING_SETUP'] = 'true'
-        
-        result = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env
-        )
-        
-        stdout, stderr = await result.communicate()
-        
-        return {
-            'success': result.returncode == 0,
-            'stdout': stdout.decode('utf-8'),
-            'stderr': stderr.decode('utf-8'),
-            'returncode': result.returncode
-        }
+        return await self.handlers['search'].handle(args)
     
     async def _handle_index(self, args: list) -> Dict[str, Any]:
         """Handle index command"""
@@ -205,40 +182,13 @@ class RagexSocketDaemon:
         }
     
     async def _handle_init(self, args: list) -> Dict[str, Any]:
-        """Handle init command"""
-        import subprocess
+        """Handle init command using pre-loaded handler"""
+        # Get or create init handler
+        if 'init' not in self.handlers:
+            from src.daemon.handlers.init import InitHandler
+            self.handlers['init'] = InitHandler(self.shared_modules)
         
-        # Run the init script directly
-        cmd = [sys.executable, '-c', 
-               "from src.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path('/workspace'))"]
-        
-        env = os.environ.copy()
-        env['PYTHONPATH'] = '/app:' + env.get('PYTHONPATH', '')
-        
-        result = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-            cwd='/workspace'
-        )
-        
-        stdout, stderr = await result.communicate()
-        
-        if result.returncode == 0:
-            return {
-                'success': True,
-                'stdout': '✅ .mcpignore file created\n',
-                'stderr': stderr.decode('utf-8'),
-                'returncode': 0
-            }
-        else:
-            return {
-                'success': False,
-                'stdout': stdout.decode('utf-8'),
-                'stderr': stderr.decode('utf-8'),
-                'returncode': result.returncode
-            }
+        return await self.handlers['init'].handle(args)
     
     async def _handle_serve(self, args: list) -> Dict[str, Any]:
         """Handle serve command - start MCP server"""

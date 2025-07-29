@@ -15,14 +15,14 @@ import warnings
 warnings.filterwarnings("ignore", message=".*encoder_attention_mask.*is deprecated.*", category=FutureWarning)
 
 from src.tree_sitter_enhancer import TreeSitterEnhancer
-from src.embedding_manager import EmbeddingManager
-from src.vector_store import CodeVectorStore
-from src.pattern_matcher import PatternMatcher
+from src.lib.embedding_manager import EmbeddingManager
+from src.lib.vector_store import CodeVectorStore
+from src.lib.pattern_matcher import PatternMatcher
 
 logger = logging.getLogger("code-indexer")
 
 
-from src.embedding_config import EmbeddingConfig
+from src.lib.embedding_config import EmbeddingConfig
 
 
 class CodeIndexer:

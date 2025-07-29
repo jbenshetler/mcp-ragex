@@ -74,7 +74,7 @@ case "$1" in
         if [ -f "/workspace/.mcpignore" ]; then
             echo "✅ .mcpignore already exists in current directory"
         else
-            exec python -c "from src.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path('/workspace'))"
+            exec python -c "from src.lib.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path('/workspace'))"
         fi
         ;;
     "index")

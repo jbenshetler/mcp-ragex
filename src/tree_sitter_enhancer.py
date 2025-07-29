@@ -56,10 +56,10 @@ class TreeSitterEnhancer:
         # Import here to avoid circular import
         try:
             # Try relative import first (when running as module)
-            from .pattern_matcher import PatternMatcher
+            from .lib.pattern_matcher import PatternMatcher
         except ImportError:
             # Fall back to absolute import
-            from src.pattern_matcher import PatternMatcher
+            from src.lib.pattern_matcher import PatternMatcher
         
         # Pattern matcher for exclusions
         self.pattern_matcher = pattern_matcher or PatternMatcher()

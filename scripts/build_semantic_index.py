@@ -59,7 +59,7 @@ sys.path.insert(0, str(ragex_dir / "src"))
 
 try:
     from src.indexer import CodeIndexer
-    from src.pattern_matcher import PatternMatcher
+    from src.lib.pattern_matcher import PatternMatcher
 except ImportError as e:
     print(f"❌ Cannot import required modules from ragex directory.")
     print(f"   Script location: {script_dir}")
