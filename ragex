@@ -3,7 +3,9 @@
 set -e
 
 # Default configuration
-DOCKER_IMAGE="${RAGEX_IMAGE:-${RAGEX_DOCKER_IMAGE:-ragex/mcp-server:latest}}"
+# Note: ragex:local is the locally built image with socket daemon support
+# The public image ragex/mcp-server:latest doesn't have daemon support yet
+DOCKER_IMAGE="${RAGEX_IMAGE:-${RAGEX_DOCKER_IMAGE:-ragex:local}}"
 DOCKER_USER_ID=$(id -u)
 DOCKER_GROUP_ID=$(id -g)
 
@@ -70,11 +72,11 @@ if [ $# -gt 0 ]; then
     shift
 fi
 
-# Debug output (commented out for production)
-# if [ "${RAGEX_DEBUG}" = "true" ]; then
-#     echo "[DEBUG] Command: $COMMAND, Args: $@" >&2
-#     echo "[DEBUG] Docker image: ${DOCKER_IMAGE}" >&2
-# fi
+# Debug output
+if [ "${RAGEX_DEBUG}" = "true" ]; then
+    echo "[DEBUG] Command: $COMMAND, Args: $@" >&2
+    echo "[DEBUG] Docker image: ${DOCKER_IMAGE}" >&2
+fi
 
 # Handle help/usage
 if [ "$COMMAND" = "help" ] || [ "$COMMAND" = "--help" ] || [ "$COMMAND" = "-h" ]; then
@@ -129,17 +131,28 @@ start_daemon() {
     local wait_count=0
     while [ $wait_count -lt 10 ]; do
         if docker exec "${DAEMON_CONTAINER_NAME}" test -S /tmp/ragex.sock 2>/dev/null; then
-            break
+            echo "✅ Socket daemon is ready"
+            return 0
         fi
         sleep 1
         wait_count=$((wait_count + 1))
     done
     
+    # If socket not found, check if container is still running
     if is_daemon_running; then
-        echo "✅ Daemon started successfully"
-        return 0
+        echo "⚠️  Daemon container is running but socket not found"
+        echo "   Checking daemon logs..."
+        docker logs --tail 20 "${DAEMON_CONTAINER_NAME}" 2>&1
+        echo "❌ Failed to start socket daemon properly"
+        # Stop the broken daemon
+        docker stop "${DAEMON_CONTAINER_NAME}" > /dev/null 2>&1 || true
+        docker rm "${DAEMON_CONTAINER_NAME}" > /dev/null 2>&1 || true
+        return 1
     else
-        echo "❌ Failed to start daemon"
+        echo "❌ Daemon container exited"
+        # Show logs to help debug
+        docker logs --tail 20 "${DAEMON_CONTAINER_NAME}" 2>&1 || true
+        docker rm "${DAEMON_CONTAINER_NAME}" > /dev/null 2>&1 || true
         return 1
     fi
 }
@@ -172,21 +185,21 @@ exec_via_daemon() {
     local cmd="$1"
     shift
     
-    # Debug output (commented out for production)
-    # if [ "${RAGEX_DEBUG}" = "true" ]; then
-    #     echo "[DEBUG] exec_via_daemon: cmd=$cmd, daemon_name=${DAEMON_CONTAINER_NAME}" >&2
-    # fi
+    # Debug output
+    if [ "${RAGEX_DEBUG}" = "true" ]; then
+        echo "[DEBUG] exec_via_daemon: cmd=$cmd, daemon_name=${DAEMON_CONTAINER_NAME}" >&2
+    fi
     
     # Start daemon if not running
     if ! is_daemon_running; then
-        # if [ "${RAGEX_DEBUG}" = "true" ]; then
-        #     echo "[DEBUG] Daemon not running, starting..." >&2
-        # fi
+        if [ "${RAGEX_DEBUG}" = "true" ]; then
+            echo "[DEBUG] Daemon not running, starting..." >&2
+        fi
         start_daemon || return 1
     else
-        # if [ "${RAGEX_DEBUG}" = "true" ]; then
-        #     echo "[DEBUG] Daemon already running" >&2
-        # fi
+        if [ "${RAGEX_DEBUG}" = "true" ]; then
+            echo "[DEBUG] Daemon already running" >&2
+        fi
         :  # No-op to ensure else block has content
     fi
     
@@ -197,9 +210,9 @@ exec_via_daemon() {
     fi
     
     # Execute command via docker exec using socket client
-    # if [ "${RAGEX_DEBUG}" = "true" ]; then
-    #     echo "[DEBUG] Running: docker exec $EXEC_FLAGS ${DAEMON_CONTAINER_NAME} python -m src.socket_client $cmd $@" >&2
-    # fi
+    if [ "${RAGEX_DEBUG}" = "true" ]; then
+        echo "[DEBUG] Running: docker exec $EXEC_FLAGS ${DAEMON_CONTAINER_NAME} python -m src.socket_client $cmd $@" >&2
+    fi
     docker exec $EXEC_FLAGS "${DAEMON_CONTAINER_NAME}" python -m src.socket_client "$cmd" "$@"
 }
 

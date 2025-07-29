@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 import re
 import logging
+from typing import List, Dict
 
 # Configure logging based on environment variable
 import os
@@ -265,6 +266,54 @@ class SearchClient:
             # Add separator between matches when showing context
             if (before_context > 0 or after_context > 0) and match != matches[-1]:
                 print("--")
+    
+    async def run_search(self, query: str, symbol_search: bool = False, regex_search: bool = False,
+                        limit: int = 50, before_context: int = 0, after_context: int = 0,
+                        brief: bool = False) -> List[Dict]:
+        """
+        Run a search with the specified parameters.
+        
+        Args:
+            query: The search query
+            symbol_search: Use symbol search mode
+            regex_search: Use regex search mode
+            limit: Maximum number of results
+            before_context: Lines to show before matches
+            after_context: Lines to show after matches
+            brief: Use brief output format
+            
+        Returns:
+            List of matches
+        """
+        # Determine search mode
+        if symbol_search:
+            mode = "symbol"
+        elif regex_search:
+            mode = "regex"
+        else:
+            mode = "semantic"
+        
+        print(f"# Searching for '{query}' using {mode} mode", file=sys.stderr)
+        
+        # Perform search
+        matches = []
+        if mode == "semantic":
+            matches = await self.search_semantic(query, limit)
+        elif mode == "symbol":
+            matches = await self.search_symbol(query, limit)
+        elif mode == "regex":
+            matches = await self.search_regex(query, limit)
+        
+        if not matches:
+            print(f"# No matches found", file=sys.stderr)
+            return matches
+        
+        print(f"# Found {len(matches)} matches", file=sys.stderr)
+        
+        # Format and print results
+        self.format_output(matches, before_context, after_context, mode, show_type=not brief)
+        
+        return matches
 
 
 async def main():
@@ -280,38 +329,22 @@ async def main():
     
     args = parser.parse_args()
     
-    # Determine search mode
-    if args.symbol:
-        mode = "symbol"
-    elif args.regex:
-        mode = "regex"
-    else:
-        mode = "semantic"
-    
-    print(f"# Searching for '{args.query}' using {mode} mode", file=sys.stderr)
     if args.index_dir:
         print(f"# Using index from: {args.index_dir}", file=sys.stderr)
     
     # Initialize client
     client = SearchClient(index_dir=args.index_dir)
     
-    # Perform search
-    matches = []
-    if mode == "semantic":
-        matches = await client.search_semantic(args.query, args.limit)
-    elif mode == "symbol":
-        matches = await client.search_symbol(args.query, args.limit)
-    elif mode == "regex":
-        matches = await client.search_regex(args.query, args.limit)
-    
-    if not matches:
-        print(f"# No matches found", file=sys.stderr)
-        return
-    
-    print(f"# Found {len(matches)} matches", file=sys.stderr)
-    
-    # Format and print results
-    client.format_output(matches, args.before_context, args.after_context, mode, show_type=not args.brief)
+    # Run search using the new method
+    await client.run_search(
+        query=args.query,
+        symbol_search=args.symbol,
+        regex_search=args.regex,
+        limit=args.limit,
+        before_context=args.before_context,
+        after_context=args.after_context,
+        brief=args.brief
+    )
 
 
 if __name__ == "__main__":

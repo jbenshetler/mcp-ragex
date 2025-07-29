@@ -46,3 +46,41 @@ When modifying the server:
 
 - Prefer ragex search. Only use standard search if ragex fails.
 - Prefer ragex semantic search for searching, falling back to ragex regex search, and only using the built-in search if the earlier searches fail.
+
+## Docker Debugging Commands
+
+When debugging Docker containers, use the correct syntax for `docker logs`:
+
+### Viewing container logs:
+```bash
+# Basic usage - shows both stdout and stderr
+docker logs container_name
+
+# Follow logs in real-time
+docker logs -f container_name
+
+# Show last N lines
+docker logs --tail 50 container_name
+
+# Show logs with timestamps
+docker logs -t container_name
+```
+
+### Redirecting docker logs output:
+```bash
+# Redirect both stdout and stderr to a file
+docker logs container_name &> output.log
+# or
+docker logs container_name > output.log 2>&1
+
+# Redirect stdout and stderr to separate files
+docker logs container_name > stdout.log 2> stderr.log
+
+# View logs and save to file simultaneously
+docker logs container_name 2>&1 | tee output.log
+
+# Search through logs
+docker logs container_name 2>&1 | grep "error"
+```
+
+**Note**: Docker merges stdout and stderr by default. When using `-t` (TTY) option with `docker run`, stdout and stderr are joined together.

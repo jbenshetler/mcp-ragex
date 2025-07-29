@@ -326,7 +326,11 @@ except Exception as e:
         echo "📁 Working directory: $(pwd)"
         
         # Start the socket daemon
-        exec python -m src.socket_daemon
+        # Run socket daemon and if it fails, show error and exit
+        python -m src.socket_daemon || {
+            echo "❌ Socket daemon failed to start"
+            exit 1
+        }
         ;;
     *)
         # Default to MCP server

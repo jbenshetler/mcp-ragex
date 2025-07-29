@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-RageX Socket Daemon - High-performance command executor with pre-loaded modules
+RageX Socket Daemon - High-performance command executor
 
-This daemon keeps Python modules loaded in memory and accepts commands via
-Unix domain socket for near-instant execution.
+This daemon accepts commands via Unix domain socket and executes them
+using subprocess for stability.
 """
 
 import asyncio
@@ -36,19 +36,10 @@ class RagexSocketDaemon:
         self.running = True
         self.start_time = time.time()
         self.command_count = 0
-        self.modules_loaded = False
-        
-        # Pre-loaded modules and objects
-        self.modules = {}
-        self.searcher = None
-        self.pattern_matcher = None
         
         # Set up signal handlers
         signal.signal(signal.SIGTERM, self._handle_shutdown)
         signal.signal(signal.SIGINT, self._handle_shutdown)
-        
-        # Load modules immediately
-        self._load_modules()
         
         logger.info("RageX socket daemon initialized")
     
@@ -57,60 +48,6 @@ class RagexSocketDaemon:
         logger.info(f"Received signal {signum}, shutting down...")
         self.running = False
     
-    def _load_modules(self):
-        """Pre-load all heavy modules at startup"""
-        if self.modules_loaded:
-            return
-        
-        logger.info("Loading modules...")
-        load_start = time.time()
-        
-        try:
-            # Import heavy dependencies - do it gradually
-            logger.info("Loading numpy...")
-            import numpy as np
-            
-            logger.info("Loading chromadb...")
-            import chromadb
-            
-            logger.info("Loading tree_sitter...")
-            import tree_sitter
-            
-            # Skip torch and sentence_transformers for now - they're too heavy
-            # They'll be loaded on demand when needed
-            
-            # Import our lightweight modules
-            logger.info("Loading core modules...")
-            import src.server
-            import src.pattern_matcher
-            import src.tree_sitter_enhancer
-            import src.ignore.manager
-            
-            # Store references
-            self.modules = {
-                'numpy': np,
-                'chromadb': chromadb,
-                'tree_sitter': tree_sitter,
-                'server': src.server,
-                'pattern_matcher': src.pattern_matcher,
-                'tree_sitter_enhancer': src.tree_sitter_enhancer,
-                'ignore_manager': src.ignore.manager,
-            }
-            
-            # Pre-instantiate commonly used objects
-            from src.pattern_matcher import PatternMatcher
-            from src.server import RipgrepSearcher
-            
-            self.pattern_matcher = PatternMatcher()
-            self.searcher = RipgrepSearcher(self.pattern_matcher)
-            
-            self.modules_loaded = True
-            load_time = time.time() - load_start
-            logger.info(f"All modules loaded in {load_time:.2f}s")
-            
-        except Exception as e:
-            logger.error(f"Failed to load modules: {e}", exc_info=True)
-            raise
     
     async def handle_request(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Handle a single request from a client"""
@@ -203,59 +140,42 @@ class RagexSocketDaemon:
             'uptime_seconds': uptime,
             'uptime_human': f"{uptime/3600:.1f} hours",
             'commands_processed': self.command_count,
-            'modules_loaded': self.modules_loaded,
             'pid': os.getpid(),
         }
     
     async def _handle_search(self, args: list) -> Dict[str, Any]:
-        """Handle search command using pre-loaded modules"""
-        import io
-        import contextlib
+        """Handle search command using subprocess"""
+        import subprocess
         
-        # Capture stdout and stderr
-        stdout_buffer = io.StringIO()
-        stderr_buffer = io.StringIO()
+        # Get project data dir from environment
+        project_data_dir = os.environ.get('RAGEX_PROJECT_DATA_DIR')
+        if not project_data_dir:
+            project_name = os.environ.get('PROJECT_NAME', 'default_project')
+            project_data_dir = f'/data/projects/{project_name}'
         
-        try:
-            # Redirect stdout/stderr
-            with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
-                # Import search module if not already loaded
-                if 'ragex_search' not in self.modules:
-                    import ragex_search
-                    self.modules['ragex_search'] = ragex_search
-                
-                # Set up sys.argv for the search module
-                import sys
-                old_argv = sys.argv
-                try:
-                    sys.argv = ['ragex_search.py'] + args
-                    
-                    # Run the search directly using the module
-                    await self.modules['ragex_search'].main()
-                    
-                    return {
-                        'success': True,
-                        'stdout': stdout_buffer.getvalue(),
-                        'stderr': stderr_buffer.getvalue(),
-                        'returncode': 0
-                    }
-                finally:
-                    sys.argv = old_argv
-                    
-        except SystemExit as e:
-            return {
-                'success': e.code == 0,
-                'stdout': stdout_buffer.getvalue(),
-                'stderr': stderr_buffer.getvalue(),
-                'returncode': e.code or 0
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'stdout': stdout_buffer.getvalue(),
-                'stderr': stderr_buffer.getvalue() + f"\nError: {str(e)}",
-                'returncode': 1
-            }
+        cmd = [sys.executable, '/app/ragex_search.py', '--index-dir', project_data_dir] + args
+        
+        env = os.environ.copy()
+        env['PYTHONPATH'] = '/app:' + env.get('PYTHONPATH', '')
+        env['RAGEX_CHROMA_PERSIST_DIR'] = f'{project_data_dir}/chroma_db'
+        env['RAGEX_IGNOREFILE_WARNING'] = 'false'
+        env['RAGEX_DISABLE_LOGGING_SETUP'] = 'true'
+        
+        result = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+        
+        stdout, stderr = await result.communicate()
+        
+        return {
+            'success': result.returncode == 0,
+            'stdout': stdout.decode('utf-8'),
+            'stderr': stderr.decode('utf-8'),
+            'returncode': result.returncode
+        }
     
     async def _handle_index(self, args: list) -> Dict[str, Any]:
         """Handle index command"""
@@ -286,24 +206,38 @@ class RagexSocketDaemon:
     
     async def _handle_init(self, args: list) -> Dict[str, Any]:
         """Handle init command"""
-        try:
-            from src.ignore.init import init_ignore_file
-            from pathlib import Path
-            
-            init_ignore_file(Path('/workspace'))
-            
+        import subprocess
+        
+        # Run the init script directly
+        cmd = [sys.executable, '-c', 
+               "from src.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path('/workspace'))"]
+        
+        env = os.environ.copy()
+        env['PYTHONPATH'] = '/app:' + env.get('PYTHONPATH', '')
+        
+        result = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+            cwd='/workspace'
+        )
+        
+        stdout, stderr = await result.communicate()
+        
+        if result.returncode == 0:
             return {
                 'success': True,
                 'stdout': '✅ .mcpignore file created\n',
-                'stderr': '',
+                'stderr': stderr.decode('utf-8'),
                 'returncode': 0
             }
-        except Exception as e:
+        else:
             return {
                 'success': False,
-                'stdout': '',
-                'stderr': str(e),
-                'returncode': 1
+                'stdout': stdout.decode('utf-8'),
+                'stderr': stderr.decode('utf-8'),
+                'returncode': result.returncode
             }
     
     async def _handle_serve(self, args: list) -> Dict[str, Any]:

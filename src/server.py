@@ -38,20 +38,23 @@ except ImportError:
         WatchdogMonitor = None
 
 # Configure logging based on environment
-configure_logging()
+# Only configure logging if we're the main process, not when imported by socket daemon
+if os.environ.get('RAGEX_DAEMON_INITIALIZED') != '1':
+    configure_logging()
 
 # Get logger for this module
 logger = get_logger("ragex-mcp")
 
-# Log startup info
-logger.info("="*50)
-logger.info("MCP RAGex Server Started")
-logger.info(f"Time: {datetime.now()}")
-logger.info(f"CWD: {os.getcwd()}")
-logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
-logger.info(f"Python: {sys.executable}")
-logger.info(f"Arguments: {sys.argv}")
-logger.info("="*50)
+# Log startup info only if we're the main process
+if os.environ.get('RAGEX_DAEMON_INITIALIZED') != '1':
+    logger.info("="*50)
+    logger.info("MCP RAGex Server Started")
+    logger.info(f"Time: {datetime.now()}")
+    logger.info(f"CWD: {os.getcwd()}")
+    logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
+    logger.info(f"Python: {sys.executable}")
+    logger.info(f"Arguments: {sys.argv}")
+    logger.info("="*50)
 
 # Security constants
 MAX_RESULTS = 200

@@ -128,7 +128,21 @@ async def main():
     
     # Resolve paths relative to the original working directory
     resolved_paths = [str((Path(original_cwd) / p).resolve()) for p in args.paths]
-    print(f"📁 Indexing paths: {', '.join(resolved_paths)}")
+    
+    # Get host workspace path for display
+    workspace_host = os.environ.get('WORKSPACE_PATH', '')
+    
+    # Display paths from host perspective
+    display_paths = []
+    for p in resolved_paths:
+        if workspace_host and p.startswith('/workspace'):
+            # Convert /workspace path to host path for display
+            display_path = workspace_host
+            display_paths.append(display_path)
+        else:
+            display_paths.append(p)
+    
+    print(f"📁 Indexing paths: {', '.join(display_paths)}")
     
     # Check if index exists (relative to original working directory)
     index_path = Path(original_cwd) / args.persist_dir
@@ -215,7 +229,9 @@ async def main():
         mcpignore_count = len(pattern_matcher.patterns) - default_count
         print(f"   - Default patterns: {default_count}")
         print(f"   - .mcpignore patterns: {mcpignore_count}")
-        print(f"   - Working directory: {original_cwd}")
+        # Show host working directory if available
+        display_cwd = workspace_host if workspace_host else original_cwd
+        print(f"   - Working directory: {display_cwd}")
         print(f"   - Sample patterns: {pattern_matcher.patterns[:5]}")
     else:
         print(f"\n📋 No .mcpignore found, using {len(pattern_matcher.patterns)} default exclusion patterns")
