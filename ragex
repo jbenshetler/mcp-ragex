@@ -36,11 +36,14 @@ Commands:
   serve              Start MCP server (default)
   index [PATH]       Build semantic index for project
   search QUERY       Search in current project
-  list-projects      List all projects for current user
-  clean-project ID   Remove project data
+  ls                 List all projects for current user
+  list-projects      List all projects (alias for ls)
+  rm ID              Remove project data
+  clean-project ID   Remove project data (alias for rm)
   init               Create .mcpignore file in current directory
   info               Show project information
   register           Show registration instructions
+  unregister         Show unregistration instructions
   bash               Get shell in container
   
   # Daemon commands for performance
@@ -57,7 +60,7 @@ Environment Variables:
 Examples:
   ragex index .                    # Index current directory
   ragex search "auth functions"    # Search current project
-  ragex list-projects              # Show all your projects
+  ragex ls                         # Show all your projects
   RAGEX_EMBEDDING_MODEL=balanced ragex index .  # Use balanced model
   
   # Performance optimization with daemon
@@ -266,7 +269,7 @@ esac
 
 # Handle special commands that don't need workspace
 case "$COMMAND" in
-    "list-projects"|"clean-project")
+    "list-projects"|"ls"|"clean-project"|"rm"|"register"|"unregister")
         # These commands don't use daemon, run directly
         DOCKER_ARGS=(
             "run"
@@ -274,6 +277,9 @@ case "$COMMAND" in
             "-u" "${DOCKER_USER_ID}:${DOCKER_GROUP_ID}"
             "-v" "${USER_VOLUME}:/data"
             "-e" "PROJECT_NAME=admin"
+            "-e" "HOST_HOME=${HOME}"
+            "-e" "HOST_USER=${USER}"
+            "-e" "WORKSPACE_PATH=${WORKSPACE_PATH}"
         )
         exec docker "${DOCKER_ARGS[@]}" "$DOCKER_IMAGE" "$COMMAND" "$@"
         ;;
@@ -294,7 +300,7 @@ esac
 
 # For all other commands, use daemon if available
 case "$COMMAND" in
-    "init"|"index"|"search"|"serve"|"server"|"bash"|"sh"|"register")
+    "init"|"index"|"search"|"serve"|"server"|"bash"|"sh")
         # These commands benefit from daemon mode
         exec_via_daemon "$COMMAND" "$@"
         ;;

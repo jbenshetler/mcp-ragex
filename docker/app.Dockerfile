@@ -15,6 +15,10 @@ LABEL org.opencontainers.image.licenses="MIT"
 # Switch to app directory
 WORKDIR /app
 
+# Install jq for JSON processing in shell scripts
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
+
 # Update to newer tree-sitter that has captures() API
 # Force upgrade since base image has older versions
 RUN pip install --no-cache-dir --upgrade \
@@ -33,7 +37,7 @@ COPY --chown=ragex:ragex ragex_search.py ./
 COPY --chown=ragex:ragex docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Create necessary directories if they don't exist
+# Create necessary directories if they don't exist (still as root)
 RUN mkdir -p /workspace && chown ragex:ragex /workspace
 
 # Switch to non-root user

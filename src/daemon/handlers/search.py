@@ -25,7 +25,7 @@ class SearchHandler:
         # Get project data dir from environment
         project_data_dir = os.environ.get('RAGEX_PROJECT_DATA_DIR')
         if not project_data_dir:
-            project_name = os.environ.get('PROJECT_NAME', 'default_project')
+            project_name = os.environ.get('PROJECT_NAME', 'admin')
             project_data_dir = f'/data/projects/{project_name}'
         
         # Lazy load search module
