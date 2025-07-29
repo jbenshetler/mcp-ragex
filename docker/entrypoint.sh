@@ -333,8 +333,19 @@ except Exception as e:
         }
         ;;
     *)
-        # Default to MCP server
-        setup_project_data "$@"
-        exec python -m src.server "$@"
+        # Unknown command
+        echo "❌ Error: Unknown command '$1'"
+        echo ""
+        echo "Available commands:"
+        echo "  init               Create .mcpignore file"
+        echo "  index [PATH]       Build semantic index"
+        echo "  search QUERY       Search in project"
+        echo "  serve/server       Start MCP server"
+        echo "  info               Show project information"
+        echo "  list-projects      List all projects"
+        echo "  clean-project ID   Remove project data"
+        echo "  register           Show registration instructions"
+        echo "  daemon             Start socket daemon (internal)"
+        exit 1
         ;;
 esac

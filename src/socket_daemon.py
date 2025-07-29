@@ -122,8 +122,13 @@ class RagexSocketDaemon:
                 return await self._handle_serve(args)
             
             else:
-                # For other commands, execute them directly
-                return await self._handle_generic_command(command, args)
+                # Unknown command
+                return {
+                    'success': False,
+                    'stdout': '',
+                    'stderr': f"❌ Error: Unknown command '{command}'\n\nRun 'ragex help' or 'ragex --help' to see available commands.\n",
+                    'returncode': 1
+                }
             
         except Exception as e:
             logger.error(f"Error executing command {command}: {e}", exc_info=True)

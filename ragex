@@ -38,7 +38,9 @@ Commands:
   search QUERY       Search in current project
   list-projects      List all projects for current user
   clean-project ID   Remove project data
+  init               Create .mcpignore file in current directory
   info               Show project information
+  register           Show registration instructions
   bash               Get shell in container
   
   # Daemon commands for performance
@@ -297,7 +299,10 @@ case "$COMMAND" in
         exec_via_daemon "$COMMAND" "$@"
         ;;
     *)
-        # Unknown commands also go through daemon
-        exec_via_daemon "$COMMAND" "$@"
+        # Unknown command - show error and usage
+        echo "❌ Error: Unknown command '$COMMAND'"
+        echo ""
+        show_usage
+        exit 1
         ;;
 esac
