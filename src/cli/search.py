@@ -9,14 +9,14 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 # Import from lib modules
-from src.lib.ripgrep_searcher import RipgrepSearcher
-from src.lib.pattern_matcher import PatternMatcher
+from src.ragex_core.ripgrep_searcher import RipgrepSearcher
+from src.ragex_core.pattern_matcher import PatternMatcher
 from src.tree_sitter_enhancer import TreeSitterEnhancer
 
 # Try to import semantic search components
 try:
-    from src.lib.embedding_manager import EmbeddingManager
-    from src.lib.vector_store import CodeVectorStore
+    from src.ragex_core.embedding_manager import EmbeddingManager
+    from src.ragex_core.vector_store import CodeVectorStore
     semantic_available = True
 except ImportError:
     semantic_available = False

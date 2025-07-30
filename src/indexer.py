@@ -15,14 +15,15 @@ import warnings
 warnings.filterwarnings("ignore", message=".*encoder_attention_mask.*is deprecated.*", category=FutureWarning)
 
 from src.tree_sitter_enhancer import TreeSitterEnhancer
-from src.lib.embedding_manager import EmbeddingManager
-from src.lib.vector_store import CodeVectorStore
-from src.lib.pattern_matcher import PatternMatcher
+from src.ragex_core.embedding_manager import EmbeddingManager
+from src.ragex_core.vector_store import CodeVectorStore
+from src.ragex_core.pattern_matcher import PatternMatcher
+from src.ragex_core.path_mapping import container_to_host_path, is_container_path
 
 logger = logging.getLogger("code-indexer")
 
 
-from src.lib.embedding_config import EmbeddingConfig
+from src.ragex_core.embedding_config import EmbeddingConfig
 
 
 class CodeIndexer:
@@ -149,10 +150,15 @@ class CodeIndexer:
             symbol_dicts = []
             for symbol in symbols:
                 # Convert Symbol object to dictionary
+                # Convert container path to host path for storage
+                file_path_str = str(file_path)
+                if is_container_path(file_path_str):
+                    file_path_str = container_to_host_path(file_path_str)
+                
                 symbol_dict = {
                     'name': symbol.name,
                     'type': symbol.type,
-                    'file': str(file_path),
+                    'file': file_path_str,
                     'line': symbol.line,
                     'end_line': symbol.end_line,
                     'column': symbol.column,
@@ -237,12 +243,25 @@ class CodeIndexer:
         # Process files with progress bar
         with tqdm(total=len(all_files), desc="Extracting symbols") as pbar:
             for file_path in all_files:
-                symbols = await self.extract_symbols_from_file(file_path)
-                
-                if symbols:
-                    all_symbols.extend(symbols)
-                    status = "success"
-                else:
+                try:
+                    symbols = await self.extract_symbols_from_file(file_path)
+                    
+                    if symbols:
+                        # Calculate checksum for this file
+                        from src.ragex_core.file_checksum import calculate_file_checksum
+                        file_checksum = calculate_file_checksum(file_path)
+                        
+                        # Add checksum to all symbols from this file
+                        for symbol in symbols:
+                            symbol['file_checksum'] = file_checksum
+                        
+                        all_symbols.extend(symbols)
+                        status = "success"
+                    else:
+                        failed_files.append(str(file_path))
+                        status = "failed"
+                except Exception as e:
+                    logger.error(f"Failed to process {file_path}: {e}")
                     failed_files.append(str(file_path))
                     status = "failed"
                 
@@ -312,11 +331,12 @@ class CodeIndexer:
         
         return stats
     
-    async def update_file(self, file_path: str) -> Dict[str, Any]:
+    async def update_file(self, file_path: str, file_checksum: str) -> Dict[str, Any]:
         """Update index for a single file
         
         Args:
             file_path: Path to the file to update
+            file_checksum: SHA256 checksum of the file (required)
             
         Returns:
             Update statistics
@@ -343,6 +363,10 @@ class CodeIndexer:
                 "added": 0
             }
         
+        # Add checksum to all symbols from this file
+        for symbol in symbols:
+            symbol['file_checksum'] = file_checksum
+        
         # Create embeddings
         embeddings = self.embedder.embed_code_symbols(symbols, show_progress=False)
         
@@ -354,4 +378,48 @@ class CodeIndexer:
             "deleted": deleted,
             "added": len(symbols),
             "total_in_store": result['total']
+        }
+    
+    async def update_files(self, file_paths: List[Path], file_checksums: Dict[str, str]) -> Dict[str, Any]:
+        """Update index for multiple files
+        
+        Args:
+            file_paths: List of file paths to update
+            file_checksums: Dict mapping file paths to checksums (required)
+            
+        Returns:
+            Update statistics
+        """
+        total_deleted = 0
+        total_added = 0
+        total_symbols = 0
+        failed_files = []
+        
+        # Process files
+        for file_path in file_paths:
+            try:
+                # Get checksum for this file (required)
+                file_path_str = str(file_path)
+                checksum = file_checksums.get(file_path_str)
+                if not checksum:
+                    raise ValueError(f"No checksum provided for {file_path_str}")
+                
+                result = await self.update_file(file_path_str, file_checksum=checksum)
+                total_deleted += result.get('deleted', 0)
+                total_added += result.get('added', 0)
+                
+                # Count symbols from this file
+                if result.get('status') == 'updated':
+                    total_symbols += result.get('added', 0)
+                    
+            except Exception as e:
+                logger.error(f"Failed to update {file_path}: {e}")
+                failed_files.append(str(file_path))
+        
+        return {
+            'files_processed': len(file_paths) - len(failed_files),
+            'files_failed': len(failed_files),
+            'symbols_indexed': total_symbols,
+            'symbols_deleted': total_deleted,
+            'failed_files': failed_files
         }

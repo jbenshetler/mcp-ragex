@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 
 try:
-    from src.embedding_config import EmbeddingConfig
+    from src.ragex_core.embedding_config import EmbeddingConfig
 except ImportError:
     from .embedding_config import EmbeddingConfig
 
@@ -105,6 +105,7 @@ class CodeVectorStore:
                 "file": symbol.get('file', ''),
                 "line": symbol.get('line', 0),
                 "language": symbol.get('language', ''),
+                "file_checksum": symbol.get('file_checksum', ''),  # NEW: Store file checksum
             }
             
             # Only add optional fields if they have values
@@ -345,4 +346,84 @@ class CodeVectorStore:
         return {
             "status": "reset",
             "message": "Vector store reset to empty state"
+        }
+    
+    def get_file_checksums(self) -> Dict[str, str]:
+        """
+        Retrieve all stored file checksums.
+        
+        Returns:
+            Dictionary mapping file paths to their checksums
+            {file_path: checksum}
+        """
+        logger.info("Retrieving file checksums from vector store")
+        
+        # Get all metadata containing file checksums
+        all_data = self.collection.get(include=["metadatas"])
+        
+        file_checksums = {}
+        for metadata in all_data.get('metadatas', []):
+            file_path = metadata.get('file', '')
+            file_checksum = metadata.get('file_checksum', '')
+            
+            if file_path and file_checksum:
+                # Use the most recent checksum for each file
+                # (in case of multiple symbols per file)
+                file_checksums[file_path] = file_checksum
+        
+        logger.info(f"Retrieved checksums for {len(file_checksums)} files")
+        return file_checksums
+    
+    def get_files_by_checksum(self, checksum: str) -> List[str]:
+        """
+        Get all files with a specific checksum.
+        
+        This is useful for detecting moved/renamed files with the same content.
+        
+        Args:
+            checksum: The checksum to search for
+            
+        Returns:
+            List of file paths with the given checksum
+        """
+        results = self.collection.get(
+            where={"file_checksum": checksum},
+            include=["metadatas"]
+        )
+        
+        files = []
+        for metadata in results.get('metadatas', []):
+            file_path = metadata.get('file', '')
+            if file_path and file_path not in files:
+                files.append(file_path)
+        
+        return files
+    
+    def get_file_info(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Get information about a specific file in the index.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            Dictionary with file info or None if not found
+        """
+        results = self.collection.get(
+            where={"file": file_path},
+            include=["metadatas"]
+        )
+        
+        if not results.get('metadatas'):
+            return None
+        
+        # Get info from first symbol in the file
+        metadata = results['metadatas'][0]
+        symbol_count = len(results['metadatas'])
+        
+        return {
+            "file_path": file_path,
+            "checksum": metadata.get('file_checksum', ''),
+            "language": metadata.get('language', ''),
+            "symbol_count": symbol_count
         }

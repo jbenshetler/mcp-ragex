@@ -8,12 +8,23 @@ This is a Model Context Protocol (MCP) server that provides code search function
 
 ## Key Commands
 
+- **Index project**: `ragex index .` (starts daemon automatically with file watching)
+- **Search code**: `ragex search "query"`
 - **Run server**: `./run_server.sh` or `uv run python src/server.py`
 - **Run tests**: `uv run python tests/test_server.py` or `uv run pytest tests/`
 - **Install dependencies**: `pip install -r requirements.txt` or `pip install -e .`
 - **Run python programs**: `uv run`
 - **Install packages**: `uv install`
 - Use uv to install Python packages, not pip.
+
+## File Watching and Auto-indexing
+
+The daemon automatically watches for file changes and re-indexes them:
+- Changes are detected immediately when you save files
+- After 60 seconds of no changes, modified files are re-indexed
+- Only changed files are processed (incremental updates)
+- File watching respects `.mcpignore` patterns
+- No manual re-indexing needed - search results stay up-to-date
 
 ## Architecture
 

@@ -86,7 +86,7 @@ case "$1" in
         if [ -f "/workspace/.mcpignore" ]; then
             echo "✅ .mcpignore already exists in current directory"
         else
-            exec python -c "from src.lib.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path('/workspace'))"
+            exec python -c "from src.ragex_core.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path('/workspace'))"
         fi
         ;;
     "index")
@@ -95,38 +95,12 @@ case "$1" in
         shift
         # Pass the workspace directory and ensure correct persist dir
         export RAGEX_INDEX_PATH="/workspace"
-        # Suppress .mcpignore warnings for index command
-        export RAGEX_IGNOREFILE_WARNING=false
+        # .mcpignore warnings are suppressed by default in Dockerfile
+        # Pass user ID for project detection
+        export DOCKER_USER_ID="${DOCKER_USER_ID}"
         
-        # Parse arguments properly
-        path=""
-        args=()
-        while [ $# -gt 0 ]; do
-            case "$1" in
-                --*|-*)
-                    # This is a flag, add it to args
-                    args+=("$1")
-                    ;;
-                *)
-                    # This is the path argument
-                    if [ -z "$path" ]; then
-                        path="$1"
-                    else
-                        # Additional non-flag argument
-                        args+=("$1")
-                    fi
-                    ;;
-            esac
-            shift
-        done
-        
-        # Default path to current directory (workspace)
-        if [ -z "$path" ] || [ "$path" = "." ]; then
-            path="/workspace"
-        fi
-        
-        # Execute with properly ordered arguments
-        exec python scripts/build_semantic_index.py "$path" "${args[@]}"
+        # Use smart_index.py which handles checksums and project detection
+        exec python scripts/smart_index.py "$@"
         ;;
     "serve"|"server")
         setup_project_data "$@"
@@ -136,8 +110,7 @@ case "$1" in
         setup_project_data "$@"
         shift
         export RAGEX_CHROMA_PERSIST_DIR="${RAGEX_PROJECT_DATA_DIR}/chroma_db"
-        # Suppress .mcpignore warnings for search commands
-        export RAGEX_IGNOREFILE_WARNING=false
+        # .mcpignore warnings are suppressed by default in Dockerfile
         # Disable logging setup override
         export RAGEX_DISABLE_LOGGING_SETUP=true
         exec python ragex_search.py --index-dir "${RAGEX_PROJECT_DATA_DIR}" "$@"
@@ -443,11 +416,11 @@ case "$1" in
                 echo ""
                 echo "📈 Index Statistics:"
                 python -c "
-from src.vector_store import VectorStore
-from src.embedding_manager import EmbeddingManager
+from src.ragex_core.vector_store import CodeVectorStore
+from src.ragex_core.embedding_manager import EmbeddingManager
 try:
     em = EmbeddingManager()
-    vs = VectorStore(em)
+    vs = CodeVectorStore()
     stats = vs.get_stats()
     print(f'  Total symbols: {stats[\"total_symbols\"]}')
     print(f'  Unique files: {stats[\"unique_files\"]}')
@@ -469,8 +442,7 @@ except Exception as e:
         setup_project_data "$@"
         shift
         export RAGEX_CHROMA_PERSIST_DIR="${RAGEX_PROJECT_DATA_DIR}/chroma_db"
-        # Suppress .mcpignore warnings for search commands
-        export RAGEX_IGNOREFILE_WARNING=false
+        # .mcpignore warnings are suppressed by default in Dockerfile
         # Disable logging setup override
         export RAGEX_DISABLE_LOGGING_SETUP=true
         exec python ragex_search.py --index-dir "${RAGEX_PROJECT_DATA_DIR}" "$@"

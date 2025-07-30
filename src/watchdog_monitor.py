@@ -22,7 +22,7 @@ except ImportError:
     FileSystemEventHandler = object
     FileSystemEvent = object
 
-from .ignore import IgnoreManager, IGNORE_FILENAME
+from src.ragex_core.ignore import IgnoreManager, IGNORE_FILENAME
 
 logger = logging.getLogger("watchdog-monitor")
 

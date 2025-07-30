@@ -59,7 +59,8 @@ sys.path.insert(0, str(ragex_dir / "src"))
 
 try:
     from src.indexer import CodeIndexer
-    from src.lib.pattern_matcher import PatternMatcher
+    from src.ragex_core.pattern_matcher import PatternMatcher
+    from src.ragex_core.project_utils import generate_project_id
 except ImportError as e:
     print(f"❌ Cannot import required modules from ragex directory.")
     print(f"   Script location: {script_dir}")
@@ -129,8 +130,12 @@ async def main():
     # Resolve paths relative to the original working directory
     resolved_paths = [str((Path(original_cwd) / p).resolve()) for p in args.paths]
     
-    # Get host workspace path for display
+    # Get host workspace path for display and project ID generation
     workspace_host = os.environ.get('WORKSPACE_PATH', '')
+    if not workspace_host:
+        logger.error("WORKSPACE_PATH environment variable not set")
+        print("❌ WORKSPACE_PATH environment variable not set. Cannot proceed.")
+        sys.exit(1)
     
     # Display paths from host perspective
     display_paths = []
@@ -144,9 +149,21 @@ async def main():
     
     print(f"📁 Indexing paths: {', '.join(display_paths)}")
     
-    # Check if index exists (relative to original working directory)
-    index_path = Path(original_cwd) / args.persist_dir
-    metadata_path = index_path / "index_metadata.json"
+    # Generate project ID using host workspace path for consistency
+    user_id = os.environ.get('DOCKER_USER_ID', str(os.getuid()))
+    project_id = generate_project_id(workspace_host, user_id)
+    
+    # Use project-specific directory instead of args.persist_dir
+    project_data_dir = f'/data/projects/{project_id}'
+    index_path = Path(project_data_dir) / 'chroma_db'
+    metadata_path = Path(project_data_dir) / "index_metadata.json"
+    
+    # Log project ID and index location on same line
+    logger.info(f"Project ID: {project_id} | Index location: {index_path}")
+    
+    # Check if index exists
+    # index_path = Path(original_cwd) / args.persist_dir
+    # metadata_path = index_path / "index_metadata.json"
     
     if index_path.exists() and not args.force:
         print("⚠️  Index already exists. Use --force to rebuild.")
@@ -190,7 +207,7 @@ async def main():
         )
     else:
         print(f"   - Preset: {args.preset}")
-        print(f"   - Storage: {args.persist_dir}")
+        print(f"   - Storage: {index_path}")
         
         # Check for environment override
         env_model = os.getenv("RAGEX_EMBEDDING_MODEL")

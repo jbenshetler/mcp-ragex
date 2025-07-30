@@ -18,6 +18,9 @@ image:
 .PHONY: install
 install:
 	@echo "📦 Installing ragex with image: $(IMAGE_NAME)"
+	@echo "🧹 Stopping and removing any existing ragex daemon containers..."
+	@docker ps -a -q -f "name=ragex_daemon_" | xargs -r docker stop 2>/dev/null || true
+	@docker ps -a -q -f "name=ragex_daemon_" | xargs -r docker rm 2>/dev/null || true
 	RAGEX_IMAGE=$(IMAGE_NAME) ./install.sh
 	@echo "✅ Installation complete"
 

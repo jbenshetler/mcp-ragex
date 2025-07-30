@@ -17,6 +17,11 @@ import tree_sitter_python as tspython
 import tree_sitter_javascript as tsjavascript
 import tree_sitter_typescript as tstypescript
 
+try:
+    from .ragex_core.path_mapping import container_to_host_path, is_container_path
+except ImportError:
+    from src.ragex_core.path_mapping import container_to_host_path, is_container_path
+
 logger = logging.getLogger("tree-sitter-enhancer")
 
 @dataclass
@@ -56,10 +61,10 @@ class TreeSitterEnhancer:
         # Import here to avoid circular import
         try:
             # Try relative import first (when running as module)
-            from .lib.pattern_matcher import PatternMatcher
+            from .ragex_core.pattern_matcher import PatternMatcher
         except ImportError:
             # Fall back to absolute import
-            from src.lib.pattern_matcher import PatternMatcher
+            from src.ragex_core.pattern_matcher import PatternMatcher
         
         # Pattern matcher for exclusions
         self.pattern_matcher = pattern_matcher or PatternMatcher()
@@ -314,6 +319,11 @@ class TreeSitterEnhancer:
                                      (for semantic search). If False, only code symbols
                                      (for symbol search).
         """
+        # Convert container path to host path for consistent storage
+        host_path = file_path
+        if is_container_path(file_path):
+            host_path = container_to_host_path(file_path)
+        
         # Check if file should be excluded
         if self.pattern_matcher.should_exclude(file_path):
             return []
@@ -356,9 +366,9 @@ class TreeSitterEnhancer:
         
         # Process captures based on language
         if lang == "python":
-            symbols.extend(self._extract_python_symbols(captures, content, file_path, include_docs_and_comments))
+            symbols.extend(self._extract_python_symbols(captures, content, host_path, include_docs_and_comments))
         elif lang in ["javascript", "typescript", "tsx"]:
-            symbols.extend(self._extract_js_ts_symbols(captures, content, file_path, lang))
+            symbols.extend(self._extract_js_ts_symbols(captures, content, host_path, lang))
         
         # Update cache (with size limit)
         if len(self._symbol_cache) >= self._cache_size:
@@ -369,7 +379,7 @@ class TreeSitterEnhancer:
         
         return symbols
     
-    def _extract_python_symbols(self, captures, source: bytes, file_path: str, include_docs_and_comments: bool = False) -> List[Symbol]:
+    def _extract_python_symbols(self, captures, source: bytes, host_path: str, include_docs_and_comments: bool = False) -> List[Symbol]:
         """Extract symbols from Python code"""
         symbols = []
         current_class = None
@@ -411,7 +421,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name=class_name,
                         type="class",
-                        file=file_path,
+                        file=host_path,
                         line=class_name_node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=class_name_node.start_point[1],
@@ -446,7 +456,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name=func_name,
                         type="method" if parent_class else "function",
-                        file=file_path,
+                        file=host_path,
                         line=func_name_node.start_point[0] + 1,
                         end_line=func_node.end_point[0] + 1,
                         column=func_name_node.start_point[1],
@@ -466,7 +476,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name=import_name,
                         type="import",
-                        file=file_path,
+                        file=host_path,
                         line=node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=node.start_point[1],
@@ -495,7 +505,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name=display_name,
                         type="import_from",
-                        file=file_path,
+                        file=host_path,
                         line=node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=node.start_point[1],
@@ -538,7 +548,7 @@ class TreeSitterEnhancer:
                         symbols.append(Symbol(
                             name=const_name,
                             type=symbol_type,
-                            file=file_path,
+                            file=host_path,
                             line=const_name_node.start_point[0] + 1,
                             end_line=node.end_point[0] + 1,
                             column=const_name_node.start_point[1],
@@ -578,7 +588,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name=env_var_name,
                         type="env_var",
-                        file=file_path,
+                        file=host_path,
                         line=node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=node.start_point[1],
@@ -601,7 +611,7 @@ class TreeSitterEnhancer:
                 symbols.append(Symbol(
                     name=f"Comment: {comment_text[:50]}..." if len(comment_text) > 50 else f"Comment: {comment_text}",
                     type="comment",
-                    file=file_path,
+                    file=host_path,
                     line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
                     column=node.start_point[1],
@@ -618,7 +628,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name="Module Documentation",
                         type="module_doc",
-                        file=file_path,
+                        file=host_path,
                         line=doc_node.start_point[0] + 1,
                         end_line=doc_node.end_point[0] + 1,
                         column=doc_node.start_point[1],
@@ -630,7 +640,7 @@ class TreeSitterEnhancer:
         
         return symbols
     
-    def _extract_js_ts_symbols(self, captures, source: bytes, file_path: str, lang: str) -> List[Symbol]:
+    def _extract_js_ts_symbols(self, captures, source: bytes, host_path: str, lang: str) -> List[Symbol]:
         """Extract symbols from JavaScript/TypeScript code"""
         symbols = []
         
@@ -654,7 +664,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name=class_name,
                         type="class",
-                        file=file_path,
+                        file=host_path,
                         line=class_name_node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=class_name_node.start_point[1],
@@ -676,7 +686,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name=interface_name,
                         type="interface",
-                        file=file_path,
+                        file=host_path,
                         line=interface_name_node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=interface_name_node.start_point[1],
@@ -740,7 +750,7 @@ class TreeSitterEnhancer:
                     symbols.append(Symbol(
                         name=func_name,
                         type="function",
-                        file=file_path,
+                        file=host_path,
                         line=func_name_node.start_point[0] + 1,
                         end_line=node.end_point[0] + 1,
                         column=func_name_node.start_point[1],
@@ -759,7 +769,7 @@ class TreeSitterEnhancer:
                         symbols.append(Symbol(
                             name=f"import {import_source}",
                             type="import",
-                            file=file_path,
+                            file=host_path,
                             line=node.start_point[0] + 1,
                             end_line=node.end_point[0] + 1,
                             column=node.start_point[1],
@@ -774,7 +784,7 @@ class TreeSitterEnhancer:
                         symbols.append(Symbol(
                             name=import_name,
                             type="import",
-                            file=file_path,
+                            file=host_path,
                             line=node.start_point[0] + 1,
                             end_line=node.end_point[0] + 1,
                             column=node.start_point[1],

@@ -16,6 +16,36 @@ from .registry import IgnoreFileRegistry
 
 logger = logging.getLogger(__name__)
 
+# Track warnings that have already been shown to avoid duplicates
+_shown_warnings: Set[str] = set()
+
+
+def _log_pattern_warning(file_path: Path, warning) -> None:
+    """Log a pattern warning if warnings are enabled and not already shown."""
+    # Check if warnings are suppressed
+    warn_env = os.environ.get('RAGEX_IGNOREFILE_WARNING', 'true').lower()
+    if warn_env in ('false', 'no', '0'):
+        return
+    
+    # Convert container path to host path for display
+    display_path = file_path
+    try:
+        from ..path_mapping import container_to_host_path, is_container_path
+        if is_container_path(str(file_path)):
+            workspace_host = os.environ.get('WORKSPACE_PATH')
+            if workspace_host:
+                display_path = container_to_host_path(file_path, workspace_host)
+    except:
+        pass  # Use original path if conversion fails
+    
+    # Create unique warning key
+    warning_key = f"{display_path}:{warning.line}:{warning.message}"
+    
+    # Only show if not already shown
+    if warning_key not in _shown_warnings:
+        _shown_warnings.add(warning_key)
+        logger.warning(f"{display_path}:{warning.line}: {warning.message}")
+
 
 class IgnoreManager:
     """
@@ -164,9 +194,7 @@ class IgnoreManager:
                         )
                 if file_info.warnings:
                     for warning in file_info.warnings:
-                        logger.warning(
-                            f"{file_path}:{warning.line}: {warning.message}"
-                        )
+                        _log_pattern_warning(file_path, warning)
                         
             # Recompile all rules
             self._recompile_rules()
@@ -271,9 +299,7 @@ class IgnoreManager:
                     )
             if file_info.warnings:
                 for warning in file_info.warnings:
-                    logger.warning(
-                        f"{file_path}:{warning.line}: {warning.message}"
-                    )
+                    _log_pattern_warning(file_path, warning)
                     
         # Compile all rules
         self._recompile_rules()

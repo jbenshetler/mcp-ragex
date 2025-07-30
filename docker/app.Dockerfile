@@ -27,6 +27,9 @@ RUN pip install --no-cache-dir --upgrade \
     tree-sitter-javascript>=0.23.0 \
     tree-sitter-typescript>=0.23.0
 
+# Install watchdog for file monitoring
+RUN pip install --no-cache-dir watchdog>=3.0.0
+
 # Copy application code with correct ownership
 COPY --chown=ragex:ragex src/ ./src/
 COPY --chown=ragex:ragex scripts/ ./scripts/
@@ -51,6 +54,7 @@ ENV RAGEX_CHROMA_PERSIST_DIR=/data/chroma_db
 ENV HF_HOME=/data/models
 ENV SENTENCE_TRANSFORMERS_HOME=/data/models
 ENV RAGEX_LOG_LEVEL=WARN
+ENV RAGEX_IGNOREFILE_WARNING=false
 
 # Data and workspace volumes
 VOLUME ["/data", "/workspace"]

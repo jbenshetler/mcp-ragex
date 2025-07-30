@@ -20,7 +20,7 @@ class InitHandler:
         try:
             # Lazy load init module
             if not self.init_module:
-                from src.lib.ignore.init import init_ignore_file
+                from src.ragex_core.ignore.init import init_ignore_file
                 self.init_module = init_ignore_file
             
             # Run init

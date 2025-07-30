@@ -32,10 +32,14 @@ show_usage() {
     cat << EOF
 Usage: ragex [COMMAND] [OPTIONS]
 
+Quick Start:
+  1. ragex index .   # Index your project (starts daemon automatically)
+  2. ragex search "query"  # Search your codebase
+
 Commands:
-  serve              Start MCP server (default)
-  index [PATH]       Build semantic index for project
+  index [PATH]       Build semantic index and start daemon
   search QUERY       Search in current project
+  serve              Start MCP server (for Claude integration)
   ls                 List all projects for current user
   list-projects      List all projects (alias for ls)
   rm ID              Remove project data
@@ -44,11 +48,9 @@ Commands:
   info               Show project information
   register           Show registration instructions
   unregister         Show unregistration instructions
+  log [PROJECT] [-f] Show/follow logs (global or per-project)
   bash               Get shell in container
-  
-  # Daemon commands for performance
-  start              Start persistent container daemon
-  stop               Stop persistent container daemon
+  stop               Stop daemon if running
   status             Check daemon status
   
 Environment Variables:
@@ -61,12 +63,8 @@ Examples:
   ragex index .                    # Index current directory
   ragex search "auth functions"    # Search current project
   ragex ls                         # Show all your projects
+  ragex log mcp-ragex -f           # Follow logs for specific project
   RAGEX_EMBEDDING_MODEL=balanced ragex index .  # Use balanced model
-  
-  # Performance optimization with daemon
-  ragex start                      # Start daemon for fast execution
-  ragex search "query"             # Near-instant search
-  ragex stop                       # Stop daemon when done
 EOF
 }
 
@@ -94,6 +92,9 @@ WORKSPACE_PATH="${PWD}"
 if [ "$COMMAND" = "index" ] && [ $# -gt 0 ]; then
     WORKSPACE_PATH="$1"
 fi
+
+# Always convert to absolute path
+WORKSPACE_PATH=$(realpath "$WORKSPACE_PATH")
 
 # Generate project-specific identifiers
 USER_VOLUME="ragex_user_${DOCKER_USER_ID}"
@@ -253,10 +254,6 @@ esac
 
 # Handle daemon-specific commands
 case "$COMMAND" in
-    "start")
-        start_daemon
-        exit $?
-        ;;
     "stop")
         stop_daemon
         exit $?
@@ -294,6 +291,121 @@ case "$COMMAND" in
         echo "   Embedding Model: ${RAGEX_EMBEDDING_MODEL:-fast}"
         echo ""
         daemon_status
+        exit 0
+        ;;
+    "log")
+        # Handle log command - view logs from daemon containers
+        project_identifier=""
+        docker_args=()
+        
+        # Parse arguments
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                -f|--follow)
+                    docker_args+=("--follow")
+                    shift
+                    ;;
+                --tail)
+                    docker_args+=("--tail" "$2")
+                    shift 2
+                    ;;
+                --since)
+                    docker_args+=("--since" "$2")
+                    shift 2
+                    ;;
+                --until)
+                    docker_args+=("--until" "$2")
+                    shift 2
+                    ;;
+                -t|--timestamps)
+                    docker_args+=("--timestamps")
+                    shift
+                    ;;
+                --details)
+                    docker_args+=("--details")
+                    shift
+                    ;;
+                -*)
+                    # Pass through unknown docker logs flags
+                    docker_args+=("$1")
+                    shift
+                    ;;
+                *)
+                    if [ -z "$project_identifier" ]; then
+                        project_identifier="$1"
+                    else
+                        echo "❌ Error: Multiple project identifiers specified: '$project_identifier' and '$1'"
+                        exit 1
+                    fi
+                    shift
+                    ;;
+            esac
+        done
+        
+        if [ -n "$project_identifier" ]; then
+            # Per-project logs - resolve project name to project ID
+            resolved_id=$(docker run --rm \
+                -v "${USER_VOLUME}:/data" \
+                --entrypoint python \
+                "${DOCKER_IMAGE}" \
+                -m src.ragex_core.project_resolver "$project_identifier" 2>&1)
+            
+            if [ $? -ne 0 ]; then
+                # Resolution failed - show error message
+                echo "$resolved_id" | sed 's/^ERROR: /❌ /'
+                exit 1
+            fi
+            
+            project_id="$resolved_id"
+            container_name="ragex_daemon_${project_id}"
+            
+            # Check if container exists and is running
+            if docker ps -q -f "name=${container_name}" | grep -q .; then
+                # Show which project we resolved to (if different from input)
+                if [ "$project_identifier" != "$project_id" ]; then
+                    echo "📋 Logs for project: $project_identifier [$project_id]"
+                else
+                    echo "📋 Logs for project: $project_id"
+                fi
+                docker logs "${container_name}" "${docker_args[@]}"
+            else
+                echo "❌ No running daemon found for project: $project_identifier"
+                if [ "$project_identifier" != "$project_id" ]; then
+                    echo "   (Resolved to: $project_id)"
+                fi
+                echo ""
+                echo "Available daemon containers:"
+                daemon_containers=$(docker ps --format "{{.Names}}" | grep "^ragex_daemon_" | sed 's/ragex_daemon_/  /')
+                if [ -n "$daemon_containers" ]; then
+                    echo "$daemon_containers"
+                else
+                    echo "  (none)"
+                fi
+                echo ""
+                echo "Start a daemon with: ragex start"
+                exit 1
+            fi
+        else
+            # Global logs - show all daemon containers
+            daemon_containers=$(docker ps --format "{{.Names}}" | grep "^ragex_daemon_" | sort)
+            
+            if [ -z "$daemon_containers" ]; then
+                echo "📋 No ragex daemon containers are currently running"
+                echo ""
+                echo "Start a daemon with: ragex start"
+                exit 0
+            fi
+            
+            echo "📋 Global ragex logs from all daemon containers:"
+            echo ""
+            
+            for container in $daemon_containers; do
+                project_id=${container#ragex_daemon_}
+                echo "=== $project_id ==="
+                docker logs "$container" "${docker_args[@]}" --tail 10 2>&1 | head -20
+                echo ""
+            done
+        fi
         exit 0
         ;;
 esac

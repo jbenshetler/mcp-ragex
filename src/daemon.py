@@ -172,7 +172,7 @@ class RagexDaemon:
         command_map = {
             'search': ['python', 'ragex_search.py'] + args,
             'index': ['python', 'scripts/build_semantic_index.py'] + args,
-            'init': ['python', '-c', 'from src.lib.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path("/workspace"))'],
+            'init': ['python', '-c', 'from src.ragex_core.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path("/workspace"))'],
             'serve': ['python', '-m', 'src.server'],
             'register': ['bash', '/entrypoint.sh', 'register'] + args,
         }

@@ -24,12 +24,12 @@ import mcp.types as types
 # Import Tree-sitter enhancer and utilities
 try:
     from src.tree_sitter_enhancer import TreeSitterEnhancer
-    from src.pattern_matcher import PatternMatcher
+    from src.ragex_core.pattern_matcher import PatternMatcher
     from src.utils import configure_logging, get_logger
     from src.watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
 except ImportError:
     from .tree_sitter_enhancer import TreeSitterEnhancer
-    from .pattern_matcher import PatternMatcher
+    from .ragex_core.pattern_matcher import PatternMatcher
     from .utils import configure_logging, get_logger
     try:
         from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
@@ -57,7 +57,7 @@ if os.environ.get('RAGEX_DAEMON_INITIALIZED') != '1':
     logger.info("="*50)
 
 # Import constants from ripgrep_searcher
-from src.lib.ripgrep_searcher import ALLOWED_FILE_TYPES, DEFAULT_RESULTS, MAX_RESULTS
+from src.ragex_core.ripgrep_searcher import ALLOWED_FILE_TYPES, DEFAULT_RESULTS, MAX_RESULTS
 
 
 # Initialize server
