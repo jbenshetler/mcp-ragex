@@ -620,18 +620,10 @@ async def handle_intelligent_search(
         "fallback_used": False
     })
     
-    # Format response
-    if format == "raw":
-        response_text = ""
-        if result.get("matches"):
-            for match in result["matches"]:
-                response_text += f"{match['file']}:{match['line_number']}\n"
-        else:
-            response_text = "No matches found."
-        return [types.TextContent(type="text", text=response_text)]
-    
-    # Navigation format 
-    return await format_search_results(result, limit, format)
+    # Return JSON result for MCP clients
+    # This allows the client to access fields like 'total_matches' directly
+    import json
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
 async def handle_watchdog_status() -> List[types.TextContent]:

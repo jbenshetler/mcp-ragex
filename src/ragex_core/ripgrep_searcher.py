@@ -207,6 +207,8 @@ class RipgrepSearcher:
                 "success": False,
                 "error": "Search timed out after 30 seconds",
                 "pattern": pattern,
+                "total_matches": 0,
+                "matches": []
             }
         except Exception as e:
             logger.error(f"Search error: {e}")
@@ -214,4 +216,6 @@ class RipgrepSearcher:
                 "success": False,
                 "error": str(e),
                 "pattern": pattern,
+                "total_matches": 0,
+                "matches": []
             }
