@@ -56,8 +56,8 @@ if os.environ.get('RAGEX_DAEMON_INITIALIZED') != '1':
     logger.info(f"Arguments: {sys.argv}")
     logger.info("="*50)
 
-# Import constants from ripgrep_searcher
-from src.ragex_core.ripgrep_searcher import ALLOWED_FILE_TYPES, DEFAULT_RESULTS, MAX_RESULTS
+# Import RipgrepSearcher and constants
+from src.ragex_core.ripgrep_searcher import RipgrepSearcher, ALLOWED_FILE_TYPES, DEFAULT_RESULTS, MAX_RESULTS
 
 
 # Initialize server
