@@ -5,6 +5,8 @@ import argparse
 import asyncio
 import sys
 import os
+import json
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -12,6 +14,8 @@ from typing import List, Dict, Any, Optional
 from src.ragex_core.ripgrep_searcher import RipgrepSearcher
 from src.ragex_core.pattern_matcher import PatternMatcher
 from src.tree_sitter_enhancer import TreeSitterEnhancer
+from src.ragex_core.path_mapping import container_to_host_path, PathMappingError
+from src.utils import get_logger
 
 # Try to import semantic search components
 try:
@@ -21,14 +25,19 @@ try:
 except ImportError:
     semantic_available = False
 
+# Get logger for this module
+logger = get_logger("cli-search")
+
 
 class SearchClient:
     """Search client that can be kept in memory and reused"""
     
-    def __init__(self, index_dir: Optional[str] = None):
+    def __init__(self, index_dir: Optional[str] = None, json_output: bool = False):
         self.pattern_matcher = PatternMatcher()
         self.searcher = RipgrepSearcher(self.pattern_matcher)
         self.enhancer = TreeSitterEnhancer(self.pattern_matcher)
+        self.json_output = json_output
+        self.initialization_messages = []
         
         # Initialize semantic search if available
         self.semantic_searcher = None
@@ -44,13 +53,29 @@ class SearchClient:
                             'embedder': self.embedder,
                             'vector_store': self.vector_store
                         }
-                        print(f"# Semantic search available ({stats['total_symbols']} symbols indexed)", file=sys.stderr)
+                        msg = f"Semantic search available ({stats['total_symbols']} symbols indexed)"
+                        logger.info(msg)
+                        if not json_output:
+                            print(f"# {msg}", file=sys.stderr)
+                        self.initialization_messages.append({"level": "info", "message": msg})
                     else:
-                        print("# Semantic index is empty. Run: ragex index .", file=sys.stderr)
+                        msg = "Semantic index is empty. Run: ragex index ."
+                        logger.error(msg)
+                        if not json_output:
+                            print(f"# {msg}", file=sys.stderr)
+                        self.initialization_messages.append({"level": "error", "message": msg})
                 else:
-                    print("# No semantic index found. Run: ragex index .", file=sys.stderr)
+                    msg = "No semantic index found. Run: ragex index ."
+                    logger.error(msg)
+                    if not json_output:
+                        print(f"# {msg}", file=sys.stderr)
+                    self.initialization_messages.append({"level": "error", "message": msg})
             except Exception as e:
-                print(f"# Failed to initialize semantic search: {e}", file=sys.stderr)
+                msg = f"Failed to initialize semantic search: {e}"
+                logger.error(msg)
+                if not json_output:
+                    print(f"# {msg}", file=sys.stderr)
+                self.initialization_messages.append({"level": "error", "message": msg})
     
     async def search_semantic(self, query: str, limit: int = 50) -> List[Dict]:
         """Perform semantic search"""
@@ -134,24 +159,14 @@ class SearchClient:
     
     def _container_to_host_path(self, path: str) -> str:
         """Convert container path to host path for display"""
-        workspace_host = os.environ.get('WORKSPACE_PATH', '')
-        
-        if path.startswith('/workspace/'):
-            relative_path = path[11:]
-            if workspace_host:
-                return os.path.join(workspace_host, relative_path)
-            else:
-                return relative_path
-        elif path == '/workspace':
-            return workspace_host or '.'
-        
-        return path
+        return container_to_host_path(path)
 
 
 async def run_search(args: argparse.Namespace) -> int:
     """Run search with parsed arguments"""
     # Initialize client
-    client = SearchClient(index_dir=args.index_dir)
+    json_output = getattr(args, 'json', False)
+    client = SearchClient(index_dir=args.index_dir, json_output=json_output)
     
     # Determine search mode
     if args.symbol:
@@ -161,25 +176,60 @@ async def run_search(args: argparse.Namespace) -> int:
     else:
         mode = "semantic"
     
-    print(f"# Searching for '{args.query}' using {mode} mode", file=sys.stderr)
+    if not json_output:
+        print(f"# Searching for '{args.query}' using {mode} mode", file=sys.stderr)
     
     # Perform search
     matches = []
-    if mode == "semantic":
-        matches = await client.search_semantic(args.query, args.limit)
-    elif mode == "symbol":
-        matches = await client.search_symbol(args.query, args.limit)
-    elif mode == "regex":
-        matches = await client.search_regex(args.query, args.limit)
+    try:
+        if mode == "semantic":
+            matches = await client.search_semantic(args.query, args.limit)
+        elif mode == "symbol":
+            matches = await client.search_symbol(args.query, args.limit)
+        elif mode == "regex":
+            matches = await client.search_regex(args.query, args.limit)
+    except PathMappingError as e:
+        # Fatal error - can't continue
+        if json_output:
+            result = {
+                "success": False,
+                "error": str(e),
+                "query": args.query,
+                "mode": mode,
+                "total_matches": 0,
+                "matches": [],
+                "messages": client.initialization_messages
+            }
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"# FATAL ERROR: {e}", file=sys.stderr)
+        return 1
     
-    if not matches:
-        print(f"# No matches found", file=sys.stderr)
-        return 0
-    
-    print(f"# Found {len(matches)} matches", file=sys.stderr)
-    
-    # Format and print results
-    client.format_output(matches, mode)
+    if json_output:
+        # Output MCP-compatible JSON
+        result = {
+            "success": True,
+            "query": args.query,
+            "mode": mode,
+            "total_matches": len(matches),
+            "matches": matches,
+            "messages": client.initialization_messages
+        }
+        print(json.dumps(result, indent=2))
+    else:
+        # Human-readable output
+        if not matches:
+            print(f"# No matches found", file=sys.stderr)
+            return 0
+        
+        print(f"# Found {len(matches)} matches", file=sys.stderr)
+        
+        # Format and print results
+        try:
+            client.format_output(matches, mode)
+        except PathMappingError as e:
+            print(f"# FATAL ERROR: {e}", file=sys.stderr)
+            return 1
     
     return 0
 
@@ -195,6 +245,7 @@ def parse_args(args: List[str]) -> argparse.Namespace:
     parser.add_argument('--limit', type=int, default=50, help='Maximum results')
     parser.add_argument('--brief', action='store_true', help='Brief output')
     parser.add_argument('--index-dir', type=str, help='Directory containing chroma_db index')
+    parser.add_argument('--json', action='store_true', help='Output MCP-compatible JSON format')
     
     return parser.parse_args(args)
 
