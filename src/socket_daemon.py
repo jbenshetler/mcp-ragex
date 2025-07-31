@@ -16,6 +16,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
+from src.ragex_core.project_utils import get_project_data_dir, get_chroma_db_path
 
 # Configure logging
 logging.basicConfig(
@@ -144,14 +145,11 @@ class RagexSocketDaemon:
             from src.indexer import CodeIndexer
             
             # Get project data directory
-            project_data_dir = os.environ.get('RAGEX_PROJECT_DATA_DIR')
-            if not project_data_dir:
-                project_name = os.environ.get('PROJECT_NAME', 'admin')
-                project_data_dir = f'/data/projects/{project_name}'
+            project_data_dir = get_project_data_dir()
             
             # Create indexer instance
             indexer = CodeIndexer(
-                persist_directory=f"{project_data_dir}/chroma_db"
+                persist_directory=str(get_chroma_db_path(project_data_dir))
             )
             
             # Update files

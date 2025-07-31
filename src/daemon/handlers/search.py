@@ -8,6 +8,7 @@ import sys
 import os
 from typing import Dict, Any, Optional
 import logging
+from src.ragex_core.project_utils import get_project_data_dir
 
 logger = logging.getLogger('search-handler')
 
@@ -23,10 +24,7 @@ class SearchHandler:
     async def handle(self, args: list) -> Dict[str, Any]:
         """Handle search command"""
         # Get project data dir from environment
-        project_data_dir = os.environ.get('RAGEX_PROJECT_DATA_DIR')
-        if not project_data_dir:
-            project_name = os.environ.get('PROJECT_NAME', 'admin')
-            project_data_dir = f'/data/projects/{project_name}'
+        project_data_dir = get_project_data_dir()
         
         # Lazy load search module
         if not self.search_module:

@@ -15,6 +15,7 @@ from src.ragex_core.ripgrep_searcher import RipgrepSearcher
 from src.ragex_core.pattern_matcher import PatternMatcher
 from src.tree_sitter_enhancer import TreeSitterEnhancer
 from src.ragex_core.path_mapping import container_to_host_path, PathMappingError
+from src.ragex_core.project_utils import get_chroma_db_path
 from src.utils import get_logger
 
 # Try to import semantic search components
@@ -43,7 +44,7 @@ class SearchClient:
         self.semantic_searcher = None
         if semantic_available and index_dir:
             try:
-                index_path = Path(index_dir) / "chroma_db"
+                index_path = get_chroma_db_path(index_dir)
                 if index_path.exists():
                     self.vector_store = CodeVectorStore(persist_directory=str(index_path))
                     stats = self.vector_store.get_statistics()
@@ -162,11 +163,19 @@ class SearchClient:
         return container_to_host_path(path)
 
 
-async def run_search(args: argparse.Namespace) -> int:
-    """Run search with parsed arguments"""
-    # Initialize client
+async def run_search(args: argparse.Namespace, search_client: Optional[SearchClient] = None) -> int:
+    """Run search with parsed arguments
+    
+    Args:
+        args: Parsed command line arguments
+        search_client: Optional pre-initialized SearchClient to use
+    """
+    # Initialize client if not provided
     json_output = getattr(args, 'json', False)
-    client = SearchClient(index_dir=args.index_dir, json_output=json_output)
+    if search_client is None:
+        client = SearchClient(index_dir=args.index_dir, json_output=json_output)
+    else:
+        client = search_client
     
     # Determine search mode
     if args.symbol:

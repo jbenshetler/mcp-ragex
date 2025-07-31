@@ -15,6 +15,7 @@ import argparse
 import logging
 from pathlib import Path
 from datetime import datetime
+from src.ragex_core.project_utils import get_chroma_db_path
 
 # Set up logging
 logging.basicConfig(
@@ -69,7 +70,7 @@ async def run_incremental_update(workspace_path: Path, project_data_dir: str,
     
     try:
         # Initialize vector store to get stored checksums
-        vector_store = CodeVectorStore(persist_directory=f"{project_data_dir}/chroma_db")
+        vector_store = CodeVectorStore(persist_directory=str(get_chroma_db_path(project_data_dir)))
         stored_checksums = vector_store.get_file_checksums()
         
         if not stored_checksums:
@@ -103,7 +104,7 @@ async def run_incremental_update(workspace_path: Path, project_data_dir: str,
             print(f"📝 Updating index: +{len(added)} ~{len(modified)} -{len(removed)} files")
         
         # Initialize indexer
-        indexer = CodeIndexer(persist_directory=f"{project_data_dir}/chroma_db")
+        indexer = CodeIndexer(persist_directory=str(get_chroma_db_path(project_data_dir)))
         
         # Remove deleted files
         for file_path in removed:
