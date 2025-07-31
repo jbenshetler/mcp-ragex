@@ -17,11 +17,7 @@ from pathlib import Path
 from datetime import datetime
 from src.ragex_core.project_utils import get_chroma_db_path
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Logger will be configured in main() based on verbose flag
 logger = logging.getLogger('smart-index')
 
 # Add parent directory to path
@@ -168,6 +164,21 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='Show verbose output')
     
     args, unknown_args = parser.parse_known_args()
+    
+    # Configure logging based on verbosity
+    if args.verbose:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            force=True
+        )
+    else:
+        # Only show warnings and errors by default
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            force=True
+        )
     
     # Get workspace path
     if args.path == '.':

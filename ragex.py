@@ -209,6 +209,8 @@ class RagexCLI:
             help='Path to index (default: current directory)')
         index_parser.add_argument('--force', action='store_true',
             help='Force rebuild of index')
+        index_parser.add_argument('-v', '--verbose', action='store_true',
+            help='Show verbose output including debug logs')
         
         # Search command
         search_parser = subparsers.add_parser('search', 
@@ -346,6 +348,8 @@ Environment Variables:
         cmd_args = [container_path]
         if args.force:
             cmd_args.append('--force')
+        if hasattr(args, 'verbose') and args.verbose:
+            cmd_args.append('--verbose')
         return self.exec_via_daemon('index', cmd_args)
     
     def cmd_search(self, args: argparse.Namespace) -> int:
