@@ -341,7 +341,9 @@ Environment Variables:
     def cmd_index(self, args: argparse.Namespace) -> int:
         """Handle index command"""
         print(f"📚 Indexing {self.workspace_path}")
-        cmd_args = [str(self.workspace_path)]
+        # Inside container, the workspace is always mounted at /workspace
+        container_path = '/workspace'
+        cmd_args = [container_path]
         if args.force:
             cmd_args.append('--force')
         return self.exec_via_daemon('index', cmd_args)
@@ -575,7 +577,9 @@ Environment Variables:
         
         # Start continuous indexing to ensure ChromaDB exists
         print("📚 Starting continuous indexing...", file=sys.stderr)
-        result = self.exec_via_daemon('start_continuous_index', [str(self.workspace_path)])
+        # Inside container, the workspace is always mounted at /workspace
+        container_path = '/workspace'
+        result = self.exec_via_daemon('start_continuous_index', [container_path])
         if result != 0:
             print("⚠️  Warning: Failed to start continuous indexing", file=sys.stderr)
         

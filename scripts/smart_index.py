@@ -202,7 +202,9 @@ def main():
         if not args.quiet:
             print(f"📍 Detected existing project index at: {project_root}")
             print(f"🔄 Using project root for indexing...")
-        workspace_path = project_root
+        # Update host workspace path but keep container path as /workspace
+        host_workspace_path = str(project_root)
+        # workspace_path remains as container path (/workspace)
     
     # Generate project ID using HOST path for consistency
     project_id = generate_project_id(host_workspace_path, user_id)
