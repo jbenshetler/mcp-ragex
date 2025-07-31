@@ -475,13 +475,33 @@ class RagexSocketDaemon:
         """Simple loop that periodically requests indexing"""
         logger.info("Continuous indexing loop started")
         
+        # On startup, check if we need to create initial index
+        first_run = True
+        
         while self.running:
             try:
-                # Wait for next interval (5 minutes)
-                await asyncio.sleep(300)
+                # For first run, check immediately
+                if first_run:
+                    first_run = False
+                    # Check if ChromaDB exists
+                    chroma_path = get_chroma_db_path()
+                    if not chroma_path.exists():
+                        logger.info(f"No ChromaDB found at {chroma_path} - requesting initial index")
+                        if self.indexing_queue:
+                            # Force index on first run if no DB exists
+                            success = await self.indexing_queue.request_index("startup", force=True)
+                            if success:
+                                logger.info("✅ Initial index request submitted successfully")
+                            else:
+                                logger.warning("❌ Initial index request failed - index may already be in progress")
+                    else:
+                        logger.info(f"ChromaDB exists at {chroma_path} - skipping initial index")
+                else:
+                    # Wait for next interval (5 minutes)
+                    await asyncio.sleep(300)
                 
-                # Request index (will be skipped if too soon or already running)
-                if self.indexing_queue:
+                # Request periodic index (will be skipped if too soon or already running)
+                if self.indexing_queue and not first_run:
                     success = await self.indexing_queue.request_index("continuous")
                     if success:
                         logger.info("Continuous index triggered")
@@ -554,6 +574,11 @@ class RagexSocketDaemon:
         
         # Start file watching now that event loop is running
         await self._start_file_watching()
+        
+        # Start continuous indexing loop
+        if hasattr(self, 'indexing_queue') and self.indexing_queue:
+            self._continuous_index_task = asyncio.create_task(self._continuous_index_loop())
+            logger.info("Started continuous indexing loop (5 minute intervals)")
         
         # Create Unix domain socket server
         server = await asyncio.start_unix_server(
