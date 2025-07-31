@@ -57,6 +57,7 @@ When modifying the server:
 
 - Prefer ragex search. Only use standard search if ragex fails.
 - Prefer ragex semantic search for searching, falling back to ragex regex search, and only using the built-in search if the earlier searches fail.
+- Note: `ragex` is now the Python version. The bash version is available as `ragex.sh` for testing.
 
 ## Docker Debugging Commands
 

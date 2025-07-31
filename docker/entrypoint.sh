@@ -255,17 +255,17 @@ case "$1" in
                 # Get host home directory (passed through Docker)
                 # Use HOST_HOME if available, otherwise fall back to constructing path
                 if [ -n "${HOST_HOME}" ]; then
-                    RAGEX_BIN="${HOST_HOME}/.local/bin/ragex"
+                    RAGEX_MCP_BIN="${HOST_HOME}/.local/bin/ragex-mcp"
                 else
                     # Fallback: construct from USER if HOST_HOME not set
-                    RAGEX_BIN="/home/${USER}/.local/bin/ragex"
+                    RAGEX_MCP_BIN="/home/${USER}/.local/bin/ragex-mcp"
                 fi
                 
                 # Build the command
                 if [ "$scope" = "global" ]; then
-                    REGISTER_CMD="claude mcp add ragex ${RAGEX_BIN}"
+                    REGISTER_CMD="claude mcp add ragex ${RAGEX_MCP_BIN}"
                 else
-                    REGISTER_CMD="claude mcp add ragex ${RAGEX_BIN} --scope project"
+                    REGISTER_CMD="claude mcp add ragex ${RAGEX_MCP_BIN} --scope project"
                 fi
                 
                 # verbose_mode is already set from argument parsing above

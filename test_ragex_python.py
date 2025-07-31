@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for Python ragex implementation
+Test script for ragex (Python) implementation
 
 Tests:
 1. Argument parsing
@@ -17,7 +17,7 @@ from pathlib import Path
 def test_help():
     """Test help output"""
     print("=== Testing help output ===")
-    result = subprocess.run(['./ragex.py', '--help'], capture_output=True, text=True)
+    result = subprocess.run(['./ragex', '--help'], capture_output=True, text=True)
     assert result.returncode == 0
     assert "RAGex - Smart code search" in result.stdout
     assert "index" in result.stdout
@@ -27,7 +27,7 @@ def test_help():
 def test_subcommand_help():
     """Test subcommand help"""
     print("\n=== Testing subcommand help ===")
-    result = subprocess.run(['./ragex.py', 'search', '--help'], capture_output=True, text=True)
+    result = subprocess.run(['./ragex', 'search', '--help'], capture_output=True, text=True)
     assert result.returncode == 0
     assert "--json" in result.stdout
     assert "--symbol" in result.stdout
@@ -56,7 +56,7 @@ def test_mcp_mode_detection():
     """Test MCP mode detection"""
     print("\n=== Testing MCP mode detection ===")
     # Test that --mcp flag is recognized
-    result = subprocess.run(['./ragex.py', '--mcp', '--help'], 
+    result = subprocess.run(['./ragex', '--mcp', '--help'], 
                           capture_output=True, text=True)
     # Should try to run MCP mode, not show help
     assert "MCP dependencies not installed" in result.stderr or "Starting MCP server" in result.stderr
@@ -65,7 +65,7 @@ def test_mcp_mode_detection():
 def test_unknown_command():
     """Test unknown command handling"""
     print("\n=== Testing unknown command ===")
-    result = subprocess.run(['./ragex.py', 'foobar'], capture_output=True, text=True)
+    result = subprocess.run(['./ragex', 'foobar'], capture_output=True, text=True)
     assert result.returncode != 0
     # argparse shows "invalid choice" for unknown commands
     assert "invalid choice: 'foobar'" in result.stderr
@@ -74,7 +74,7 @@ def test_unknown_command():
 def test_info_command():
     """Test info command (doesn't require docker)"""
     print("\n=== Testing info command ===")
-    result = subprocess.run(['./ragex.py', 'info'], capture_output=True, text=True)
+    result = subprocess.run(['./ragex', 'info'], capture_output=True, text=True)
     # Info command should at least show basic info even if daemon isn't running
     assert "RageX Project Information" in result.stdout
     assert "User ID:" in result.stdout
@@ -86,8 +86,8 @@ def compare_with_bash():
     print("\n=== Comparing with bash version ===")
     
     # Both should show same commands in help
-    bash_help = subprocess.run(['./ragex', '--help'], capture_output=True, text=True)
-    py_help = subprocess.run(['./ragex.py', '--help'], capture_output=True, text=True)
+    bash_help = subprocess.run(['./ragex.sh', '--help'], capture_output=True, text=True)
+    py_help = subprocess.run(['./ragex', '--help'], capture_output=True, text=True)
     
     # Extract command list from both
     bash_commands = set()
@@ -114,9 +114,9 @@ def main():
     """Run all tests"""
     print("Testing Python ragex implementation\n")
     
-    # Check if ragex.py exists
-    if not Path('./ragex.py').exists():
-        print("❌ ragex.py not found in current directory")
+    # Check if ragex exists
+    if not Path('./ragex').exists():
+        print("❌ ragex not found in current directory")
         return 1
     
     try:

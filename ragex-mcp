@@ -1,0 +1,4 @@
+#!/bin/sh
+# Wrapper script for ragex MCP mode
+# This allows Claude to call ragex in MCP mode without arguments
+exec "$(dirname "$0")/ragex" --mcp "$@"
