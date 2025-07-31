@@ -40,6 +40,13 @@ echo "📝 Installing ragex wrapper..."
 cp ragex "${INSTALL_DIR}/ragex"
 chmod +x "${INSTALL_DIR}/ragex"
 
+# Also install Python wrapper for testing
+if [ -f "ragex.py" ]; then
+    echo "📝 Installing ragex.py for testing..."
+    cp ragex.py "${INSTALL_DIR}/ragex.py"
+    chmod +x "${INSTALL_DIR}/ragex.py"
+fi
+
 # Check if directory is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo ""

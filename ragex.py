@@ -562,18 +562,6 @@ Environment Variables:
         """Run as MCP server bridging to daemon"""
         self.debug_print("Starting MCP server mode")
         
-        # Import MCP dependencies
-        try:
-            import asyncio
-            from mcp.server import Server, NotificationOptions
-            from mcp.server.models import InitializationOptions
-            import mcp.server.stdio
-            import mcp.types as types
-        except ImportError:
-            print("❌ MCP dependencies not installed", file=sys.stderr)
-            print("   Run: pip install mcp", file=sys.stderr)
-            return 1
-        
         # Ensure daemon is running
         if not self.is_daemon_running():
             if not self.start_daemon():
@@ -587,111 +575,19 @@ Environment Variables:
         if result != 0:
             print("⚠️  Warning: Failed to start continuous indexing", file=sys.stderr)
         
-        # Create MCP server
-        app = Server("ragex-mcp")
+        # Run MCP server inside the container where dependencies are available
+        self.debug_print("Running MCP server in container")
         
-        @app.list_tools()
-        async def handle_list_tools() -> list[types.Tool]:
-            """List available tools"""
-            return [
-                types.Tool(
-                    name="search_code",
-                    description="Search code in the current project",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "Search query"
-                            },
-                            "mode": {
-                                "type": "string",
-                                "enum": ["auto", "semantic", "symbol", "regex"],
-                                "default": "auto",
-                                "description": "Search mode"
-                            },
-                            "limit": {
-                                "type": "integer",
-                                "default": 50,
-                                "description": "Maximum results"
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                )
-            ]
+        # Use exec_via_daemon but without TTY for stdio mode
+        docker_cmd = ['docker', 'exec', '-i',  # -i for interactive, no -t for MCP stdio
+                      self.daemon_container_name,
+                      'python', '-m', 'src.socket_client', 'mcp']
         
-        @app.call_tool()
-        async def handle_call_tool(name: str, arguments: dict) -> list:
-            """Handle tool calls"""
-            if name == "search_code":
-                # Build search command
-                query = arguments.get('query', '')
-                mode = arguments.get('mode', 'auto')
-                limit = arguments.get('limit', 50)
-                
-                # Execute search via daemon with JSON output
-                cmd_args = [query, '--json', '--limit', str(limit)]
-                
-                if mode == 'symbol':
-                    cmd_args.append('--symbol')
-                elif mode == 'regex':
-                    cmd_args.append('--regex')
-                
-                # Run search command
-                result = await asyncio.create_subprocess_exec(
-                    'docker', 'exec', '-i', self.daemon_container_name,
-                    'python', '-m', 'src.socket_client', 'search', *cmd_args,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                
-                stdout, stderr = await result.communicate()
-                
-                if result.returncode != 0:
-                    error_result = {
-                        "success": False,
-                        "error": stderr.decode() or "Search failed",
-                        "query": query,
-                        "mode": mode,
-                        "total_matches": 0,
-                        "matches": []
-                    }
-                    return [types.TextContent(
-                        type="text", 
-                        text=json.dumps(error_result, indent=2)
-                    )]
-                
-                # Return the JSON output from search
-                return [types.TextContent(type="text", text=stdout.decode())]
-            
-            else:
-                raise ValueError(f"Unknown tool: {name}")
+        self.debug_print(f"Executing MCP server: {' '.join(docker_cmd)}")
         
-        # Run MCP server
-        async def run_server():
-            async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-                await app.run(
-                    read_stream,
-                    write_stream,
-                    InitializationOptions(
-                        server_name="ragex-mcp",
-                        server_version=__version__,
-                        capabilities=app.get_capabilities(
-                            notification_options=NotificationOptions(),
-                            experimental_capabilities={},
-                        ),
-                    ),
-                )
-        
-        try:
-            asyncio.run(run_server())
-            return 0
-        except KeyboardInterrupt:
-            return 0
-        except Exception as e:
-            print(f"❌ MCP server error: {e}", file=sys.stderr)
-            return 1
+        # Run the MCP server command
+        result = subprocess.run(docker_cmd)
+        return result.returncode
 
 
 def main():
