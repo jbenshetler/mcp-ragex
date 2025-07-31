@@ -223,3 +223,63 @@ def scan_workspace_files_optimized(workspace_path: Path, ignore_manager,
     
     logger.info(f"Processed {files_processed} files, skipped {files_skipped} unchanged files")
     return results
+
+
+def scan_workspace_files_with_metadata(workspace_path: Path, ignore_manager, 
+                                      cached_info: Dict[str, Tuple[int, float, str]] = None) -> Tuple[Dict[str, str], Dict[str, Tuple[int, float, str]]]:
+    """
+    Enhanced version that returns both checksums and metadata for better caching.
+    
+    Args:
+        workspace_path: Root directory to scan
+        ignore_manager: IgnoreManager instance for filtering
+        cached_info: Previously cached file info {file_path: (size, mtime, checksum)}
+        
+    Returns:
+        Tuple of (checksums dict, metadata dict)
+        - checksums: {file_path: checksum}
+        - metadata: {file_path: (size, mtime, checksum)}
+    """
+    if cached_info is None:
+        cached_info = {}
+        
+    results = {}
+    metadata = {}
+    files_processed = 0
+    files_skipped = 0
+    
+    # Get all files that should be indexed
+    for file_path in find_files_to_index(workspace_path, ignore_manager):
+        # Convert to host path for storage
+        storage_path = str(file_path)
+        if is_container_path(storage_path):
+            storage_path = container_to_host_path(storage_path)
+        
+        try:
+            stat = file_path.stat()
+            current_size = stat.st_size
+            current_mtime = stat.st_mtime
+            
+            # Check if we have cached info and file hasn't changed
+            if storage_path in cached_info:
+                cached_size, cached_mtime, cached_checksum = cached_info[storage_path]
+                
+                if not should_recompute_checksum(file_path, cached_size, cached_mtime):
+                    # File unchanged, use cached checksum
+                    results[storage_path] = cached_checksum
+                    metadata[storage_path] = (cached_size, cached_mtime, cached_checksum)
+                    files_skipped += 1
+                    continue
+            
+            # File is new or changed, calculate checksum
+            checksum = calculate_file_checksum(file_path)
+            results[storage_path] = checksum
+            metadata[storage_path] = (current_size, current_mtime, checksum)
+            files_processed += 1
+            
+        except Exception as e:
+            logger.warning(f"Skipping file {file_path}: {e}")
+            continue
+    
+    logger.info(f"Processed {files_processed} files, skipped {files_skipped} unchanged files")
+    return results, metadata

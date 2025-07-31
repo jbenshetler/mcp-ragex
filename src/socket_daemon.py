@@ -73,6 +73,10 @@ class RagexSocketDaemon:
         if self.watchdog_monitor and self.watchdog_monitor.is_running():
             self.watchdog_monitor.stop()
         
+        # Cancel continuous indexing task
+        if hasattr(self, '_continuous_index_task') and not self._continuous_index_task.done():
+            self._continuous_index_task.cancel()
+        
         # Shutdown indexing queue
         if self.indexing_queue:
             asyncio.create_task(self.indexing_queue.shutdown())
@@ -139,7 +143,7 @@ class RagexSocketDaemon:
             logger.error(f"Failed to start file watching: {e}", exc_info=True)
     
     async def _handle_incremental_index(self, added_files: list, removed_files: list, file_checksums: dict):
-        """Handle incremental indexing of changed files"""
+        """Handle incremental indexing of changed files with cancellation support"""
         try:
             # Import indexer lazily
             from src.indexer import CodeIndexer
@@ -155,7 +159,7 @@ class RagexSocketDaemon:
             # Update files
             symbol_count = 0
             
-            # Remove deleted files first
+            # Remove deleted files first (fast, complete these)
             for file_path in removed_files:
                 try:
                     indexer.vector_store.delete_by_file(str(file_path))
@@ -163,20 +167,36 @@ class RagexSocketDaemon:
                 except Exception as e:
                     logger.error(f"   Failed to remove {file_path}: {e}")
             
-            # Re-index changed/added files
+            # Check for cancellation before expensive operations
+            if asyncio.current_task().cancelled():
+                logger.info("Indexing cancelled before processing additions")
+                return
+            
+            # Re-index changed/added files in batches
             if added_files:
-                # Convert file paths to strings and map checksums
-                file_checksums_str = {}
-                for file_path in added_files:
-                    file_path_str = str(file_path)
-                    if file_path in file_checksums:
-                        file_checksums_str[file_path_str] = file_checksums[file_path]
-                
-                result = await indexer.update_files(added_files, file_checksums_str)
-                symbol_count = result.get('symbols_indexed', 0)
+                batch_size = 10
+                for i in range(0, len(added_files), batch_size):
+                    # Check cancellation between batches
+                    if asyncio.current_task().cancelled():
+                        logger.info(f"Indexing cancelled after {i} files")
+                        return
+                    
+                    batch = added_files[i:i+batch_size]
+                    # Convert file paths to strings and map checksums
+                    file_checksums_str = {}
+                    for file_path in batch:
+                        file_path_str = str(file_path)
+                        if file_path in file_checksums:
+                            file_checksums_str[file_path_str] = file_checksums[file_path]
+                    
+                    result = await indexer.update_files(batch, file_checksums_str)
+                    symbol_count += result.get('symbols_indexed', 0)
             
             logger.info(f"✅ Re-indexed {len(added_files)} files ({symbol_count} symbols)")
             
+        except asyncio.CancelledError:
+            logger.info("Indexing cancelled gracefully")
+            raise
         except Exception as e:
             logger.error(f"Incremental indexing failed: {e}", exc_info=True)
             raise
@@ -267,6 +287,12 @@ class RagexSocketDaemon:
             elif command == 'serve':
                 return await self._handle_serve(args)
             
+            elif command == 'start_continuous_index':
+                return await self._handle_start_continuous_index(args)
+            
+            elif command == 'ensure_continuous_index':
+                return await self._handle_ensure_continuous_index(args)
+            
             else:
                 # Unknown command
                 return {
@@ -307,6 +333,21 @@ class RagexSocketDaemon:
     
     async def _handle_index(self, args: list) -> Dict[str, Any]:
         """Handle index command"""
+        # Check if we can use the indexing queue for better integration
+        force = '--force' in args
+        
+        if self.indexing_queue and len(args) <= 2:  # Simple index command
+            # Try to use the queue's request_index method
+            success = await self.indexing_queue.request_index("manual", force=force)
+            if not success and not force:
+                return {
+                    'success': False,
+                    'stderr': 'Index already in progress or too soon since last index. Use --force to override.\n',
+                    'stdout': '',
+                    'returncode': 1
+                }
+        
+        # Fall back to running smart_index.py directly
         import subprocess
         import sys
         
@@ -374,6 +415,86 @@ class RagexSocketDaemon:
                 'stdout': '',
                 'returncode': 1
             }
+    
+    async def _handle_start_continuous_index(self, args: list) -> Dict[str, Any]:
+        """Start continuous indexing, creating ChromaDB if needed"""
+        try:
+            # Check if ChromaDB exists
+            chroma_path = get_chroma_db_path()
+            
+            if not chroma_path.exists():
+                logger.info("No ChromaDB found, triggering immediate index")
+                # Request immediate indexing
+                if self.indexing_queue:
+                    success = await self.indexing_queue.request_index("mcp-startup", force=True)
+                    if not success:
+                        # If queue request failed, run index directly
+                        result = await self._handle_index(args)
+                        if not result['success']:
+                            return result
+            
+            # Ensure continuous indexing is active
+            return await self._handle_ensure_continuous_index(args)
+            
+        except Exception as e:
+            logger.error(f"Failed to start continuous indexing: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e),
+                'stderr': str(e),
+                'stdout': '',
+                'returncode': 1
+            }
+    
+    async def _handle_ensure_continuous_index(self, args: list) -> Dict[str, Any]:
+        """Ensure continuous indexing is active"""
+        try:
+            # Start continuous indexing loop if not already running
+            if not hasattr(self, '_continuous_index_task') or self._continuous_index_task.done():
+                self._continuous_index_task = asyncio.create_task(self._continuous_index_loop())
+                logger.info("Started continuous indexing loop")
+            
+            return {
+                'success': True,
+                'stdout': 'Continuous indexing active\n',
+                'stderr': '',
+                'returncode': 0
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to ensure continuous indexing: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e),
+                'stderr': str(e),
+                'stdout': '',
+                'returncode': 1
+            }
+    
+    async def _continuous_index_loop(self):
+        """Simple loop that periodically requests indexing"""
+        logger.info("Continuous indexing loop started")
+        
+        while self.running:
+            try:
+                # Wait for next interval (5 minutes)
+                await asyncio.sleep(300)
+                
+                # Request index (will be skipped if too soon or already running)
+                if self.indexing_queue:
+                    success = await self.indexing_queue.request_index("continuous")
+                    if success:
+                        logger.info("Continuous index triggered")
+                    else:
+                        logger.debug("Continuous index skipped (too soon or in progress)")
+                        
+            except asyncio.CancelledError:
+                logger.info("Continuous indexing loop cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in continuous index loop: {e}")
+                # Continue loop even on error
+                await asyncio.sleep(60)  # Wait a bit before retrying
     
     async def _handle_init(self, args: list) -> Dict[str, Any]:
         """Handle init command using pre-loaded handler"""

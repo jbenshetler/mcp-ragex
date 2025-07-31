@@ -573,6 +573,12 @@ Environment Variables:
             if not self.start_daemon():
                 return 1
         
+        # Start continuous indexing to ensure ChromaDB exists
+        print("📚 Starting continuous indexing...", file=sys.stderr)
+        result = self.exec_via_daemon('start_continuous_index', [str(self.workspace_path)])
+        if result != 0:
+            print("⚠️  Warning: Failed to start continuous indexing", file=sys.stderr)
+        
         # Create MCP server
         app = Server("ragex-mcp")
         
