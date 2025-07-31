@@ -207,6 +207,8 @@ class RagexCLI:
             help='Build semantic index and start daemon')
         index_parser.add_argument('path', nargs='?', default='.', 
             help='Path to index (default: current directory)')
+        index_parser.add_argument('--force', action='store_true',
+            help='Force rebuild of index')
         
         # Search command
         search_parser = subparsers.add_parser('search', 
@@ -270,8 +272,12 @@ class RagexCLI:
         # Register/unregister commands
         register_parser = subparsers.add_parser('register',
             help='Show registration instructions')
+        register_parser.add_argument('target', 
+            help='Registration target (e.g., claude, gemini)')
         unregister_parser = subparsers.add_parser('unregister',
             help='Show unregistration instructions')
+        unregister_parser.add_argument('target',
+            help='Unregistration target (e.g., claude, gemini)')
         
         # Serve command (legacy, shows deprecation warning)
         serve_parser = subparsers.add_parser('serve',
@@ -335,7 +341,10 @@ Environment Variables:
     def cmd_index(self, args: argparse.Namespace) -> int:
         """Handle index command"""
         print(f"📚 Indexing {self.workspace_path}")
-        return self.exec_via_daemon('index', [str(self.workspace_path)])
+        cmd_args = [str(self.workspace_path)]
+        if args.force:
+            cmd_args.append('--force')
+        return self.exec_via_daemon('index', cmd_args)
     
     def cmd_search(self, args: argparse.Namespace) -> int:
         """Handle search command"""
@@ -408,11 +417,11 @@ Environment Variables:
     
     def cmd_register(self, args: argparse.Namespace) -> int:
         """Handle register command"""
-        return self._run_admin_command('register')
+        return self._run_admin_command('register', [args.target])
     
     def cmd_unregister(self, args: argparse.Namespace) -> int:
         """Handle unregister command"""
-        return self._run_admin_command('unregister')
+        return self._run_admin_command('unregister', [args.target])
     
     def cmd_serve(self, args: argparse.Namespace) -> int:
         """Handle legacy serve command"""
