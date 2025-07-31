@@ -8,6 +8,8 @@ import shutil
 from pathlib import Path
 from typing import Dict, Any, List
 
+from src.ragex_core.project_utils import get_project_info
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,11 +98,12 @@ class RmHandler:
                 # Verify it belongs to current user
                 user_prefix = f"ragex_{self.user_id}_"
                 if pattern.startswith(user_prefix):
-                    workspace_file = project_dir / 'workspace_path.txt'
-                    if workspace_file.exists():
-                        workspace_path = Path(workspace_file.read_text().strip())
-                        project_name = workspace_path.name
+                    project_info = get_project_info(pattern, self.data_dir.parent)
+                    if project_info:
+                        project_name, workspace_path = project_info
                         matched.append((project_name, pattern, workspace_path))
+                    else:
+                        logger.warning(f"Project {pattern} exists but has no metadata")
             return matched
         
         # Otherwise treat as a name pattern
@@ -114,14 +117,15 @@ class RmHandler:
             if not project_id.startswith(user_prefix):
                 continue
             
-            # Get project metadata
-            workspace_file = project_dir / 'workspace_path.txt'
-            if workspace_file.exists():
-                workspace_path = Path(workspace_file.read_text().strip())
-                project_name = workspace_path.name
+            # Get project metadata using centralized function
+            project_info = get_project_info(project_id, self.data_dir.parent)
+            if project_info:
+                project_name, workspace_path = project_info
                 
                 # Check if name matches pattern
                 if fnmatch.fnmatch(project_name, pattern):
                     matched.append((project_name, project_id, workspace_path))
+            else:
+                logger.warning(f"Project {project_id} has no metadata")
         
         return matched

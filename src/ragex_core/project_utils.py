@@ -175,3 +175,36 @@ def update_project_metadata(project_id: str, updates: Dict[str, Any], data_dir: 
     return save_project_metadata(project_id, metadata, data_dir)
 
 
+def get_project_info(project_id: str, data_dir: Path = Path("/data")) -> Optional[tuple[str, Path]]:
+    """
+    Get project name and workspace path from metadata.
+    
+    This handles both new (project_info.json) and legacy (workspace_path.txt) formats.
+    
+    Args:
+        project_id: Project identifier
+        data_dir: Base data directory
+        
+    Returns:
+        Tuple of (project_name, workspace_path) or None if not found
+    """
+    # Try new format first
+    metadata = load_project_metadata(project_id, data_dir)
+    if metadata:
+        workspace_path = Path(metadata.get('workspace_path', '/unknown'))
+        project_name = metadata.get('workspace_basename', workspace_path.name)
+        return (project_name, workspace_path)
+    
+    # Fallback to legacy format
+    workspace_file = data_dir / "projects" / project_id / 'workspace_path.txt'
+    if workspace_file.exists():
+        try:
+            workspace_path = Path(workspace_file.read_text().strip())
+            project_name = workspace_path.name
+            return (project_name, workspace_path)
+        except Exception as e:
+            logger.error(f"Failed to read legacy workspace file: {e}")
+    
+    return None
+
+

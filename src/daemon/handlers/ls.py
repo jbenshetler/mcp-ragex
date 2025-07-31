@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
+from src.ragex_core.project_utils import get_project_info, load_project_metadata
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,17 +90,19 @@ class LsHandler:
             if not project_id.startswith(user_prefix):
                 continue
             
-            # Get project metadata
-            workspace_file = project_dir / 'workspace_path.txt'
-            if workspace_file.exists():
-                workspace_path = Path(workspace_file.read_text().strip())
-                project_name = workspace_path.name
+            # Get project metadata using centralized function
+            project_info = get_project_info(project_id, self.data_dir.parent)
+            if project_info:
+                project_name, workspace_path = project_info
                 
                 # Apply pattern filter if provided
                 if pattern and not fnmatch.fnmatch(project_name, pattern):
                     continue
                 
                 projects.append((project_name, project_id, workspace_path))
+            else:
+                # Log warning for projects without metadata
+                logger.warning(f"Project {project_id} has no metadata (no project_info.json or workspace_path.txt)")
         
         # Sort by project name
         projects.sort(key=lambda x: x[0])
@@ -184,10 +188,18 @@ class LsHandler:
     
     def _get_project_model(self, project_id: str) -> str:
         """Get the embedding model used for a project"""
-        # Check for model info in project metadata
+        # Use centralized metadata loading
+        metadata = load_project_metadata(project_id, self.data_dir.parent)
+        if metadata:
+            return metadata.get('embedding_model', 'fast')
+        
+        # Check for model info in old format
         model_file = self.data_dir / project_id / 'embedding_model.txt'
         if model_file.exists():
-            return model_file.read_text().strip()
+            try:
+                return model_file.read_text().strip()
+            except Exception as e:
+                logger.warning(f"Failed to read embedding_model.txt for {project_id}: {e}")
         
         # Default to 'fast' if not specified
         return "fast"

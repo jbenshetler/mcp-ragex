@@ -293,6 +293,18 @@ class RagexSocketDaemon:
             elif command == 'ensure_continuous_index':
                 return await self._handle_ensure_continuous_index(args)
             
+            elif command == 'ls':
+                return await self._handle_ls(args)
+            
+            elif command == 'rm':
+                return await self._handle_rm(args)
+            
+            elif command == 'register':
+                return await self._handle_register(args)
+            
+            elif command == 'unregister':
+                return await self._handle_unregister(args)
+            
             else:
                 # Unknown command
                 return {
@@ -565,6 +577,38 @@ class RagexSocketDaemon:
             'stderr': stderr.decode('utf-8'),
             'returncode': result.returncode
         }
+    
+    async def _handle_ls(self, args: list) -> Dict[str, Any]:
+        """Handle ls command using pre-loaded handler"""
+        if 'ls' not in self.handlers:
+            from src.daemon.handlers.ls import LsHandler
+            self.handlers['ls'] = LsHandler(self.shared_modules)
+        
+        return await self.handlers['ls'].handle(args)
+    
+    async def _handle_rm(self, args: list) -> Dict[str, Any]:
+        """Handle rm command using pre-loaded handler"""
+        if 'rm' not in self.handlers:
+            from src.daemon.handlers.rm import RmHandler
+            self.handlers['rm'] = RmHandler(self.shared_modules)
+        
+        return await self.handlers['rm'].handle(args)
+    
+    async def _handle_register(self, args: list) -> Dict[str, Any]:
+        """Handle register command using pre-loaded handler"""
+        if 'register' not in self.handlers:
+            from src.daemon.handlers.register import RegisterHandler
+            self.handlers['register'] = RegisterHandler(self.shared_modules)
+        
+        return await self.handlers['register'].handle(args)
+    
+    async def _handle_unregister(self, args: list) -> Dict[str, Any]:
+        """Handle unregister command using pre-loaded handler"""
+        if 'unregister' not in self.handlers:
+            from src.daemon.handlers.unregister import UnregisterHandler
+            self.handlers['unregister'] = UnregisterHandler(self.shared_modules)
+        
+        return await self.handlers['unregister'].handle(args)
     
     async def run(self):
         """Main daemon loop"""
