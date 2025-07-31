@@ -21,8 +21,20 @@ try:
     import mcp.server.stdio
     import mcp.types as types
 except ImportError as e:
-    print(f"❌ Failed to import MCP dependencies: {e}", file=sys.stderr)
-    print("   This should be run inside the ragex container", file=sys.stderr)
+    # Output JSON-RPC error response for missing dependencies
+    error_response = {
+        "jsonrpc": "2.0",
+        "id": None,  # No request ID for startup errors
+        "error": {
+            "code": -32603,  # Internal error
+            "message": "Failed to import MCP dependencies",
+            "data": {
+                "detail": str(e),
+                "hint": "This should be run inside the ragex container"
+            }
+        }
+    }
+    print(json.dumps(error_response))
     sys.exit(1)
 
 # Import search functionality
@@ -220,9 +232,8 @@ class RagexMCPServer:
 
 async def main():
     """Main entry point"""
-    # Log startup
+    # Log startup (no prints to avoid breaking MCP protocol)
     logger.info("Starting RAGex MCP server")
-    print("📡 RAGex MCP server starting...", file=sys.stderr)
     
     # Create and run server
     server = RagexMCPServer()

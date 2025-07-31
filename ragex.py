@@ -91,13 +91,14 @@ class RagexCLI:
         )
         return bool(result.stdout.strip())
     
-    def start_daemon(self) -> bool:
+    def start_daemon(self, silent: bool = False) -> bool:
         """Start daemon container if not already running"""
         if self.is_daemon_running():
             self.debug_print(f"Daemon already running: {self.daemon_container_name}")
             return True
         
-        print(f"🚀 Starting ragex daemon for {self.project_name}...")
+        if not silent:
+            print(f"🚀 Starting ragex daemon for {self.project_name}...")
         
         # Docker run command for daemon
         docker_cmd = [
@@ -118,11 +119,13 @@ class RagexCLI:
         
         result = subprocess.run(docker_cmd, capture_output=True, text=True)
         if result.returncode != 0:
-            print(f"❌ Failed to start daemon: {result.stderr}")
+            if not silent:
+                print(f"❌ Failed to start daemon: {result.stderr}")
             return False
         
         # Wait for daemon to be ready (check for socket)
-        print("⏳ Waiting for daemon to be ready...")
+        if not silent:
+            print("⏳ Waiting for daemon to be ready...")
         for i in range(10):
             time.sleep(1)
             check_result = subprocess.run(
@@ -131,12 +134,14 @@ class RagexCLI:
                 capture_output=True
             )
             if check_result.returncode == 0:
-                print("✅ Socket daemon is ready")
+                if not silent:
+                    print("✅ Socket daemon is ready")
                 return True
         
         # If we get here, daemon failed to start properly
-        print("❌ Daemon container is running but socket not found")
-        self.show_daemon_logs(tail=20)
+        if not silent:
+            print("❌ Daemon container is running but socket not found")
+            self.show_daemon_logs(tail=20)
         self.stop_daemon()
         return False
     
@@ -560,32 +565,29 @@ Environment Variables:
     
     def run_mcp_mode(self) -> int:
         """Run as MCP server bridging to daemon"""
-        self.debug_print("Starting MCP server mode")
+        # In MCP mode, we must be completely silent - no output except JSON protocol
         
-        # Ensure daemon is running
+        # Ensure daemon is running (silent mode)
         if not self.is_daemon_running():
-            if not self.start_daemon():
+            if not self.start_daemon(silent=True):
+                # If we can't start daemon, we need to exit silently
+                # MCP server will handle error reporting via JSON
                 return 1
         
         # Start continuous indexing to ensure ChromaDB exists
-        print("📚 Starting continuous indexing...", file=sys.stderr)
-        # Inside container, the workspace is always mounted at /workspace
+        # Capture and discard all output
         container_path = '/workspace'
-        result = self.exec_via_daemon('start_continuous_index', [container_path])
-        if result != 0:
-            print("⚠️  Warning: Failed to start continuous indexing", file=sys.stderr)
+        docker_cmd = ['docker', 'exec', '-i', self.daemon_container_name,
+                      'python', '-m', 'src.socket_client', 'start_continuous_index', container_path]
+        subprocess.run(docker_cmd, capture_output=True)  # Discard all output
         
         # Run MCP server inside the container where dependencies are available
-        self.debug_print("Running MCP server in container")
-        
-        # Use exec_via_daemon but without TTY for stdio mode
+        # This takes over stdio for clean JSON communication
         docker_cmd = ['docker', 'exec', '-i',  # -i for interactive, no -t for MCP stdio
                       self.daemon_container_name,
                       'python', '-m', 'src.socket_client', 'mcp']
         
-        self.debug_print(f"Executing MCP server: {' '.join(docker_cmd)}")
-        
-        # Run the MCP server command
+        # Run the MCP server command - it will handle all stdio from here
         result = subprocess.run(docker_cmd)
         return result.returncode
 
