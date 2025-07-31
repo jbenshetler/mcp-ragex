@@ -575,11 +575,12 @@ Environment Variables:
                 return 1
         
         # Start continuous indexing to ensure ChromaDB exists
-        # Capture and discard all output
-        container_path = '/workspace'
-        docker_cmd = ['docker', 'exec', '-i', self.daemon_container_name,
-                      'python', '-m', 'src.socket_client', 'start_continuous_index', container_path]
-        subprocess.run(docker_cmd, capture_output=True)  # Discard all output
+        # TODO: This blocks MCP server - need to run as background task
+        # For now, commented out - user must run 'ragex index' first
+        # container_path = '/workspace'
+        # docker_cmd = ['docker', 'exec', '-i', self.daemon_container_name,
+        #               'python', '-m', 'src.socket_client', 'start_continuous_index', container_path]
+        # subprocess.run(docker_cmd, capture_output=True)  # Discard all output
         
         # Run MCP server inside the container where dependencies are available
         # This takes over stdio for clean JSON communication
@@ -588,7 +589,8 @@ Environment Variables:
                       'python', '-m', 'src.socket_client', 'mcp']
         
         # Run the MCP server command - it will handle all stdio from here
-        result = subprocess.run(docker_cmd)
+        # Pass through stdin/stdout/stderr for proper MCP communication
+        result = subprocess.run(docker_cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
         return result.returncode
 
 
