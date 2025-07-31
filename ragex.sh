@@ -37,13 +37,11 @@ Quick Start:
   2. ragex search "query"  # Search your codebase
 
 Commands:
+  start              Index current directory (alias for 'index .')
   index [PATH]       Build semantic index and start daemon
   search QUERY       Search in current project
-  serve              Start MCP server (for Claude integration)
-  ls                 List all projects for current user
-  list-projects      List all projects (alias for ls)
-  rm ID              Remove project data
-  clean-project ID   Remove project data (alias for rm)
+  ls [ID|ID_GLOB]    List projects (optional glob filter, -l for details)
+  rm ID|ID_GLOB      Remove project(s) by ID or glob
   init               Create .mcpignore file in current directory
   info               Show project information
   register           Show registration instructions
@@ -266,7 +264,7 @@ esac
 
 # Handle special commands that don't need workspace
 case "$COMMAND" in
-    "list-projects"|"ls"|"clean-project"|"rm"|"register"|"unregister")
+    "ls"|"rm"|"register"|"unregister")
         # These commands don't use daemon, run directly
         DOCKER_ARGS=(
             "run"

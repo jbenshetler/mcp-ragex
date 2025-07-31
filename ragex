@@ -246,19 +246,22 @@ class RagexCLI:
         status_parser = subparsers.add_parser('status',
             help='Check daemon status')
         
+        # Start command (alias for index .)
+        start_parser = subparsers.add_parser('start',
+            help='Index current directory (alias for \'index .\')')
+        
         # List projects command
         ls_parser = subparsers.add_parser('ls',
-            help='List all projects for current user')
-        subparsers.add_parser('list-projects', 
-            help='List all projects (alias for ls)')
+            help='List projects (optional glob filter, -l for details)')
+        ls_parser.add_argument('glob', nargs='?',
+            help='Project ID or glob to filter projects')
+        ls_parser.add_argument('-l', '--long', action='store_true',
+            help='Show detailed information including model and index status')
         
         # Remove project command
         rm_parser = subparsers.add_parser('rm',
-            help='Remove project data')
-        rm_parser.add_argument('project', help='Project ID to remove')
-        clean_parser = subparsers.add_parser('clean-project',
-            help='Remove project data (alias for rm)')
-        clean_parser.add_argument('project', help='Project ID to remove')
+            help='Remove project(s) by ID or glob')
+        rm_parser.add_argument('glob', help='Project ID or glob to remove')
         
         # Info command
         info_parser = subparsers.add_parser('info',
@@ -278,17 +281,19 @@ class RagexCLI:
         
         # Register/unregister commands
         register_parser = subparsers.add_parser('register',
-            help='Show registration instructions')
+            help='Show registration command (use --help for details)')
         register_parser.add_argument('target', 
-            help='Registration target (e.g., claude, gemini)')
-        unregister_parser = subparsers.add_parser('unregister',
-            help='Show unregistration instructions')
-        unregister_parser.add_argument('target',
-            help='Unregistration target (e.g., claude, gemini)')
+            help='Registration target (e.g., claude)')
+        register_parser.add_argument('--help-register', action='store_true',
+            help='Show detailed help for register command', dest='help_flag')
         
-        # Serve command (legacy, shows deprecation warning)
-        serve_parser = subparsers.add_parser('serve',
-            help='Start MCP server (deprecated - use --mcp flag)')
+        unregister_parser = subparsers.add_parser('unregister',
+            help='Show unregistration command (use --help for details)')
+        unregister_parser.add_argument('target',
+            help='Unregistration target (e.g., claude)')
+        unregister_parser.add_argument('--help-unregister', action='store_true',
+            help='Show detailed help for unregister command', dest='help_flag')
+        
         
         return parser.parse_args()
     
@@ -296,17 +301,32 @@ class RagexCLI:
         """Get usage examples for help text"""
         return """
 Quick Start:
-  1. ragex index .              # Index your project (starts daemon automatically)
-  2. ragex search "query"       # Search your codebase
+  1. ragex start                # Index current directory
+  2. ragex search "query"       # Search your codebase (semantic)
 
 Examples:
-  ragex index .                    # Index current directory
-  ragex search "auth functions"    # Search current project
-  ragex search "def.*test" --regex # Regex search
-  ragex search "handleSubmit" --symbol # Symbol search
+  ragex start                      # Quick start in current directory
+  ragex index /path/to/project     # Index specific directory
+  
+  # Search modes:
+  ragex search "auth functions"    # Semantic search (default)
+  ragex search "user login flow"   # Finds conceptually related code
+  ragex search "def.*test" --regex # Regex pattern matching
+  ragex search "handleSubmit" --symbol # Exact symbol/function name
+  
+  # Project management:
   ragex ls                         # Show all your projects
+  ragex ls -l                      # Show projects with model and index status
+  ragex ls "my-*"                  # List projects matching glob
+  ragex rm "old-*"                 # Remove projects matching glob
+  
+  # Other commands:
   ragex log mcp-ragex -f           # Follow logs for specific project
-  ragex --mcp                      # Run as MCP server for Claude
+  ragex register claude | sh       # Register with Claude
+  ragex --mcp                      # Run as MCP server
+
+Note: Running 'ragex start' or 'ragex index' from anywhere inside an already
+indexed project will reuse the existing project (based on the project root path).
 
 Environment Variables:
   RAGEX_EMBEDDING_MODEL    Embedding model preset (fast/balanced/accurate)
@@ -410,36 +430,40 @@ Environment Variables:
         print()
         return self.cmd_status(args)
     
-    def cmd_ls(self, args: argparse.Namespace) -> int:
-        """Handle ls/list-projects command"""
-        return self._run_admin_command('list-projects')
+    def cmd_start(self, args: argparse.Namespace) -> int:
+        """Handle start command (alias for index .)"""
+        # Update workspace to current directory
+        self.workspace_path = Path('.').resolve()
+        # Create a fake args object for index command
+        index_args = argparse.Namespace(command='index', path='.', force=False)
+        return self.cmd_index(index_args)
     
-    def cmd_list_projects(self, args: argparse.Namespace) -> int:
-        """Alias for ls command"""
-        return self.cmd_ls(args)
+    def cmd_ls(self, args: argparse.Namespace) -> int:
+        """Handle ls command"""
+        cmd_args = []
+        if hasattr(args, 'long') and args.long:
+            cmd_args.append('-l')
+        if hasattr(args, 'glob') and args.glob:
+            cmd_args.append(args.glob)
+        return self._run_admin_command('ls', cmd_args)
     
     def cmd_rm(self, args: argparse.Namespace) -> int:
-        """Handle rm/clean-project command"""
-        return self._run_admin_command('clean-project', [args.project])
-    
-    def cmd_clean_project(self, args: argparse.Namespace) -> int:
-        """Alias for rm command"""
-        return self.cmd_rm(args)
+        """Handle rm command"""
+        return self._run_admin_command('rm', [args.glob])
     
     def cmd_register(self, args: argparse.Namespace) -> int:
         """Handle register command"""
-        return self._run_admin_command('register', [args.target])
+        cmd_args = [args.target]
+        if hasattr(args, 'help_flag') and args.help_flag:
+            cmd_args.append('--help')
+        return self._run_admin_command('register', cmd_args)
     
     def cmd_unregister(self, args: argparse.Namespace) -> int:
         """Handle unregister command"""
-        return self._run_admin_command('unregister', [args.target])
-    
-    def cmd_serve(self, args: argparse.Namespace) -> int:
-        """Handle legacy serve command"""
-        print("⚠️  Warning: 'ragex serve' is deprecated")
-        print("   Use 'ragex --mcp' instead for MCP server mode")
-        print("   Daemons are now started automatically with 'ragex index'")
-        return 1
+        cmd_args = [args.target]
+        if hasattr(args, 'help_flag') and args.help_flag:
+            cmd_args.append('--help')
+        return self._run_admin_command('unregister', cmd_args)
     
     def cmd_log(self, args: argparse.Namespace) -> int:
         """Handle log command"""

@@ -102,7 +102,7 @@ case "$1" in
         # Use smart_index.py which handles checksums and project detection
         exec python scripts/smart_index.py "$@"
         ;;
-    "serve"|"server")
+    "serve")
         setup_project_data "$@"
         exec python -m src.server
         ;;
@@ -115,7 +115,7 @@ case "$1" in
         export RAGEX_DISABLE_LOGGING_SETUP=true
         exec python ragex_search.py --index-dir "${RAGEX_PROJECT_DATA_DIR}" "$@"
         ;;
-    "list-projects"|"ls")
+    "ls")
         # Check for --all flag
         show_all=false
         for arg in "$@"; do
@@ -197,7 +197,7 @@ case "$1" in
             echo "  No projects found."
         fi
         ;;
-    "clean-project"|"rm")
+    "rm")
         if [ -n "$2" ]; then
             project_to_clean="$2"
             if [ -d "/data/projects/${project_to_clean}" ]; then
@@ -479,15 +479,11 @@ except Exception as e:
         echo "  init               Create .mcpignore file"
         echo "  index [PATH]       Build semantic index"
         echo "  search QUERY       Search in project"
-        echo "  serve/server       Start MCP server"
         echo "  info               Show project information"
         echo "  ls                 List all projects"
-        echo "  list-projects      List all projects (alias for ls)"
         echo "  rm ID              Remove project data"
-        echo "  clean-project ID   Remove project data (alias for rm)"
         echo "  register           Show registration instructions"
         echo "  unregister         Show unregistration instructions"
-        echo "  daemon             Start socket daemon (internal)"
         exit 1
         ;;
 esac
