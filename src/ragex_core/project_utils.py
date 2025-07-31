@@ -8,10 +8,43 @@ Handles project detection, ID generation, and metadata management.
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger("project-utils")
+
+
+def get_project_data_dir() -> str:
+    """
+    Get the project data directory from environment.
+    
+    Checks RAGEX_PROJECT_DATA_DIR first, then falls back to PROJECT_NAME.
+    
+    Returns:
+        Project data directory path
+    """
+    project_data_dir = os.environ.get('RAGEX_PROJECT_DATA_DIR')
+    if not project_data_dir:
+        project_name = os.environ.get('PROJECT_NAME', 'admin')
+        project_data_dir = f'/data/projects/{project_name}'
+    return project_data_dir
+
+
+def get_chroma_db_path(project_data_dir: Optional[str] = None) -> Path:
+    """
+    Get the ChromaDB path for a project.
+    
+    Args:
+        project_data_dir: Optional project data directory. If not provided,
+                         will be determined from environment variables.
+    
+    Returns:
+        Path to ChromaDB directory
+    """
+    if project_data_dir is None:
+        project_data_dir = get_project_data_dir()
+    return Path(project_data_dir) / "chroma_db"
 
 
 def generate_project_id(workspace_path: str, user_id: str) -> str:

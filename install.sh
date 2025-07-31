@@ -35,10 +35,23 @@ docker volume create "$USER_VOLUME"
 INSTALL_DIR="${HOME}/.local/bin"
 mkdir -p "$INSTALL_DIR"
 
-# Copy the smart wrapper script
-echo "📝 Installing ragex wrapper..."
+# Copy the smart wrapper scripts
+echo "📝 Installing ragex wrappers..."
+
+# Install main Python script as ragex
 cp ragex "${INSTALL_DIR}/ragex"
 chmod +x "${INSTALL_DIR}/ragex"
+
+# Install MCP wrapper
+cp ragex-mcp "${INSTALL_DIR}/ragex-mcp"
+chmod +x "${INSTALL_DIR}/ragex-mcp"
+
+# Also install bash script for testing
+if [ -f "ragex.sh" ]; then
+    echo "📝 Installing ragex.sh for testing..."
+    cp ragex.sh "${INSTALL_DIR}/ragex.sh"
+    chmod +x "${INSTALL_DIR}/ragex.sh"
+fi
 
 # Check if directory is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -59,6 +72,6 @@ echo "  3. ragex info                       # Show project info"
 echo "  4. ragex ls                         # List all your projects"
 echo ""
 echo "📝 Register with Claude Code:"
-echo "  claude mcp add ragex $(which ragex) --scope project"
+echo "  claude mcp add ragex $(which ragex-mcp 2>/dev/null || echo "${INSTALL_DIR}/ragex-mcp") --scope project"
 echo ""
 echo "For more info: https://github.com/jbenshetler/mcp-ragex"

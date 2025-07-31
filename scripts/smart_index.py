@@ -15,12 +15,9 @@ import argparse
 import logging
 from pathlib import Path
 from datetime import datetime
+from src.ragex_core.project_utils import get_chroma_db_path
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Logger will be configured in main() based on verbose flag
 logger = logging.getLogger('smart-index')
 
 # Add parent directory to path
@@ -69,7 +66,7 @@ async def run_incremental_update(workspace_path: Path, project_data_dir: str,
     
     try:
         # Initialize vector store to get stored checksums
-        vector_store = CodeVectorStore(persist_directory=f"{project_data_dir}/chroma_db")
+        vector_store = CodeVectorStore(persist_directory=str(get_chroma_db_path(project_data_dir)))
         stored_checksums = vector_store.get_file_checksums()
         
         if not stored_checksums:
@@ -103,7 +100,7 @@ async def run_incremental_update(workspace_path: Path, project_data_dir: str,
             print(f"📝 Updating index: +{len(added)} ~{len(modified)} -{len(removed)} files")
         
         # Initialize indexer
-        indexer = CodeIndexer(persist_directory=f"{project_data_dir}/chroma_db")
+        indexer = CodeIndexer(persist_directory=str(get_chroma_db_path(project_data_dir)))
         
         # Remove deleted files
         for file_path in removed:
@@ -168,6 +165,21 @@ def main():
     
     args, unknown_args = parser.parse_known_args()
     
+    # Configure logging based on verbosity
+    if args.verbose:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            force=True
+        )
+    else:
+        # Only show warnings and errors by default
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            force=True
+        )
+    
     # Get workspace path
     if args.path == '.':
         workspace_path = Path('/workspace')
@@ -201,7 +213,9 @@ def main():
         if not args.quiet:
             print(f"📍 Detected existing project index at: {project_root}")
             print(f"🔄 Using project root for indexing...")
-        workspace_path = project_root
+        # Update host workspace path but keep container path as /workspace
+        host_workspace_path = str(project_root)
+        # workspace_path remains as container path (/workspace)
     
     # Generate project ID using HOST path for consistency
     project_id = generate_project_id(host_workspace_path, user_id)

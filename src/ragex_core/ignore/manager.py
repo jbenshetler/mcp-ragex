@@ -71,14 +71,16 @@ class IgnoreManager:
         self.root_path = Path(root_path).resolve()
         self.ignore_filename = IGNORE_FILENAME
         
-        # Handle default patterns
+        # Store configuration
+        self._use_defaults_if_no_ignore_files = use_defaults
+        self._custom_default_patterns = default_patterns or []
+        
+        # Initialize default patterns - will be cleared if ignore files are found
         if use_defaults:
             self.default_patterns = DEFAULT_EXCLUSIONS.copy()
             if default_patterns:
-                # Add custom patterns to defaults
                 self.default_patterns.extend(default_patterns)
         else:
-            # Use only custom patterns (or empty if none provided)
             self.default_patterns = default_patterns or []
         
         # Initialize components
@@ -285,6 +287,12 @@ class IgnoreManager:
         # by PatternMatcher.check_ignore_file() to avoid duplicate warnings
         
         logger.info(f"Found {len(ignore_files)} ignore files")
+        
+        # If ANY ignore files are found and we're configured to not use defaults with ignore files,
+        # clear the default patterns
+        if len(ignore_files) > 0 and self._use_defaults_if_no_ignore_files:
+            logger.info("Ignore files found - clearing default patterns")
+            self.default_patterns = self._custom_default_patterns.copy()
         
         # Load each file
         for file_path in ignore_files:

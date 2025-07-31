@@ -1,426 +1,604 @@
-#!/bin/bash
-# ragex - Smart Docker wrapper for MCP-RageX with project isolation
-set -e
+#!/usr/bin/env python3
+"""
+RAGex - Smart code search with project isolation and MCP support
 
-# Default configuration
-# Note: ragex:local is the locally built image with socket daemon support
-# The public image ragex/mcp-server:latest doesn't have daemon support yet
-DOCKER_IMAGE="${RAGEX_IMAGE:-${RAGEX_DOCKER_IMAGE:-ragex:local}}"
-DOCKER_USER_ID=$(id -u)
-DOCKER_GROUP_ID=$(id -g)
+This Python implementation replaces the bash ragex script with:
+- Robust argument parsing using argparse
+- Integrated MCP server support with --mcp flag
+- Better error handling and debugging
+"""
 
-# Function to generate consistent project identifier
-generate_project_id() {
-    local workspace_path="$1"
-    local user_id="$2"
+import argparse
+import asyncio
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import List, Optional, Tuple, Dict, Any
+
+__version__ = "2.0.0"  # Python implementation version
+
+
+class RagexCLI:
+    """Main RAGex CLI implementation"""
     
-    # Create a consistent project ID based on user and absolute workspace path
-    local abs_path=$(cd "$workspace_path" 2>/dev/null && pwd || echo "$workspace_path")
-    local project_hash=$(echo "${user_id}:${abs_path}" | sha256sum | cut -d' ' -f1 | head -c 16)
-    echo "ragex_${user_id}_${project_hash}"
-}
-
-# Function to get project name for display
-get_project_name() {
-    local workspace_path="$1"
-    local abs_path=$(cd "$workspace_path" 2>/dev/null && pwd || echo "$workspace_path")
-    echo "$(basename "$abs_path")"
-}
-
-# Function to show usage
-show_usage() {
-    cat << EOF
-Usage: ragex [COMMAND] [OPTIONS]
-
+    def __init__(self):
+        self.docker_image = os.environ.get('RAGEX_DOCKER_IMAGE', 'ragex:local')
+        self.user_id = os.getuid()
+        self.group_id = os.getgid()
+        self.debug = os.environ.get('RAGEX_DEBUG', '').lower() in ('true', '1', 'yes')
+        self.embedding_model = os.environ.get('RAGEX_EMBEDDING_MODEL', 'fast')
+        
+        # Workspace path - will be set based on command
+        self.workspace_path = Path.cwd()
+        
+        # Project identifiers - computed after workspace is determined
+        self._project_id = None
+        self._project_name = None
+        self._daemon_container_name = None
+        self._user_volume = None
+    
+    @property
+    def project_id(self) -> str:
+        """Get or compute project ID"""
+        if self._project_id is None:
+            self._project_id = self.generate_project_id(self.workspace_path)
+        return self._project_id
+    
+    @property
+    def project_name(self) -> str:
+        """Get project name (basename of workspace)"""
+        if self._project_name is None:
+            self._project_name = self.workspace_path.name
+        return self._project_name
+    
+    @property
+    def daemon_container_name(self) -> str:
+        """Get daemon container name"""
+        if self._daemon_container_name is None:
+            self._daemon_container_name = f"ragex_daemon_{self.project_id}"
+        return self._daemon_container_name
+    
+    @property
+    def user_volume(self) -> str:
+        """Get user volume name"""
+        if self._user_volume is None:
+            self._user_volume = f"ragex_user_{self.user_id}"
+        return self._user_volume
+    
+    def debug_print(self, message: str):
+        """Print debug message if debug mode is enabled"""
+        if self.debug:
+            print(f"[DEBUG] {message}", file=sys.stderr)
+    
+    def generate_project_id(self, workspace_path: Path) -> str:
+        """Generate consistent project ID based on user and absolute path"""
+        abs_path = workspace_path.resolve()
+        project_hash = hashlib.sha256(
+            f"{self.user_id}:{abs_path}".encode()
+        ).hexdigest()[:16]
+        return f"ragex_{self.user_id}_{project_hash}"
+    
+    def is_daemon_running(self) -> bool:
+        """Check if daemon container is running"""
+        result = subprocess.run(
+            ['docker', 'ps', '-q', '-f', f'name={self.daemon_container_name}'],
+            capture_output=True,
+            text=True
+        )
+        return bool(result.stdout.strip())
+    
+    def start_daemon(self, silent: bool = False) -> bool:
+        """Start daemon container if not already running"""
+        if self.is_daemon_running():
+            self.debug_print(f"Daemon already running: {self.daemon_container_name}")
+            return True
+        
+        if not silent:
+            print(f"🚀 Starting ragex daemon for {self.project_name}...")
+        
+        # Docker run command for daemon
+        docker_cmd = [
+            'docker', 'run', '-d',
+            '--name', self.daemon_container_name,
+            '-u', f'{self.user_id}:{self.group_id}',
+            '-v', f'{self.user_volume}:/data',
+            '-v', f'{self.workspace_path}:/workspace:ro',
+            '-e', f'WORKSPACE_PATH={self.workspace_path}',
+            '-e', f'PROJECT_NAME={self.project_id}',
+            '-e', f'RAGEX_EMBEDDING_MODEL={self.embedding_model}',
+            '-e', f'HOST_HOME={Path.home()}',
+            self.docker_image,
+            'daemon'
+        ]
+        
+        self.debug_print(f"Starting daemon: {' '.join(docker_cmd)}")
+        
+        result = subprocess.run(docker_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            if not silent:
+                print(f"❌ Failed to start daemon: {result.stderr}")
+            return False
+        
+        # Wait for daemon to be ready (check for socket)
+        if not silent:
+            print("⏳ Waiting for daemon to be ready...")
+        for i in range(10):
+            time.sleep(1)
+            check_result = subprocess.run(
+                ['docker', 'exec', self.daemon_container_name, 
+                 'test', '-S', '/tmp/ragex.sock'],
+                capture_output=True
+            )
+            if check_result.returncode == 0:
+                if not silent:
+                    print("✅ Socket daemon is ready")
+                return True
+        
+        # If we get here, daemon failed to start properly
+        if not silent:
+            print("❌ Daemon container is running but socket not found")
+            self.show_daemon_logs(tail=20)
+        self.stop_daemon()
+        return False
+    
+    def stop_daemon(self) -> bool:
+        """Stop daemon container"""
+        if not self.is_daemon_running():
+            print(f"ℹ️  No daemon running for {self.project_name}")
+            return True
+        
+        print("🛑 Stopping ragex daemon...")
+        subprocess.run(['docker', 'stop', self.daemon_container_name], 
+                      capture_output=True)
+        subprocess.run(['docker', 'rm', self.daemon_container_name], 
+                      capture_output=True)
+        print("✅ Daemon stopped")
+        return True
+    
+    def show_daemon_logs(self, tail: Optional[int] = None):
+        """Show daemon container logs"""
+        cmd = ['docker', 'logs', self.daemon_container_name]
+        if tail:
+            cmd.extend(['--tail', str(tail)])
+        subprocess.run(cmd)
+    
+    def exec_via_daemon(self, cmd: str, args: List[str], 
+                       use_tty: bool = True) -> int:
+        """Execute command via daemon using socket client"""
+        # Start daemon if not running
+        if not self.is_daemon_running():
+            if not self.start_daemon():
+                return 1
+        
+        # Determine docker exec flags
+        exec_flags = ['-i']
+        if use_tty and sys.stdin.isatty() and cmd not in ['serve', 'search']:
+            exec_flags.append('-t')
+        
+        # Build docker exec command
+        docker_cmd = ['docker', 'exec'] + exec_flags + [
+            self.daemon_container_name,
+            'python', '-m', 'src.socket_client', cmd
+        ] + args
+        
+        self.debug_print(f"Executing: {' '.join(docker_cmd)}")
+        
+        result = subprocess.run(docker_cmd)
+        return result.returncode
+    
+    def parse_args(self) -> argparse.Namespace:
+        """Parse command line arguments"""
+        parser = argparse.ArgumentParser(
+            description='RAGex - Smart code search with project isolation',
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog=self.get_usage_examples()
+        )
+        
+        # Check for --mcp flag before creating subparsers
+        if '--mcp' in sys.argv:
+            # Minimal parsing for MCP mode
+            parser.add_argument('--mcp', action='store_true', 
+                              help='Run as MCP server')
+            return parser.parse_args(['--mcp'])
+        
+        subparsers = parser.add_subparsers(dest='command', help='Commands')
+        
+        # Index command
+        index_parser = subparsers.add_parser('index', 
+            help='Build semantic index and start daemon')
+        index_parser.add_argument('path', nargs='?', default='.', 
+            help='Path to index (default: current directory)')
+        index_parser.add_argument('--force', action='store_true',
+            help='Force rebuild of index')
+        index_parser.add_argument('-v', '--verbose', action='store_true',
+            help='Show verbose output including debug logs')
+        
+        # Search command
+        search_parser = subparsers.add_parser('search', 
+            help='Search in current project')
+        search_parser.add_argument('query', help='Search query')
+        search_parser.add_argument('--limit', type=int, default=50,
+            help='Maximum results (default: 50)')
+        search_parser.add_argument('--symbol', action='store_true',
+            help='Symbol search mode')
+        search_parser.add_argument('--regex', action='store_true',
+            help='Regex search mode')
+        search_parser.add_argument('--json', action='store_true',
+            help='Output results as JSON')
+        
+        # Bash command
+        bash_parser = subparsers.add_parser('bash', 
+            help='Get shell in container')
+        
+        # Init command
+        init_parser = subparsers.add_parser('init',
+            help='Create .mcpignore file in current directory')
+        
+        # Stop command
+        stop_parser = subparsers.add_parser('stop',
+            help='Stop daemon if running')
+        
+        # Status command
+        status_parser = subparsers.add_parser('status',
+            help='Check daemon status')
+        
+        # List projects command
+        ls_parser = subparsers.add_parser('ls',
+            help='List all projects for current user')
+        subparsers.add_parser('list-projects', 
+            help='List all projects (alias for ls)')
+        
+        # Remove project command
+        rm_parser = subparsers.add_parser('rm',
+            help='Remove project data')
+        rm_parser.add_argument('project', help='Project ID to remove')
+        clean_parser = subparsers.add_parser('clean-project',
+            help='Remove project data (alias for rm)')
+        clean_parser.add_argument('project', help='Project ID to remove')
+        
+        # Info command
+        info_parser = subparsers.add_parser('info',
+            help='Show project information')
+        
+        # Log command
+        log_parser = subparsers.add_parser('log',
+            help='Show/follow daemon logs')
+        log_parser.add_argument('project', nargs='?',
+            help='Project name/ID (omit for global logs)')
+        log_parser.add_argument('-f', '--follow', action='store_true',
+            help='Follow log output')
+        log_parser.add_argument('--tail', type=int, metavar='N',
+            help='Number of lines to show from the end')
+        log_parser.add_argument('-t', '--timestamps', action='store_true',
+            help='Show timestamps')
+        
+        # Register/unregister commands
+        register_parser = subparsers.add_parser('register',
+            help='Show registration instructions')
+        register_parser.add_argument('target', 
+            help='Registration target (e.g., claude, gemini)')
+        unregister_parser = subparsers.add_parser('unregister',
+            help='Show unregistration instructions')
+        unregister_parser.add_argument('target',
+            help='Unregistration target (e.g., claude, gemini)')
+        
+        # Serve command (legacy, shows deprecation warning)
+        serve_parser = subparsers.add_parser('serve',
+            help='Start MCP server (deprecated - use --mcp flag)')
+        
+        return parser.parse_args()
+    
+    def get_usage_examples(self) -> str:
+        """Get usage examples for help text"""
+        return """
 Quick Start:
-  1. ragex index .   # Index your project (starts daemon automatically)
-  2. ragex search "query"  # Search your codebase
+  1. ragex index .              # Index your project (starts daemon automatically)
+  2. ragex search "query"       # Search your codebase
 
-Commands:
-  index [PATH]       Build semantic index and start daemon
-  search QUERY       Search in current project
-  serve              Start MCP server (for Claude integration)
-  ls                 List all projects for current user
-  list-projects      List all projects (alias for ls)
-  rm ID              Remove project data
-  clean-project ID   Remove project data (alias for rm)
-  init               Create .mcpignore file in current directory
-  info               Show project information
-  register           Show registration instructions
-  unregister         Show unregistration instructions
-  log [PROJECT] [-f] Show/follow logs (global or per-project)
-  bash               Get shell in container
-  stop               Stop daemon if running
-  status             Check daemon status
-  
+Examples:
+  ragex index .                    # Index current directory
+  ragex search "auth functions"    # Search current project
+  ragex search "def.*test" --regex # Regex search
+  ragex search "handleSubmit" --symbol # Symbol search
+  ragex ls                         # Show all your projects
+  ragex log mcp-ragex -f           # Follow logs for specific project
+  ragex --mcp                      # Run as MCP server for Claude
+
 Environment Variables:
   RAGEX_EMBEDDING_MODEL    Embedding model preset (fast/balanced/accurate)
   RAGEX_PROJECT_NAME       Override project name
   RAGEX_DOCKER_IMAGE       Docker image to use
-  RAGEX_DAEMON_ENABLED     Enable daemon mode (true/false)
-  
-Examples:
-  ragex index .                    # Index current directory
-  ragex search "auth functions"    # Search current project
-  ragex ls                         # Show all your projects
-  ragex log mcp-ragex -f           # Follow logs for specific project
-  RAGEX_EMBEDDING_MODEL=balanced ragex index .  # Use balanced model
-EOF
-}
-
-# Parse command line arguments
-COMMAND="serve"
-if [ $# -gt 0 ]; then
-    COMMAND="$1"
-    shift
-fi
-
-# Debug output
-if [ "${RAGEX_DEBUG}" = "true" ]; then
-    echo "[DEBUG] Command: $COMMAND, Args: $@" >&2
-    echo "[DEBUG] Docker image: ${DOCKER_IMAGE}" >&2
-fi
-
-# Handle help/usage
-if [ "$COMMAND" = "help" ] || [ "$COMMAND" = "--help" ] || [ "$COMMAND" = "-h" ]; then
-    show_usage
-    exit 0
-fi
-
-# Determine workspace path
-WORKSPACE_PATH="${PWD}"
-if [ "$COMMAND" = "index" ] && [ $# -gt 0 ]; then
-    WORKSPACE_PATH="$1"
-fi
-
-# Always convert to absolute path
-WORKSPACE_PATH=$(realpath "$WORKSPACE_PATH")
-
-# Generate project-specific identifiers
-USER_VOLUME="ragex_user_${DOCKER_USER_ID}"
-PROJECT_ID=$(generate_project_id "$WORKSPACE_PATH" "$DOCKER_USER_ID")
-PROJECT_NAME=$(get_project_name "$WORKSPACE_PATH")
-DAEMON_CONTAINER_NAME="ragex_daemon_${PROJECT_ID}"
-
-# Function to check if daemon is running
-is_daemon_running() {
-    docker ps -q -f "name=${DAEMON_CONTAINER_NAME}" | grep -q .
-}
-
-# Function to start daemon
-start_daemon() {
-    if is_daemon_running; then
-        return 0
-    fi
+  RAGEX_DEBUG              Enable debug output
+"""
     
-    echo "🚀 Starting ragex daemon for ${PROJECT_NAME}..."
-    # if [ "${RAGEX_DEBUG}" = "true" ]; then
-    #     echo "[DEBUG] Starting daemon container: ${DAEMON_CONTAINER_NAME}" >&2
-    #     echo "[DEBUG] Docker image: ${DOCKER_IMAGE}" >&2
-    # fi
-    
-    docker run -d \
-        --name "${DAEMON_CONTAINER_NAME}" \
-        -u "${DOCKER_USER_ID}:${DOCKER_GROUP_ID}" \
-        -v "${USER_VOLUME}:/data" \
-        -v "${WORKSPACE_PATH}:/workspace:ro" \
-        -e "WORKSPACE_PATH=${WORKSPACE_PATH}" \
-        -e "PROJECT_NAME=${PROJECT_ID}" \
-        -e "RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}" \
-        -e "HOST_HOME=${HOME}" \
-        "${DOCKER_IMAGE}" daemon > /dev/null
-    
-    # Wait for daemon to be ready
-    sleep 2
-    
-    # Wait for socket to be created (up to 10 seconds)
-    local wait_count=0
-    while [ $wait_count -lt 10 ]; do
-        if docker exec "${DAEMON_CONTAINER_NAME}" test -S /tmp/ragex.sock 2>/dev/null; then
-            echo "✅ Socket daemon is ready"
-            return 0
-        fi
-        sleep 1
-        wait_count=$((wait_count + 1))
-    done
-    
-    # If socket not found, check if container is still running
-    if is_daemon_running; then
-        echo "⚠️  Daemon container is running but socket not found"
-        echo "   Checking daemon logs..."
-        docker logs --tail 20 "${DAEMON_CONTAINER_NAME}" 2>&1
-        echo "❌ Failed to start socket daemon properly"
-        # Stop the broken daemon
-        docker stop "${DAEMON_CONTAINER_NAME}" > /dev/null 2>&1 || true
-        docker rm "${DAEMON_CONTAINER_NAME}" > /dev/null 2>&1 || true
-        return 1
-    else
-        echo "❌ Daemon container exited"
-        # Show logs to help debug
-        docker logs --tail 20 "${DAEMON_CONTAINER_NAME}" 2>&1 || true
-        docker rm "${DAEMON_CONTAINER_NAME}" > /dev/null 2>&1 || true
-        return 1
-    fi
-}
-
-# Function to stop daemon
-stop_daemon() {
-    if ! is_daemon_running; then
-        echo "ℹ️  No daemon running for ${PROJECT_NAME}"
-        return 0
-    fi
-    
-    echo "🛑 Stopping ragex daemon..."
-    docker stop "${DAEMON_CONTAINER_NAME}" > /dev/null
-    docker rm "${DAEMON_CONTAINER_NAME}" > /dev/null
-    echo "✅ Daemon stopped"
-}
-
-# Function to get daemon status
-daemon_status() {
-    if is_daemon_running; then
-        echo "✅ Daemon is running for ${PROJECT_NAME}"
-        docker ps -f "name=${DAEMON_CONTAINER_NAME}" --format "table {{.ID}}\t{{.Status}}\t{{.Names}}"
-    else
-        echo "❌ No daemon running for ${PROJECT_NAME}"
-    fi
-}
-
-# Function to execute command via daemon
-exec_via_daemon() {
-    local cmd="$1"
-    shift
-    
-    # Debug output
-    if [ "${RAGEX_DEBUG}" = "true" ]; then
-        echo "[DEBUG] exec_via_daemon: cmd=$cmd, daemon_name=${DAEMON_CONTAINER_NAME}" >&2
-    fi
-    
-    # Start daemon if not running
-    if ! is_daemon_running; then
-        if [ "${RAGEX_DEBUG}" = "true" ]; then
-            echo "[DEBUG] Daemon not running, starting..." >&2
-        fi
-        start_daemon || return 1
-    else
-        if [ "${RAGEX_DEBUG}" = "true" ]; then
-            echo "[DEBUG] Daemon already running" >&2
-        fi
-        :  # No-op to ensure else block has content
-    fi
-    
-    # Determine if we need TTY
-    local EXEC_FLAGS="-i"
-    if [ -t 0 ] && [ "$cmd" != "serve" ] && [ "$cmd" != "server" ]; then
-        EXEC_FLAGS="-it"
-    fi
-    
-    # Execute command via docker exec using socket client
-    if [ "${RAGEX_DEBUG}" = "true" ]; then
-        echo "[DEBUG] Running: docker exec $EXEC_FLAGS ${DAEMON_CONTAINER_NAME} python -m src.socket_client $cmd $@" >&2
-    fi
-    docker exec $EXEC_FLAGS "${DAEMON_CONTAINER_NAME}" python -m src.socket_client "$cmd" "$@"
-}
-
-# Build Docker command
-DOCKER_ARGS=(
-    "run"
-    "--rm"
-    "-u" "${DOCKER_USER_ID}:${DOCKER_GROUP_ID}"
-    "-v" "${USER_VOLUME}:/data"
-    "-v" "${WORKSPACE_PATH}:/workspace:ro"
-    "-e" "WORKSPACE_PATH=${WORKSPACE_PATH}"
-    "-e" "PROJECT_NAME=${PROJECT_ID}"
-    "-e" "RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}"
-)
-
-# Handle different command types
-case "$COMMAND" in
-    "bash"|"sh")
-        # Interactive shell needs TTY
-        DOCKER_ARGS+=("-it")
-        ;;
-    "serve"|"server")
-        # MCP server needs stdin/stdout but NO TTY (breaks JSON-RPC)
-        DOCKER_ARGS+=("-i")
-        ;;
-    *)
-        # Other commands can be interactive if terminal is available
-        if [ -t 0 ]; then
-            DOCKER_ARGS+=("-it")
-        fi
-        ;;
-esac
-
-# Handle daemon-specific commands
-case "$COMMAND" in
-    "stop")
-        stop_daemon
-        exit $?
-        ;;
-    "status")
-        daemon_status
-        exit $?
-        ;;
-esac
-
-# Handle special commands that don't need workspace
-case "$COMMAND" in
-    "list-projects"|"ls"|"clean-project"|"rm"|"register"|"unregister")
-        # These commands don't use daemon, run directly
-        DOCKER_ARGS=(
-            "run"
-            "--rm"
-            "-u" "${DOCKER_USER_ID}:${DOCKER_GROUP_ID}"
-            "-v" "${USER_VOLUME}:/data"
-            "-e" "PROJECT_NAME=admin"
-            "-e" "HOST_HOME=${HOME}"
-            "-e" "HOST_USER=${USER}"
-            "-e" "WORKSPACE_PATH=${WORKSPACE_PATH}"
-        )
-        exec docker "${DOCKER_ARGS[@]}" "$DOCKER_IMAGE" "$COMMAND" "$@"
-        ;;
-    "info")
-        echo "🔧 RageX Project Information"
-        echo "   User ID: ${DOCKER_USER_ID}"
-        echo "   Workspace: ${WORKSPACE_PATH}"
-        echo "   Project ID: ${PROJECT_ID}"
-        echo "   Project Name: ${PROJECT_NAME}"
-        echo "   User Volume: ${USER_VOLUME}"
-        echo "   Docker Image: ${DOCKER_IMAGE}"
-        echo "   Embedding Model: ${RAGEX_EMBEDDING_MODEL:-fast}"
-        echo ""
-        daemon_status
-        exit 0
-        ;;
-    "log")
-        # Handle log command - view logs from daemon containers
-        project_identifier=""
-        docker_args=()
+    def run(self) -> int:
+        """Main entry point"""
+        # Special handling for --mcp mode
+        if '--mcp' in sys.argv:
+            return self.run_mcp_mode()
         
         # Parse arguments
-        while [ $# -gt 0 ]; do
-            case "$1" in
-                -f|--follow)
-                    docker_args+=("--follow")
-                    shift
-                    ;;
-                --tail)
-                    docker_args+=("--tail" "$2")
-                    shift 2
-                    ;;
-                --since)
-                    docker_args+=("--since" "$2")
-                    shift 2
-                    ;;
-                --until)
-                    docker_args+=("--until" "$2")
-                    shift 2
-                    ;;
-                -t|--timestamps)
-                    docker_args+=("--timestamps")
-                    shift
-                    ;;
-                --details)
-                    docker_args+=("--details")
-                    shift
-                    ;;
-                -*)
-                    # Pass through unknown docker logs flags
-                    docker_args+=("$1")
-                    shift
-                    ;;
-                *)
-                    if [ -z "$project_identifier" ]; then
-                        project_identifier="$1"
-                    else
-                        echo "❌ Error: Multiple project identifiers specified: '$project_identifier' and '$1'"
-                        exit 1
-                    fi
-                    shift
-                    ;;
-            esac
-        done
+        args = self.parse_args()
         
-        if [ -n "$project_identifier" ]; then
-            # Per-project logs - resolve project name to project ID
-            resolved_id=$(docker run --rm \
-                -v "${USER_VOLUME}:/data" \
-                --entrypoint python \
-                "${DOCKER_IMAGE}" \
-                -m src.ragex_core.project_resolver "$project_identifier" 2>&1)
+        # Show help if no command
+        if not args.command:
+            subprocess.run([sys.argv[0], '--help'])
+            return 0
+        
+        # Update workspace path for index command
+        if args.command == 'index' and hasattr(args, 'path'):
+            self.workspace_path = Path(args.path).resolve()
+        
+        # Route to command handlers
+        handler_name = f'cmd_{args.command.replace("-", "_")}'
+        handler = getattr(self, handler_name, None)
+        
+        if handler:
+            return handler(args)
+        else:
+            print(f"❌ Error: Unknown command '{args.command}'")
+            print(f"\nRun '{sys.argv[0]} --help' for usage")
+            return 1
+    
+    # Command handlers
+    def cmd_index(self, args: argparse.Namespace) -> int:
+        """Handle index command"""
+        print(f"📚 Indexing {self.workspace_path}")
+        # Inside container, the workspace is always mounted at /workspace
+        container_path = '/workspace'
+        cmd_args = [container_path]
+        if args.force:
+            cmd_args.append('--force')
+        if hasattr(args, 'verbose') and args.verbose:
+            cmd_args.append('--verbose')
+        return self.exec_via_daemon('index', cmd_args)
+    
+    def cmd_search(self, args: argparse.Namespace) -> int:
+        """Handle search command"""
+        cmd_args = [args.query]
+        
+        if args.limit != 50:
+            cmd_args.extend(['--limit', str(args.limit)])
+        if args.symbol:
+            cmd_args.append('--symbol')
+        if args.regex:
+            cmd_args.append('--regex')
+        if args.json:
+            cmd_args.append('--json')
+        
+        return self.exec_via_daemon('search', cmd_args, use_tty=not args.json)
+    
+    def cmd_bash(self, args: argparse.Namespace) -> int:
+        """Handle bash command"""
+        return self.exec_via_daemon('bash', [])
+    
+    def cmd_init(self, args: argparse.Namespace) -> int:
+        """Handle init command"""
+        return self.exec_via_daemon('init', [])
+    
+    def cmd_stop(self, args: argparse.Namespace) -> int:
+        """Handle stop command"""
+        return 0 if self.stop_daemon() else 1
+    
+    def cmd_status(self, args: argparse.Namespace) -> int:
+        """Handle status command"""
+        if self.is_daemon_running():
+            print(f"✅ Daemon is running for {self.project_name}")
+            result = subprocess.run(
+                ['docker', 'ps', '-f', f'name={self.daemon_container_name}',
+                 '--format', 'table {{.ID}}\t{{.Status}}\t{{.Names}}']
+            )
+            return 0
+        else:
+            print(f"❌ No daemon running for {self.project_name}")
+            return 1
+    
+    def cmd_info(self, args: argparse.Namespace) -> int:
+        """Handle info command"""
+        print("🔧 RageX Project Information")
+        print(f"   User ID: {self.user_id}")
+        print(f"   Workspace: {self.workspace_path}")
+        print(f"   Project ID: {self.project_id}")
+        print(f"   Project Name: {self.project_name}")
+        print(f"   User Volume: {self.user_volume}")
+        print(f"   Docker Image: {self.docker_image}")
+        print(f"   Embedding Model: {self.embedding_model}")
+        print()
+        return self.cmd_status(args)
+    
+    def cmd_ls(self, args: argparse.Namespace) -> int:
+        """Handle ls/list-projects command"""
+        return self._run_admin_command('list-projects')
+    
+    def cmd_list_projects(self, args: argparse.Namespace) -> int:
+        """Alias for ls command"""
+        return self.cmd_ls(args)
+    
+    def cmd_rm(self, args: argparse.Namespace) -> int:
+        """Handle rm/clean-project command"""
+        return self._run_admin_command('clean-project', [args.project])
+    
+    def cmd_clean_project(self, args: argparse.Namespace) -> int:
+        """Alias for rm command"""
+        return self.cmd_rm(args)
+    
+    def cmd_register(self, args: argparse.Namespace) -> int:
+        """Handle register command"""
+        return self._run_admin_command('register', [args.target])
+    
+    def cmd_unregister(self, args: argparse.Namespace) -> int:
+        """Handle unregister command"""
+        return self._run_admin_command('unregister', [args.target])
+    
+    def cmd_serve(self, args: argparse.Namespace) -> int:
+        """Handle legacy serve command"""
+        print("⚠️  Warning: 'ragex serve' is deprecated")
+        print("   Use 'ragex --mcp' instead for MCP server mode")
+        print("   Daemons are now started automatically with 'ragex index'")
+        return 1
+    
+    def cmd_log(self, args: argparse.Namespace) -> int:
+        """Handle log command"""
+        if args.project:
+            # Project-specific logs
+            return self._show_project_logs(args.project, args)
+        else:
+            # Global logs
+            return self._show_global_logs(args)
+    
+    def _run_admin_command(self, command: str, args: List[str] = None) -> int:
+        """Run administrative commands that don't need workspace"""
+        docker_cmd = [
+            'docker', 'run', '--rm',
+            '-u', f'{self.user_id}:{self.group_id}',
+            '-v', f'{self.user_volume}:/data',
+            '-e', 'PROJECT_NAME=admin',
+            '-e', f'HOST_HOME={Path.home()}',
+            '-e', f'HOST_USER={os.environ.get("USER", "unknown")}',
+            '-e', f'WORKSPACE_PATH={self.workspace_path}',
+            self.docker_image,
+            command
+        ]
+        
+        if args:
+            docker_cmd.extend(args)
+        
+        self.debug_print(f"Running admin command: {' '.join(docker_cmd)}")
+        result = subprocess.run(docker_cmd)
+        return result.returncode
+    
+    def _show_project_logs(self, project_identifier: str, 
+                          args: argparse.Namespace) -> int:
+        """Show logs for specific project"""
+        # Resolve project name to ID
+        resolve_result = subprocess.run(
+            ['docker', 'run', '--rm',
+             '-v', f'{self.user_volume}:/data',
+             '--entrypoint', 'python',
+             self.docker_image,
+             '-m', 'src.ragex_core.project_resolver', project_identifier],
+            capture_output=True,
+            text=True
+        )
+        
+        if resolve_result.returncode != 0:
+            error_msg = resolve_result.stderr.strip()
+            if error_msg.startswith("ERROR: "):
+                print(f"❌ {error_msg[7:]}")
+            else:
+                print(f"❌ Failed to resolve project: {project_identifier}")
+            return 1
+        
+        project_id = resolve_result.stdout.strip()
+        container_name = f"ragex_daemon_{project_id}"
+        
+        # Check if container exists
+        check_result = subprocess.run(
+            ['docker', 'ps', '-q', '-f', f'name={container_name}'],
+            capture_output=True,
+            text=True
+        )
+        
+        if not check_result.stdout.strip():
+            print(f"❌ No running daemon found for project: {project_identifier}")
+            if project_identifier != project_id:
+                print(f"   (Resolved to: {project_id})")
+            return 1
+        
+        # Show logs
+        if project_identifier != project_id:
+            print(f"📋 Logs for project: {project_identifier} [{project_id}]")
+        else:
+            print(f"📋 Logs for project: {project_id}")
+        
+        log_cmd = ['docker', 'logs', container_name]
+        if args.follow:
+            log_cmd.append('--follow')
+        if args.tail:
+            log_cmd.extend(['--tail', str(args.tail)])
+        if args.timestamps:
+            log_cmd.append('--timestamps')
+        
+        result = subprocess.run(log_cmd)
+        return result.returncode
+    
+    def _show_global_logs(self, args: argparse.Namespace) -> int:
+        """Show logs from all daemon containers"""
+        # Find all daemon containers
+        result = subprocess.run(
+            ['docker', 'ps', '--format', '{{.Names}}'],
+            capture_output=True,
+            text=True
+        )
+        
+        daemon_containers = [
+            name for name in result.stdout.strip().split('\n')
+            if name.startswith('ragex_daemon_')
+        ]
+        
+        if not daemon_containers:
+            print("📋 No ragex daemon containers are currently running")
+            print("\nStart a daemon with: ragex index")
+            return 0
+        
+        print("📋 Global ragex logs from all daemon containers:\n")
+        
+        for container in sorted(daemon_containers):
+            project_id = container.replace('ragex_daemon_', '')
+            print(f"=== {project_id} ===")
             
-            if [ $? -ne 0 ]; then
-                # Resolution failed - show error message
-                echo "$resolved_id" | sed 's/^ERROR: /❌ /'
-                exit 1
-            fi
+            log_cmd = ['docker', 'logs', container, '--tail', '10']
+            if args.timestamps:
+                log_cmd.append('--timestamps')
             
-            project_id="$resolved_id"
-            container_name="ragex_daemon_${project_id}"
-            
-            # Check if container exists and is running
-            if docker ps -q -f "name=${container_name}" | grep -q .; then
-                # Show which project we resolved to (if different from input)
-                if [ "$project_identifier" != "$project_id" ]; then
-                    echo "📋 Logs for project: $project_identifier [$project_id]"
-                else
-                    echo "📋 Logs for project: $project_id"
-                fi
-                docker logs "${container_name}" "${docker_args[@]}"
-            else
-                echo "❌ No running daemon found for project: $project_identifier"
-                if [ "$project_identifier" != "$project_id" ]; then
-                    echo "   (Resolved to: $project_id)"
-                fi
-                echo ""
-                echo "Available daemon containers:"
-                daemon_containers=$(docker ps --format "{{.Names}}" | grep "^ragex_daemon_" | sed 's/ragex_daemon_/  /')
-                if [ -n "$daemon_containers" ]; then
-                    echo "$daemon_containers"
-                else
-                    echo "  (none)"
-                fi
-                echo ""
-                echo "Start a daemon with: ragex start"
-                exit 1
-            fi
-        else
-            # Global logs - show all daemon containers
-            daemon_containers=$(docker ps --format "{{.Names}}" | grep "^ragex_daemon_" | sort)
-            
-            if [ -z "$daemon_containers" ]; then
-                echo "📋 No ragex daemon containers are currently running"
-                echo ""
-                echo "Start a daemon with: ragex start"
-                exit 0
-            fi
-            
-            echo "📋 Global ragex logs from all daemon containers:"
-            echo ""
-            
-            for container in $daemon_containers; do
-                project_id=${container#ragex_daemon_}
-                echo "=== $project_id ==="
-                docker logs "$container" "${docker_args[@]}" --tail 10 2>&1 | head -20
-                echo ""
-            done
-        fi
-        exit 0
-        ;;
-esac
+            # Show first 20 lines of output
+            result = subprocess.run(log_cmd, capture_output=True, text=True)
+            lines = result.stdout.split('\n')[:20]
+            print('\n'.join(lines))
+            print()
+        
+        return 0
+    
+    def run_mcp_mode(self) -> int:
+        """Run as MCP server bridging to daemon"""
+        # In MCP mode, we must be completely silent - no output except JSON protocol
+        
+        # Ensure daemon is running (silent mode)
+        if not self.is_daemon_running():
+            if not self.start_daemon(silent=True):
+                # If we can't start daemon, we need to exit silently
+                # MCP server will handle error reporting via JSON
+                return 1
+        
+        # Start continuous indexing to ensure ChromaDB exists
+        # TODO: This blocks MCP server - need to run as background task
+        # For now, commented out - user must run 'ragex index' first
+        # container_path = '/workspace'
+        # docker_cmd = ['docker', 'exec', '-i', self.daemon_container_name,
+        #               'python', '-m', 'src.socket_client', 'start_continuous_index', container_path]
+        # subprocess.run(docker_cmd, capture_output=True)  # Discard all output
+        
+        # Run MCP server inside the container where dependencies are available
+        # This takes over stdio for clean JSON communication
+        docker_cmd = ['docker', 'exec', '-i',  # -i for interactive, no -t for MCP stdio
+                      self.daemon_container_name,
+                      'python', '-m', 'src.socket_client', 'mcp']
+        
+        # Run the MCP server command - it will handle all stdio from here
+        # Pass through stdin/stdout/stderr for proper MCP communication
+        result = subprocess.run(docker_cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+        return result.returncode
 
-# For all other commands, use daemon if available
-case "$COMMAND" in
-    "init"|"index"|"search"|"serve"|"server"|"bash"|"sh")
-        # These commands benefit from daemon mode
-        exec_via_daemon "$COMMAND" "$@"
-        ;;
-    *)
-        # Unknown command - show error and usage
-        echo "❌ Error: Unknown command '$COMMAND'"
-        echo ""
-        show_usage
-        exit 1
-        ;;
-esac
+
+def main():
+    """Main entry point"""
+    cli = RagexCLI()
+    sys.exit(cli.run())
+
+
+if __name__ == '__main__':
+    main()
