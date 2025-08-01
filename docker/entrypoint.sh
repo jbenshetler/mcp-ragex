@@ -25,15 +25,23 @@ setup_project_data() {
     fi
     # Generate project identifier from workspace path (if available) or use default
     if [ -d "/workspace" ] && [ -n "$(ls -A /workspace 2>/dev/null)" ]; then
-        # Use a hash of the workspace path for consistent project identification
+        # Use hash for unique project ID (directory name)
         PROJECT_HASH=$(echo "$WORKSPACE_PATH" | sha256sum | cut -d' ' -f1 | head -c 16)
-        PROJECT_NAME="${PROJECT_NAME:-project_${PROJECT_HASH}}"
+        PROJECT_ID="ragex_$(id -u)_${PROJECT_HASH}"
+        
+        # Check if custom name provided via environment, otherwise use workspace basename
+        if [ -n "$RAGEX_PROJECT_NAME" ]; then
+            PROJECT_NAME="$RAGEX_PROJECT_NAME"
+        else
+            PROJECT_NAME="$(basename "$WORKSPACE_PATH")"
+        fi
     else
-        PROJECT_NAME="${PROJECT_NAME:-.ragex_admin}"
+        PROJECT_ID=".ragex_admin"
+        PROJECT_NAME=".ragex_admin"
     fi
     
-    # Set up project-specific directories
-    export RAGEX_PROJECT_DATA_DIR="/data/projects/${PROJECT_NAME}"
+    # Set up project-specific directories using PROJECT_ID
+    export RAGEX_PROJECT_DATA_DIR="/data/projects/${PROJECT_ID}"
     export RAGEX_CHROMA_PERSIST_DIR="${RAGEX_PROJECT_DATA_DIR}/chroma_db"
     export RAGEX_CHROMA_COLLECTION="${RAGEX_CHROMA_COLLECTION:-code_embeddings}"
     
@@ -46,35 +54,11 @@ setup_project_data() {
     mkdir -p "${RAGEX_CHROMA_PERSIST_DIR}"
     mkdir -p "/data/models"
     
-    # Only create/update project metadata if we have a valid workspace path
-    if [ -n "${WORKSPACE_PATH}" ] && [ "${WORKSPACE_PATH}" != "unknown" ]; then
-        # Create or update project metadata file
-        if [ -f "${RAGEX_PROJECT_DATA_DIR}/project_info.json" ]; then
-            # Update existing metadata - preserve created_at but update other fields
-            created_at=$(jq -r '.created_at // ""' "${RAGEX_PROJECT_DATA_DIR}/project_info.json" 2>/dev/null || echo "")
-            if [ -z "$created_at" ]; then
-                created_at="$(date -Iseconds)"
-            fi
-        else
-            created_at="$(date -Iseconds)"
-        fi
-        
-        cat > "${RAGEX_PROJECT_DATA_DIR}/project_info.json" << EOF
-{
-    "project_name": "${PROJECT_NAME}",
-    "workspace_path": "${WORKSPACE_PATH}",
-    "workspace_basename": "$(basename "${WORKSPACE_PATH}")",
-    "created_at": "${created_at}",
-    "last_accessed": "$(date -Iseconds)",
-    "embedding_model": "${RAGEX_EMBEDDING_MODEL:-fast}",
-    "collection_name": "${RAGEX_CHROMA_COLLECTION}"
-}
-EOF
-    fi
+    # Note: Project metadata (project_info.json) is now managed entirely by smart_index.py
+    # This ensures proper handling of --name parameter and other project-specific logic
     
     # Only show project info for non-search commands or if log level is INFO or DEBUG
     if [[ ! "$1" =~ ^search ]] || [[ "${RAGEX_LOG_LEVEL^^}" == "INFO" ]] || [[ "${RAGEX_LOG_LEVEL^^}" == "DEBUG" ]]; then
-        echo "📁 Project: ${PROJECT_NAME}"
         echo "📊 Data dir: ${RAGEX_PROJECT_DATA_DIR}"
         echo "🔧 Embedding model: ${RAGEX_EMBEDDING_MODEL:-fast}"
     fi

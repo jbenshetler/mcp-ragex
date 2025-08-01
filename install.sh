@@ -46,12 +46,6 @@ chmod +x "${INSTALL_DIR}/ragex"
 cp ragex-mcp "${INSTALL_DIR}/ragex-mcp"
 chmod +x "${INSTALL_DIR}/ragex-mcp"
 
-# Also install bash script for testing
-if [ -f "ragex.sh" ]; then
-    echo "📝 Installing ragex.sh for testing..."
-    cp ragex.sh "${INSTALL_DIR}/ragex.sh"
-    chmod +x "${INSTALL_DIR}/ragex.sh"
-fi
 
 # Check if directory is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then

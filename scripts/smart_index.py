@@ -42,22 +42,54 @@ except ImportError as e:
 
 
 async def run_full_index(workspace_path: Path, args) -> bool:
-    """Run full indexing using build_semantic_index.py"""
-    import subprocess
-    
-    index_args = [sys.executable, str(ragex_dir / "scripts" / "build_semantic_index.py")]
-    index_args.append(str(workspace_path))
-    index_args.append('--force')  # Always force for initial index
-    
-    # Pass through arguments
-    if args.stats:
-        index_args.append('--stats')
-    if args.verbose:
-        index_args.append('--verbose')
-    
-    # Run the indexer
-    result = subprocess.run(index_args, env=os.environ.copy())
-    return result.returncode == 0
+    """Run full indexing using CodeIndexer directly"""
+    try:
+        # Get project data directory from environment
+        project_data_dir = os.environ.get('RAGEX_PROJECT_DATA_DIR')
+        if not project_data_dir:
+            print("❌ RAGEX_PROJECT_DATA_DIR environment variable not set")
+            return False
+        
+        chroma_persist_dir = get_chroma_db_path(project_data_dir)
+        
+        # Initialize pattern matcher for ignore handling
+        pattern_matcher = PatternMatcher()
+        pattern_matcher.set_working_directory(str(workspace_path))
+        
+        # Initialize indexer
+        indexer = CodeIndexer(persist_directory=str(chroma_persist_dir))
+        
+        if not args.quiet:
+            print(f"🔍 Scanning files in {workspace_path}")
+        
+        # Get all files to index using the indexer's file discovery
+        file_paths = indexer.find_code_files([str(workspace_path)])
+        
+        if not file_paths:
+            if not args.quiet:
+                print("⚠️  No source files found to index")
+            return True
+        
+        if not args.quiet:
+            print(f"📊 Indexing {len(file_paths)} files...")
+        
+        # Index all files
+        result = await indexer.index_codebase([str(f) for f in file_paths], force=True)
+        
+        if args.verbose or args.stats:
+            print(f"✅ Indexed {result.get('files_processed', 0)} files")
+            print(f"   Symbols: {result.get('symbols_indexed', 0)}")
+            if result.get('failed_files'):
+                print(f"   Failed: {len(result['failed_files'])} files")
+        
+        return result.get('success', False)
+        
+    except Exception as e:
+        print(f"❌ Full indexing failed: {e}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        return False
 
 
 async def run_incremental_update(workspace_path: Path, project_data_dir: str, 
@@ -264,8 +296,12 @@ def main():
             # Force full reindex
             args.force = True
         
-        # Use existing name
+        # Use existing name and update last accessed
         project_name = existing_name
+        
+        # Update last_accessed for existing projects
+        existing_metadata['last_accessed'] = datetime.now().isoformat()
+        update_project_metadata(project_id, existing_metadata)
     else:
         # New project
         if args.name:
@@ -279,13 +315,17 @@ def main():
             # Default to basename
             project_name = Path(host_workspace_path).name
         
-        # Save initial metadata
+        # Save initial metadata with all required fields
         metadata = {
             'project_name': project_name,
+            'project_id': project_id,
             'workspace_path': host_workspace_path,
+            'workspace_basename': Path(host_workspace_path).name,
             'created_at': datetime.now().isoformat(),
             'last_accessed': datetime.now().isoformat(),
-            'indexed_at': datetime.now().isoformat()
+            'indexed_at': datetime.now().isoformat(),
+            'embedding_model': os.environ.get('RAGEX_EMBEDDING_MODEL', 'fast'),
+            'collection_name': os.environ.get('RAGEX_CHROMA_COLLECTION', 'code_embeddings')
         }
         save_project_metadata(project_id, metadata)
     

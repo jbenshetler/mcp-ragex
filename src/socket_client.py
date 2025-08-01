@@ -84,7 +84,7 @@ def main():
     # Special handling for mcp command - it needs direct stdio
     if command == 'mcp':
         # For MCP, we need to exec the MCP server directly
-        os.execvp('python', ['python', '-m', 'src.mcp_server'] + args)
+        os.execvp('python', ['python', '-m', 'src.server'] + args)
         # Should not reach here
         sys.exit(1)
     
