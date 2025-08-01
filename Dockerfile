@@ -10,10 +10,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 
 # Copy dependency files
-COPY requirements.txt pyproject.toml ./
+COPY requirements-cpu.txt pyproject.toml ./
 
-# Install Python dependencies
-RUN pip install --user --no-cache-dir -r requirements.txt
+# Install Python dependencies (CPU-only versions)
+RUN pip install --user --no-cache-dir -r requirements-cpu.txt
 
 # Stage 2: Runtime
 FROM python:3.10-slim
@@ -56,6 +56,8 @@ ENV HF_HOME=/data/models
 ENV SENTENCE_TRANSFORMERS_HOME=/data/models
 ENV DOCKER_CONTAINER=true
 ENV LOG_LEVEL=INFO
+# Force CPU-only mode for PyTorch
+ENV CUDA_VISIBLE_DEVICES=""
 
 # Copy and set entrypoint
 COPY --chown=ragex:ragex docker/entrypoint.sh /entrypoint.sh
