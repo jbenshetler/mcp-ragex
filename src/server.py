@@ -27,6 +27,7 @@ try:
     from src.ragex_core.pattern_matcher import PatternMatcher
     from src.ragex_core.project_detection import detect_project_from_cwd
     from src.ragex_core.project_utils import get_chroma_db_path
+    from src.ragex_core.reranker import FeatureReranker
     from src.utils import configure_logging, get_logger
     from src.watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
 except ImportError:
@@ -34,6 +35,7 @@ except ImportError:
     from .ragex_core.pattern_matcher import PatternMatcher
     from .ragex_core.project_detection import detect_project_from_cwd
     from .ragex_core.project_utils import get_chroma_db_path
+    from .ragex_core.reranker import FeatureReranker
     from .utils import configure_logging, get_logger
     try:
         from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
@@ -149,6 +151,10 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize Tree-sitter enhancer: {e}")
     enhancer = None
+
+# Initialize feature reranker
+reranker = FeatureReranker()
+logger.info("Feature reranker initialized")
 
 # Initialize semantic search components
 semantic_searcher = None
@@ -846,15 +852,19 @@ async def execute_semantic_search(query: str, file_types: Optional[List[str]], p
                     "line_number": result["metadata"]["line"],
                     "line": result["code"][:100] + "..." if len(result["code"]) > 100 else result["code"],
                     "similarity": similarity,
-                    "type": result["metadata"].get("type", "unknown")
+                    "type": result["metadata"].get("type", "unknown"),
+                    "name": result["metadata"].get("name", ""),
+                    "code": result.get("code", ""),
+                    "docstring": result["metadata"].get("docstring", ""),
+                    "signature": result["metadata"].get("signature", "")
                 })
         
-        # Sort by similarity (highest first) to ensure best matches come first
-        matches.sort(key=lambda x: x['similarity'], reverse=True)
-        
-        # Then stable sort to put comments after non-comments
-        # Using a stable sort preserves the similarity order within each group
-        matches.sort(key=lambda x: x.get('type', '') == 'comment')
+        # Apply feature-based re-ranking to improve result quality
+        if matches:
+            logger.info(f"Before reranking: Top 3 results by similarity: {[(m.get('name', 'unnamed'), m['similarity']) for m in matches[:3]]}")
+            matches = reranker.rerank(query, matches, top_k=limit)
+            logger.info(f"After reranking: Top 3 results by reranked_score: {[(m.get('name', 'unnamed'), m.get('reranked_score', 'no-score')) for m in matches[:3]]}")
+            logger.info(f"Re-ranking completed, returning top {len(matches)} results")
         
         logger.info(f"Semantic search completed: found {len(matches)} matches for '{query}'")
         

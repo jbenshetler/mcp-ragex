@@ -17,6 +17,7 @@ from src.tree_sitter_enhancer import TreeSitterEnhancer
 from src.ragex_core.path_mapping import container_to_host_path, PathMappingError
 from src.ragex_core.project_utils import get_chroma_db_path
 from src.ragex_core.project_detection import detect_project_from_cwd
+from src.ragex_core.reranker import FeatureReranker
 from src.utils import get_logger
 
 # Try to import semantic search components
@@ -42,6 +43,7 @@ class SearchClient:
         # Create searcher without pattern matcher - ripgrep will handle .rgignore files natively
         self.searcher = RipgrepSearcher(None)
         self.enhancer = TreeSitterEnhancer(self.pattern_matcher)
+        self.reranker = FeatureReranker()
         self.json_output = json_output
         self.initialization_messages = []
         
@@ -127,14 +129,18 @@ class SearchClient:
                     'type': result["metadata"]["type"],
                     'name': result["metadata"]["name"],
                     'code': result["code"],
-                    'similarity': 1.0 - result["distance"]
+                    'similarity': 1.0 - result["distance"],
+                    'docstring': result["metadata"].get("docstring", ""),
+                    'signature': result["metadata"].get("signature", "")
                 })
-                if len(matches) >= limit:
+                if len(matches) >= limit * 2:  # Get more for reranking
                     break
         
-        # Stable sort to put comments after non-comments
-        # Using a stable sort preserves the original order within each group
-        matches.sort(key=lambda x: x.get('type', '') == 'comment')
+        # Apply feature-based reranking
+        if matches:
+            logger.info(f"Before reranking: {len(matches)} matches, top 3: {[(m['name'], m['similarity']) for m in matches[:3]]}")
+            matches = self.reranker.rerank(query, matches, top_k=limit)
+            logger.info(f"After reranking: {len(matches)} matches, top 3: {[(m['name'], m.get('reranked_score', 0)) for m in matches[:3]]}")
         
         return matches
     

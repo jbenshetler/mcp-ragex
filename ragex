@@ -494,8 +494,13 @@ Environment Variables:
             # Project-specific logs
             return self._show_project_logs(args.project, args)
         else:
-            # Global logs
-            return self._show_global_logs(args)
+            # If no project specified, try to show logs for current project
+            if self.is_daemon_running():
+                # Show logs for current project's daemon
+                return self._show_current_project_logs(args)
+            else:
+                # No daemon running for current project, show global logs
+                return self._show_global_logs(args)
     
     def _run_admin_command(self, command: str, args: List[str] = None) -> int:
         """Run administrative commands that don't need workspace"""
@@ -556,11 +561,7 @@ Environment Variables:
                 print(f"   (Resolved to: {project_id})")
             return 1
         
-        # Show logs
-        if project_identifier != project_id:
-            print(f"📋 Logs for project: {project_identifier} [{project_id}]")
-        else:
-            print(f"📋 Logs for project: {project_id}")
+        # Show logs without decoration
         
         log_cmd = ['docker', 'logs', container_name]
         if args.follow:
@@ -570,7 +571,23 @@ Environment Variables:
         if args.timestamps:
             log_cmd.append('--timestamps')
         
-        result = subprocess.run(log_cmd)
+        # Redirect docker logs stderr to stdout so logs can be piped properly
+        result = subprocess.run(log_cmd, stderr=subprocess.STDOUT)
+        return result.returncode
+    
+    def _show_current_project_logs(self, args: argparse.Namespace) -> int:
+        """Show logs for current project's daemon"""
+        log_cmd = ['docker', 'logs', self.daemon_container_name]
+        
+        if args.follow:
+            log_cmd.append('--follow')
+        if args.tail:
+            log_cmd.extend(['--tail', str(args.tail)])
+        if args.timestamps:
+            log_cmd.append('--timestamps')
+        
+        # Redirect docker logs stderr to stdout so logs can be piped properly
+        result = subprocess.run(log_cmd, stderr=subprocess.STDOUT)
         return result.returncode
     
     def _show_global_logs(self, args: argparse.Namespace) -> int:
@@ -588,25 +605,17 @@ Environment Variables:
         ]
         
         if not daemon_containers:
-            print("📋 No ragex daemon containers are currently running")
-            print("\nStart a daemon with: ragex index")
             return 0
         
-        print("📋 Global ragex logs from all daemon containers:\n")
-        
         for container in sorted(daemon_containers):
-            project_id = container.replace('ragex_daemon_', '')
-            print(f"=== {project_id} ===")
-            
-            log_cmd = ['docker', 'logs', container, '--tail', '10']
+            log_cmd = ['docker', 'logs', container]
+            if args.tail:
+                log_cmd.extend(['--tail', str(args.tail)])
             if args.timestamps:
                 log_cmd.append('--timestamps')
             
-            # Show first 20 lines of output
-            result = subprocess.run(log_cmd, capture_output=True, text=True)
-            lines = result.stdout.split('\n')[:20]
-            print('\n'.join(lines))
-            print()
+            # Redirect docker logs stderr to stdout so logs can be piped properly
+            result = subprocess.run(log_cmd, stderr=subprocess.STDOUT)
         
         return 0
     

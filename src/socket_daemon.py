@@ -19,8 +19,9 @@ from typing import Dict, Any, Optional
 from src.ragex_core.project_utils import get_project_data_dir, get_chroma_db_path
 
 # Configure logging
+log_level = os.environ.get('RAGEX_LOG_LEVEL', 'INFO')
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level.upper(), logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('ragex-socket-daemon')
