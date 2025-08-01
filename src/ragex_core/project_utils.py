@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+from .constants import ADMIN_PROJECT_NAME, ADMIN_WORKSPACE_PATH
+
 logger = logging.getLogger("project-utils")
 
 
@@ -191,8 +193,11 @@ def get_project_info(project_id: str, data_dir: Path = Path("/data")) -> Optiona
     # Try new format first
     metadata = load_project_metadata(project_id, data_dir)
     if metadata:
-        workspace_path = Path(metadata.get('workspace_path', '/unknown'))
-        project_name = metadata.get('workspace_basename', workspace_path.name)
+        workspace_path = Path(metadata.get('workspace_path', ADMIN_WORKSPACE_PATH))
+        if str(workspace_path) == ADMIN_WORKSPACE_PATH:
+            project_name = ADMIN_PROJECT_NAME
+        else:
+            project_name = metadata.get('workspace_basename', workspace_path.name)
         return (project_name, workspace_path)
     
     # Fallback to legacy format

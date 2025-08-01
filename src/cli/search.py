@@ -35,7 +35,11 @@ class SearchClient:
     
     def __init__(self, index_dir: Optional[str] = None, json_output: bool = False):
         self.pattern_matcher = PatternMatcher()
-        self.searcher = RipgrepSearcher(self.pattern_matcher)
+        # Always use /workspace in container (where code is mounted)
+        self.pattern_matcher.set_working_directory('/workspace')
+        
+        # Create searcher without pattern matcher - ripgrep will handle .rgignore files natively
+        self.searcher = RipgrepSearcher(None)
         self.enhancer = TreeSitterEnhancer(self.pattern_matcher)
         self.json_output = json_output
         self.initialization_messages = []
@@ -110,6 +114,10 @@ class SearchClient:
                 if len(matches) >= limit:
                     break
         
+        # Stable sort to put comments after non-comments
+        # Using a stable sort preserves the original order within each group
+        matches.sort(key=lambda x: x.get('type', '') == 'comment')
+        
         return matches
     
     async def search_symbol(self, query: str, limit: int = 50) -> List[Dict]:
@@ -117,8 +125,11 @@ class SearchClient:
         import re
         pattern = f"\\b{re.escape(query)}\\b"
         
+        # Always use /workspace in container
+        workspace_path = Path('/workspace')
         result = await self.searcher.search(
             pattern=pattern,
+            paths=[workspace_path],
             limit=limit,
             case_sensitive=False
         )
@@ -129,11 +140,17 @@ class SearchClient:
     
     async def search_regex(self, pattern: str, limit: int = 50) -> List[Dict]:
         """Perform regex search using ripgrep"""
+        # Always use /workspace in container
+        workspace_path = Path('/workspace')
         result = await self.searcher.search(
             pattern=pattern,
+            paths=[workspace_path],
             limit=limit,
             case_sensitive=True
         )
+        
+        # Debug logging
+        logger.debug(f"Regex search result: success={result.get('success')}, matches={len(result.get('matches', []))}")
         
         if result.get("success") and result.get("matches"):
             return result["matches"]

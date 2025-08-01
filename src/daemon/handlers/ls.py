@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
 from src.ragex_core.project_utils import get_project_info, load_project_metadata
+from src.ragex_core.constants import ADMIN_PROJECT_NAME, ADMIN_WORKSPACE_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +29,18 @@ class LsHandler:
             # Parse arguments
             pattern = None
             long_format = False
+            show_all = False
             
             for arg in args:
                 if arg == '-l' or arg == '--long':
                     long_format = True
+                elif arg == '-a' or arg == '--all':
+                    show_all = True
                 elif not arg.startswith('-'):
                     pattern = arg
             
             # Get all projects for current user
-            projects = self._get_user_projects(pattern)
+            projects = self._get_user_projects(pattern, show_all)
             
             if not projects:
                 # Return exit code 2 when no matches found
@@ -69,7 +73,7 @@ class LsHandler:
                 'returncode': 1
             }
     
-    def _get_user_projects(self, pattern: Optional[str] = None) -> List[Tuple[str, str, Path]]:
+    def _get_user_projects(self, pattern: Optional[str] = None, show_all: bool = False) -> List[Tuple[str, str, Path]]:
         """Get projects for current user with optional pattern filtering
         
         Returns list of (project_name, project_id, project_path) tuples
@@ -95,6 +99,10 @@ class LsHandler:
             if project_info:
                 project_name, workspace_path = project_info
                 
+                # Skip admin projects unless -a flag is used
+                if not show_all and (project_name == ADMIN_PROJECT_NAME or str(workspace_path) == ADMIN_WORKSPACE_PATH):
+                    continue
+                
                 # Apply pattern filter if provided
                 if pattern and not fnmatch.fnmatch(project_name, pattern):
                     continue
@@ -118,25 +126,17 @@ class LsHandler:
         name_width = max(name_width, 20)  # Minimum 20 chars
         id_width = 30  # Fixed width for project IDs
         
-        # Get terminal width
-        terminal_width = shutil.get_terminal_size((80, 20)).columns
-        path_width = terminal_width - name_width - id_width - 6  # Account for spacing
-        
         # Build output
         lines = []
         
         # Header
         header = f"{'PROJECT NAME':<{name_width}}  {'PROJECT ID':<{id_width}}  PATH"
         lines.append(header)
-        lines.append("-" * min(terminal_width, len(header) + 20))
+        lines.append("-" * len(header))
         
-        # Projects
+        # Projects - let paths go as far as needed (left aligned)
         for name, project_id, path in projects:
             path_str = str(path)
-            # Truncate path if needed
-            if len(path_str) > path_width and path_width > 10:
-                path_str = "..." + path_str[-(path_width-3):]
-            
             line = f"{name:<{name_width}}  {project_id:<{id_width}}  {path_str}"
             lines.append(line)
         
@@ -161,25 +161,17 @@ class LsHandler:
         model_width = 10
         indexed_width = 8
         
-        # Get terminal width
-        terminal_width = shutil.get_terminal_size((120, 20)).columns
-        path_width = terminal_width - name_width - id_width - model_width - indexed_width - 10
-        
         # Build output
         lines = []
         
         # Header
         header = f"{'PROJECT NAME':<{name_width}}  {'PROJECT ID':<{id_width}}  {'MODEL':<{model_width}}  {'INDEXED':<{indexed_width}}  PATH"
         lines.append(header)
-        lines.append("-" * min(terminal_width, len(header) + 20))
+        lines.append("-" * len(header))
         
-        # Projects
+        # Projects - let paths go as far as needed (left aligned)
         for name, project_id, model, indexed, path in extended_projects:
             path_str = str(path)
-            # Truncate path if needed
-            if len(path_str) > path_width and path_width > 10:
-                path_str = "..." + path_str[-(path_width-3):]
-            
             indexed_str = "yes" if indexed else "no"
             line = f"{name:<{name_width}}  {project_id:<{id_width}}  {model:<{model_width}}  {indexed_str:<{indexed_width}}  {path_str}"
             lines.append(line)

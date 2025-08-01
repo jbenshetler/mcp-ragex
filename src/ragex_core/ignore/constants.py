@@ -3,8 +3,8 @@ Central configuration for ignore file processing
 """
 
 # Single source of truth for ignore filename
-# Future migration: change this to ".ragexignore"
-IGNORE_FILENAME = ".mcpignore"
+# Using .rgignore which is natively supported by ripgrep at every directory level
+IGNORE_FILENAME = ".rgignore"
 
 # Default exclusion patterns that apply globally
 DEFAULT_EXCLUSIONS = [

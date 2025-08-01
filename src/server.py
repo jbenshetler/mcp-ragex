@@ -828,11 +828,16 @@ async def execute_semantic_search(query: str, file_types: Optional[List[str]], p
                     "file": result["metadata"]["file"],
                     "line_number": result["metadata"]["line"],
                     "line": result["code"][:100] + "..." if len(result["code"]) > 100 else result["code"],
-                    "similarity": similarity
+                    "similarity": similarity,
+                    "type": result["metadata"].get("type", "unknown")
                 })
         
         # Sort by similarity (highest first) to ensure best matches come first
         matches.sort(key=lambda x: x['similarity'], reverse=True)
+        
+        # Then stable sort to put comments after non-comments
+        # Using a stable sort preserves the similarity order within each group
+        matches.sort(key=lambda x: x.get('type', '') == 'comment')
         
         logger.info(f"Semantic search completed: found {len(matches)} matches for '{query}'")
         

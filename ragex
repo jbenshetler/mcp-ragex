@@ -179,8 +179,16 @@ class RagexCLI:
         if use_tty and sys.stdin.isatty() and cmd not in ['serve', 'search']:
             exec_flags.append('-t')
         
+        # Add environment variables for commands that need them
+        env_vars = []
+        if cmd in ['index', 'start']:
+            env_vars.extend([
+                '-e', f'WORKSPACE_PATH={self.workspace_path}',
+                '-e', f'DOCKER_USER_ID={os.getuid()}'
+            ])
+        
         # Build docker exec command
-        docker_cmd = ['docker', 'exec'] + exec_flags + [
+        docker_cmd = ['docker', 'exec'] + exec_flags + env_vars + [
             self.daemon_container_name,
             'python', '-m', 'src.socket_client', cmd
         ] + args
@@ -257,6 +265,8 @@ class RagexCLI:
             help='Project ID or glob to filter projects')
         ls_parser.add_argument('-l', '--long', action='store_true',
             help='Show detailed information including model and index status')
+        ls_parser.add_argument('-a', '--all', action='store_true',
+            help='Show all projects including admin projects')
         
         # Remove project command
         rm_parser = subparsers.add_parser('rm',
@@ -443,6 +453,8 @@ Environment Variables:
         cmd_args = []
         if hasattr(args, 'long') and args.long:
             cmd_args.append('-l')
+        if hasattr(args, 'all') and args.all:
+            cmd_args.append('-a')
         if hasattr(args, 'glob') and args.glob:
             cmd_args.append(args.glob)
         return self._run_admin_command('ls', cmd_args)

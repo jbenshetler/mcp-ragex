@@ -124,7 +124,7 @@ ragex info                       # Shows different project ID
 claude mcp add ragex $(which ragex) --scope project
 
 # List all your projects
-ragex list-projects
+ragex ls
 ```
 
 ### 🔍 Available Commands
@@ -132,13 +132,16 @@ ragex list-projects
 ```bash
 # Project Management
 ragex info                       # Show current project info
-ragex list-projects              # List all your projects
-ragex clean-project PROJECT_ID   # Remove specific project data
+ragex ls                         # List all user projects
+ragex ls -l                      # List with details (model, indexed status)
+ragex ls -a                      # List all projects (including admin)
+ragex ls "api*"                  # List projects matching pattern
+ragex rm PROJECT_ID              # Remove specific project
 
 # Indexing
 ragex index .                    # Index current project (fast model)
-ragex index . --preset balanced # Index with balanced model
-ragex index . --preset accurate # Index with accurate model
+ragex index . --preset balanced  # Index with balanced model
+ragex index . --preset accurate  # Index with accurate model
 
 # Searching
 ragex search "auth functions"    # Search current project
@@ -147,6 +150,21 @@ ragex serve                      # Start MCP server (for Claude)
 # Development
 ragex bash                       # Get shell for debugging
 ```
+
+#### Project Listing (`ragex ls`)
+
+The `ls` command shows your indexed projects:
+
+**Flags:**
+- `-l, --long`: Show detailed information including embedding model and index status
+- `-a, --all`: Show all projects including admin projects (normally hidden)
+- Pattern argument: Filter projects by name (supports wildcards like `api*`)
+
+**Admin Projects:**
+Projects with the name `.ragex_admin` are special system projects created when ragex runs without a mounted workspace (e.g., during certain admin operations). These projects:
+- Are hidden by default (use `-a` to see them)
+- Have minimal disk usage (no actual code is indexed)
+- Can be safely ignored or removed with `ragex rm`
 
 ### 🏗️ Project Isolation
 
@@ -162,9 +180,11 @@ cd ~/personal/blog
 ragex index . --preset fast      # Fast model for personal project  
 # → Creates: ragex_1000_f9e8d7c6b5a43210
 
-ragex list-projects
-# • ragex_1000_a1b2c3d4ef56789 (~/work/api-server) [accurate]
-# • ragex_1000_f9e8d7c6b5a43210 (~/personal/blog) [fast]
+ragex ls -l
+# PROJECT NAME          PROJECT ID                      MODEL       INDEXED   PATH
+# --------------------------------------------------------------------------------
+# api-server            ragex_1000_a1b2c3d4ef56789     accurate    yes       ~/work/api-server
+# blog                  ragex_1000_f9e8d7c6b5a43210     fast        yes       ~/personal/blog
 ```
 
 ### 🐳 Docker Compose (Development)
