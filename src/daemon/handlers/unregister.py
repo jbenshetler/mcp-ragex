@@ -34,8 +34,11 @@ class UnregisterHandler:
             if '--help' in args:
                 return self._show_help(target)
             
+            # Check for --global flag
+            is_global = '--global' in args
+            
             if target == 'claude':
-                return self._unregister_claude()
+                return self._unregister_claude(is_global)
             else:
                 return {
                     'success': False,
@@ -56,26 +59,32 @@ class UnregisterHandler:
     def _show_help(self, target: str) -> Dict[str, Any]:
         """Show detailed help for unregister command"""
         if target == 'claude':
-            help_text = """Usage: ragex unregister claude [--help]
+            help_text = """Usage: ragex unregister claude [--global] [--help]
 
-Outputs a shell command to unregister this project from Claude.
+Outputs a shell command to unregister ragex from Claude.
 The output is designed to be piped to sh or used with eval:
 
-  ragex unregister claude | sh
-  eval "$(ragex unregister claude)"
+  ragex unregister claude | sh          # Project-scoped
+  ragex unregister claude --global | sh # Global
 
-This will remove the MCP server registration for the current project
-directory from Claude.
+Options:
+  --global    Unregister globally instead of project-scoped
+
+By default, unregisters for the current project only (--scope project).
+With --global, unregisters the global configuration.
 
 The command will:
 1. Remove the MCP server configuration from Claude
-2. Use the current project path to identify which config to remove
-3. Disable code search for this project in Claude
+2. Use project scope (default) or global scope (--global)
+3. Disable code search for the specified scope
 
-Example workflow:
+Example workflows:
+  # Project-specific unregistration:
   cd /path/to/my-project
-  ragex unregister claude | sh   # Remove from Claude
-  # Claude can no longer search this project
+  ragex unregister claude | sh     # Remove for this project only
+  
+  # Global unregistration:
+  ragex unregister claude --global | sh  # Remove for all projects
 """
             return {
                 'success': True,
@@ -91,13 +100,15 @@ Example workflow:
                 'returncode': 1
             }
     
-    def _unregister_claude(self) -> Dict[str, Any]:
+    def _unregister_claude(self, is_global: bool = False) -> Dict[str, Any]:
         """Generate claude unregistration command"""
-        # Shell-escape workspace path
-        escaped_workspace = shlex.quote(self.workspace_path)
-        
         # Generate the command
-        command = f'claude mcp remove ragex --scope {escaped_workspace}'
+        if is_global:
+            # Global unregistration - no scope
+            command = 'claude mcp remove ragex'
+        else:
+            # Project-scoped unregistration
+            command = 'claude mcp remove ragex --scope project'
         
         output = f"{command}\n"
         
