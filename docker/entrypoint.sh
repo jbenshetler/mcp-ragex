@@ -82,16 +82,6 @@ EOF
 
 # Handle different commands
 case "$1" in
-    "init")
-        setup_project_data "$@"
-        check_workspace
-        # Create .mcpignore in the workspace
-        if [ -f "/workspace/.mcpignore" ]; then
-            echo "✅ .mcpignore already exists in current directory"
-        else
-            exec python -c "from src.ragex_core.ignore.init import init_ignore_file; from pathlib import Path; init_ignore_file(Path('/workspace'))"
-        fi
-        ;;
     "index")
         setup_project_data "$@"
         check_workspace
@@ -181,9 +171,6 @@ except Exception as e:
         export RAGEX_DISABLE_LOGGING_SETUP=true
         exec python ragex_search.py --index-dir "${RAGEX_PROJECT_DATA_DIR}" "$@"
         ;;
-    "bash"|"sh")
-        exec "$@"
-        ;;
     "daemon")
         # Long-running daemon mode with socket server for fast command execution
         setup_project_data "$@"
@@ -218,7 +205,6 @@ except Exception as e:
         echo "❌ Error: Unknown command '$1'"
         echo ""
         echo "Available commands:"
-        echo "  init               Create .mcpignore file"
         echo "  index [PATH]       Build semantic index"
         echo "  search QUERY       Search in project"
         echo "  info               Show project information"

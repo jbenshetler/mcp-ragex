@@ -111,6 +111,7 @@ class RagexCLI:
             '-e', f'PROJECT_NAME={self.project_id}',
             '-e', f'RAGEX_EMBEDDING_MODEL={self.embedding_model}',
             '-e', f'HOST_HOME={Path.home()}',
+            '-e', f'RAGEX_LOG_LEVEL={os.environ.get("RAGEX_LOG_LEVEL", "INFO")}',
             self.docker_image,
             'daemon'
         ]
@@ -240,13 +241,9 @@ class RagexCLI:
         search_parser.add_argument('--json', action='store_true',
             help='Output results as JSON')
         
-        # Bash command
-        bash_parser = subparsers.add_parser('bash', 
-            help='Get shell in container')
-        
-        # Init command
-        init_parser = subparsers.add_parser('init',
-            help='Create .mcpignore file in current directory')
+        # Help command
+        help_parser = subparsers.add_parser('help',
+            help='Show help message')
         
         # Stop command
         stop_parser = subparsers.add_parser('stop',
@@ -412,13 +409,10 @@ Environment Variables:
         
         return self.exec_via_daemon('search', cmd_args, use_tty=not args.json)
     
-    def cmd_bash(self, args: argparse.Namespace) -> int:
-        """Handle bash command"""
-        return self.exec_via_daemon('bash', [])
-    
-    def cmd_init(self, args: argparse.Namespace) -> int:
-        """Handle init command"""
-        return self.exec_via_daemon('init', [])
+    def cmd_help(self, args: argparse.Namespace) -> int:
+        """Handle help command - show help and exit"""
+        subprocess.run([sys.argv[0], '--help'])
+        return 0
     
     def cmd_stop(self, args: argparse.Namespace) -> int:
         """Handle stop command"""

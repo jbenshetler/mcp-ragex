@@ -399,7 +399,8 @@ RAGEX_EMBEDDING_MODEL=fast              # Model preset (fast/balanced/accurate)
 RAGEX_CHROMA_COLLECTION=code_embeddings # Collection name
 
 # System configuration
-LOG_LEVEL=INFO                          # Log level
+RAGEX_LOG_LEVEL=INFO                    # Log level (DEBUG, INFO, WARN, ERROR) - default: INFO
+LOG_LEVEL=INFO                          # Fallback log level (RAGEX_LOG_LEVEL takes precedence)
 DOCKER_CONTAINER=true                   # Indicates running in container
 ```
 
@@ -630,6 +631,70 @@ search_code("test_", paths=["tests", "src/tests"])
 # Combine filters
 search_code("async def", file_types=["py"], paths=["src"])
 ```
+
+## Logging and Debugging
+
+### Setting Log Levels
+
+RAGex uses `RAGEX_LOG_LEVEL` to control logging verbosity. The default is `INFO`.
+
+```bash
+# Set log level before starting daemon
+export RAGEX_LOG_LEVEL=DEBUG
+ragex start
+
+# Or set for a single command
+RAGEX_LOG_LEVEL=DEBUG ragex start
+```
+
+**Available Log Levels:**
+- `DEBUG`: Detailed debugging info (file processing, embeddings, scores)
+- `INFO`: General operation info (search queries, index progress) - **default**
+- `WARN`: Warnings and potential issues only
+- `ERROR`: Error messages only
+
+**Important:** The log level is set when the daemon starts and cannot be changed without restarting:
+
+```bash
+# To change log level after daemon is running:
+ragex stop
+RAGEX_LOG_LEVEL=DEBUG ragex start
+```
+
+### Viewing Logs
+
+```bash
+# View daemon logs for current project
+ragex log
+
+# Follow logs in real-time
+ragex log -f
+
+# View last 50 lines
+ragex log --tail 50
+
+# View logs for specific project
+ragex log project-name
+
+# View MCP server logs (when using with Claude)
+tail -f /tmp/ragex-mcp.log
+```
+
+### What Gets Logged
+
+**At INFO level:**
+- Project detection and initialization
+- Search mode detection (semantic/regex/symbol)
+- Search query execution
+- Number of results found
+- Index progress and file counts
+
+**At DEBUG level adds:**
+- Individual file processing
+- Embedding generation details
+- ChromaDB query internals
+- Similarity scores for each result
+- Pattern matcher decisions
 
 ## Security Features
 

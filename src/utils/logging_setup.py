@@ -62,7 +62,7 @@ def configure_logging(
         quiet_libraries: Suppress verbose third-party library logs
     """
     # Determine log level (RAGEX_LOG_LEVEL takes precedence over LOG_LEVEL)
-    level = log_level or os.environ.get('RAGEX_LOG_LEVEL') or os.environ.get('LOG_LEVEL', 'WARN')
+    level = log_level or os.environ.get('RAGEX_LOG_LEVEL') or os.environ.get('LOG_LEVEL', 'INFO')
     
     # Clear any existing handlers
     root_logger = logging.getLogger()
