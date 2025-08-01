@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from .constants import ADMIN_PROJECT_NAME, ADMIN_WORKSPACE_PATH
+from .constants import ADMIN_PROJECT_NAME, ADMIN_WORKSPACE_PATH, PROJECTS_DIR
 
 logger = logging.getLogger("project-utils")
 
@@ -31,6 +31,19 @@ def get_project_data_dir() -> str:
         project_name = os.environ.get('PROJECT_NAME', 'admin')
         project_data_dir = f'/data/projects/{project_name}'
     return project_data_dir
+
+
+def get_project_data_dir_for_id(project_id: str) -> str:
+    """
+    Get the project data directory path for a specific project ID.
+    
+    Args:
+        project_id: Project identifier (e.g., ragex_1000_abc123...)
+        
+    Returns:
+        Full path to project data directory
+    """
+    return f"{PROJECTS_DIR}/{project_id}"
 
 
 def get_chroma_db_path(project_data_dir: Optional[str] = None) -> Path:
@@ -194,7 +207,10 @@ def get_project_info(project_id: str, data_dir: Path = Path("/data")) -> Optiona
     metadata = load_project_metadata(project_id, data_dir)
     if metadata:
         workspace_path = Path(metadata.get('workspace_path', ADMIN_WORKSPACE_PATH))
-        if str(workspace_path) == ADMIN_WORKSPACE_PATH:
+        # Use project_name if available, otherwise fall back to workspace_basename for compatibility
+        if 'project_name' in metadata:
+            project_name = metadata['project_name']
+        elif str(workspace_path) == ADMIN_WORKSPACE_PATH:
             project_name = ADMIN_PROJECT_NAME
         else:
             project_name = metadata.get('workspace_basename', workspace_path.name)
@@ -211,5 +227,44 @@ def get_project_info(project_id: str, data_dir: Path = Path("/data")) -> Optiona
             logger.error(f"Failed to read legacy workspace file: {e}")
     
     return None
+
+
+def is_project_name_unique(name: str, user_id: str, exclude_project_id: str = None, data_dir: Path = Path("/data")) -> bool:
+    """
+    Check if a project name is unique for this user.
+    
+    Args:
+        name: Project name to check
+        user_id: User ID for project isolation
+        exclude_project_id: Project ID to exclude from check (for updates)
+        data_dir: Base data directory
+        
+    Returns:
+        True if name is unique, False otherwise
+    """
+    projects_dir = data_dir / "projects"
+    if not projects_dir.exists():
+        return True
+        
+    user_prefix = f"ragex_{user_id}_"
+    
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+            
+        if not project_dir.name.startswith(user_prefix):
+            continue
+            
+        if exclude_project_id and project_dir.name == exclude_project_id:
+            continue
+            
+        metadata = load_project_metadata(project_dir.name, data_dir)
+        if metadata:
+            # Check both project_name and workspace_basename for compatibility
+            existing_name = metadata.get('project_name', metadata.get('workspace_basename'))
+            if existing_name == name:
+                return False
+    
+    return True
 
 

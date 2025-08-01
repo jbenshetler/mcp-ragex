@@ -25,11 +25,15 @@ import mcp.types as types
 try:
     from src.tree_sitter_enhancer import TreeSitterEnhancer
     from src.ragex_core.pattern_matcher import PatternMatcher
+    from src.ragex_core.project_detection import detect_project_from_cwd
+    from src.ragex_core.project_utils import get_chroma_db_path
     from src.utils import configure_logging, get_logger
     from src.watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
 except ImportError:
     from .tree_sitter_enhancer import TreeSitterEnhancer
     from .ragex_core.pattern_matcher import PatternMatcher
+    from .ragex_core.project_detection import detect_project_from_cwd
+    from .ragex_core.project_utils import get_chroma_db_path
     from .utils import configure_logging, get_logger
     try:
         from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
@@ -37,24 +41,61 @@ except ImportError:
         WATCHDOG_AVAILABLE = False
         WatchdogMonitor = None
 
-# Configure logging based on environment
-# Only configure logging if we're the main process, not when imported by socket daemon
-if os.environ.get('RAGEX_DAEMON_INITIALIZED') != '1':
-    configure_logging()
+# Check if we're in MCP mode (--mcp flag)
+is_mcp_mode = '--mcp' in sys.argv
 
-# Get logger for this module
-logger = get_logger("ragex-mcp")
+if is_mcp_mode:
+    # CRITICAL: For MCP mode, configure logging to ONLY go to file
+    # NEVER print to stdout/stderr as that would corrupt the JSON protocol
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('/tmp/ragex-mcp.log', mode='a'),
+        ],
+        force=True  # Override any existing configuration
+    )
+    
+    # Suppress ALL other loggers that might print
+    for logger_name in ['chromadb', 'sentence_transformers', 'transformers', 'torch', 'urllib3']:
+        logging.getLogger(logger_name).setLevel(logging.ERROR)
+        logging.getLogger(logger_name).handlers = []
+    
+    # Get logger for this module
+    logger = logging.getLogger("ragex-mcp")
+    
+    # Redirect stderr to prevent ANY output except our JSON
+    class SilentIO:
+        def write(self, text):
+            if text and text != '\n':
+                logger.debug(f"Suppressed stderr: {text}")
+        def flush(self):
+            pass
+        def isatty(self):
+            return False
+    
+    # Save original stderr for emergencies
+    _original_stderr = sys.stderr
+    sys.stderr = SilentIO()
+else:
+    # Configure logging based on environment
+    # Only configure logging if we're the main process, not when imported by socket daemon
+    if os.environ.get('RAGEX_DAEMON_INITIALIZED') != '1':
+        configure_logging()
 
-# Log startup info only if we're the main process
-if os.environ.get('RAGEX_DAEMON_INITIALIZED') != '1':
-    logger.info("="*50)
-    logger.info("MCP RAGex Server Started")
-    logger.info(f"Time: {datetime.now()}")
-    logger.info(f"CWD: {os.getcwd()}")
-    logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
-    logger.info(f"Python: {sys.executable}")
-    logger.info(f"Arguments: {sys.argv}")
-    logger.info("="*50)
+    # Get logger for this module
+    logger = get_logger("ragex-mcp")
+
+    # Log startup info only if we're the main process
+    if os.environ.get('RAGEX_DAEMON_INITIALIZED') != '1':
+        logger.info("="*50)
+        logger.info("MCP RAGex Server Started")
+        logger.info(f"Time: {datetime.now()}")
+        logger.info(f"CWD: {os.getcwd()}")
+        logger.info(f"MCP_WORKING_DIR: {os.environ.get('MCP_WORKING_DIR', 'Not set')}")
+        logger.info(f"Python: {sys.executable}")
+        logger.info(f"Arguments: {sys.argv}")
+        logger.info("="*50)
 
 # Import RipgrepSearcher and constants
 from src.ragex_core.ripgrep_searcher import RipgrepSearcher, ALLOWED_FILE_TYPES, DEFAULT_RESULTS, MAX_RESULTS
@@ -112,72 +153,44 @@ except Exception as e:
 # Initialize semantic search components
 semantic_searcher = None
 semantic_available = False
+current_project = None
 
-try:
-    # Import semantic search modules
-    import sys
-    import os
-    from pathlib import Path
+def initialize_semantic_search():
+    """Initialize semantic search with project auto-detection"""
+    global semantic_searcher, semantic_available, current_project
     
-    # Try importing the semantic search modules with absolute imports
     try:
-        from src.embedding_manager import EmbeddingManager
-        from src.vector_store import CodeVectorStore
-        from src.indexer import CodeIndexer
-    except ImportError:
-        # Try relative imports as fallback
-        from .embedding_manager import EmbeddingManager
-        from .vector_store import CodeVectorStore
-        from .indexer import CodeIndexer
-        
-        def load_module(name, path):
-            spec = importlib.util.spec_from_file_location(name, path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return module
-        
-        EmbeddingManager = load_module("embedding_manager", current_dir / "embedding_manager.py").EmbeddingManager
-        CodeVectorStore = load_module("vector_store", current_dir / "vector_store.py").CodeVectorStore
-        CodeIndexer = load_module("indexer", current_dir / "indexer.py").CodeIndexer
-    
-    # Check if semantic index exists
-    # Try multiple locations for ChromaDB
-    search_paths = []
-    
-    # 1. First check MCP_WORKING_DIR (where Claude Code was launched from)
-    mcp_working_dir = os.environ.get('MCP_WORKING_DIR')
-    if mcp_working_dir:
-        search_paths.append(Path(mcp_working_dir) / "chroma_db")
-        logger.info(f"MCP_WORKING_DIR set to: {mcp_working_dir}")
-    
-    # 2. Check current working directory
-    cwd = Path.cwd()
-    search_paths.append(cwd / "chroma_db")
-    logger.info(f"Current working directory: {cwd}")
-    
-    # 3. Check RAGEX_CHROMA_PERSIST_DIR if set
-    custom_dir = os.environ.get('RAGEX_CHROMA_PERSIST_DIR')
-    if custom_dir:
-        search_paths.append(Path(custom_dir))
-        logger.info(f"RAGEX_CHROMA_PERSIST_DIR set to: {custom_dir}")
-    
-    # Log all search paths for debugging
-    logger.info("ChromaDB search paths:")
-    for i, path in enumerate(search_paths, 1):
-        exists = "EXISTS" if path.exists() else "NOT FOUND"
-        logger.info(f"  {i}. {path} [{exists}]")
-    
-    # Try each path
-    index_path = None
-    for path in search_paths:
-        if path.exists():
-            index_path = path
-            logger.info(f"✓ Found ChromaDB at: {index_path}")
-            break
-    
-    if index_path:
+        # Import semantic search modules
         try:
-            vector_store = CodeVectorStore(persist_directory=str(index_path))
+            from src.embedding_manager import EmbeddingManager
+            from src.vector_store import CodeVectorStore
+            from src.indexer import CodeIndexer
+        except ImportError:
+            # Try relative imports as fallback
+            from .embedding_manager import EmbeddingManager
+            from .vector_store import CodeVectorStore
+            from .indexer import CodeIndexer
+        
+        # Auto-detect project from current directory
+        project_info = detect_project_from_cwd()
+        if not project_info:
+            logger.warning("✗ No indexed project found in current directory")
+            logger.info("  Run 'ragex index .' first to enable semantic search")
+            return False
+        
+        current_project = project_info
+        logger.info(f"✓ Detected project: {project_info['project_name']} (ID: {project_info['project_id']})")
+        
+        # Get ChromaDB path for this project
+        chroma_path = get_chroma_db_path(project_info['project_data_dir'])
+        
+        if not chroma_path.exists():
+            logger.warning(f"✗ ChromaDB not found at: {chroma_path}")
+            logger.info("  Run: ragex index .")
+            return False
+        
+        try:
+            vector_store = CodeVectorStore(persist_directory=str(chroma_path))
             stats = vector_store.get_statistics()
             logger.info(f"ChromaDB stats: {stats}")
             
@@ -191,21 +204,25 @@ try:
                 semantic_available = True
                 logger.info(f"✓ Semantic search ENABLED with {stats['total_symbols']} symbols from {stats['unique_files']} files")
                 logger.info(f"  Languages: {', '.join(stats.get('languages', {}).keys())}")
+                return True
             else:
                 logger.warning("✗ Semantic index exists but is EMPTY")
-                logger.info("  Run: uv run python scripts/build_semantic_index.py . --stats")
+                logger.info("  Run: ragex index .")
+                return False
         except Exception as e:
-            logger.error(f"✗ Failed to load ChromaDB from {index_path}: {e}")
+            logger.error(f"✗ Failed to load ChromaDB from {chroma_path}: {e}")
             logger.exception("Full traceback:")
-    else:
-        logger.warning("✗ Semantic search index NOT FOUND in any search path")
-        logger.info("  To enable semantic search, run from project directory:")
-        logger.info("  uv run python scripts/build_semantic_index.py . --stats")
-        
-except ImportError as e:
-    logger.warning(f"Semantic search dependencies not available: {e}")
-except Exception as e:
-    logger.warning(f"Failed to initialize semantic search: {e}")
+            return False
+            
+    except ImportError as e:
+        logger.warning(f"Semantic search dependencies not available: {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to initialize semantic search: {e}")
+        return False
+
+# Try to initialize semantic search on startup
+initialize_semantic_search()
 
 
 # Search mode detection and enhancement
@@ -946,10 +963,8 @@ async def format_search_results(result: Dict, limit: int, format: str) -> List[t
         if result.get("semantic_unavailable"):
             response_text += "\n⚠️ **Semantic Search Unavailable**\n"
             response_text += "The ChromaDB index could not be found. Please ensure:\n"
-            response_text += "1. You have built the index: `uv run python scripts/build_semantic_index.py . --stats`\n"
-            response_text += "2. The index exists in one of these locations:\n"
-            response_text += "   - Project directory: `./chroma_db`\n"
-            response_text += "   - Or set RAGEX_CHROMA_PERSIST_DIR environment variable\n"
+            response_text += "1. You have indexed the project: `ragex index .`\n"
+            response_text += "2. You are running from within an indexed project directory\n"
             response_text += "\nFalling back to regex search instead.\n"
     
     return [types.TextContent(type="text", text=response_text)]

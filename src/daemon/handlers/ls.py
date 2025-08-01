@@ -114,7 +114,49 @@ class LsHandler:
         
         # Sort by project name
         projects.sort(key=lambda x: x[0])
+        
+        # Ensure unique project names by adding suffixes
+        projects = self._ensure_unique_names(projects)
+        
         return projects
+    
+    def _ensure_unique_names(self, projects: List[Tuple[str, str, Path]]) -> List[Tuple[str, str, Path]]:
+        """Ensure all project names are unique by adding suffixes where needed
+        
+        Args:
+            projects: List of (project_name, project_id, project_path) tuples
+            
+        Returns:
+            List with unique project names, suffixed as needed (_001, _002, etc.)
+        """
+        name_counts = {}
+        unique_projects = []
+        
+        # First pass: count occurrences of each name
+        for name, _, _ in projects:
+            name_counts[name] = name_counts.get(name, 0) + 1
+        
+        # Track how many times we've seen each base name
+        name_seen = {}
+        
+        # Second pass: add suffixes where needed
+        for name, project_id, path in projects:
+            if name_counts[name] > 1:
+                # This name appears multiple times, add suffix
+                count = name_seen.get(name, 0)
+                name_seen[name] = count + 1
+                
+                if count > 0:  # First occurrence keeps original name
+                    unique_name = f"{name}_{count:03d}"
+                else:
+                    unique_name = name
+            else:
+                # Name is already unique
+                unique_name = name
+            
+            unique_projects.append((unique_name, project_id, path))
+        
+        return unique_projects
     
     def _format_basic_output(self, projects: List[Tuple[str, str, Path]]) -> str:
         """Format basic output with PROJECT NAME, PROJECT ID, and PATH columns"""

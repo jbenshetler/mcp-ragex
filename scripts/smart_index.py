@@ -162,6 +162,7 @@ def main():
     parser.add_argument('--quiet', action='store_true', help='Suppress informational messages')
     parser.add_argument('--stats', action='store_true', help='Show statistics')
     parser.add_argument('--verbose', action='store_true', help='Show verbose output')
+    parser.add_argument('--name', help='Custom name for the project (must be unique, cannot be changed later)')
     
     args, unknown_args = parser.parse_known_args()
     
@@ -223,6 +224,73 @@ def main():
     
     logger.info(f"Generated project ID: {project_id}")
     logger.info(f"Project data directory: {project_data_dir}")
+    
+    # Handle custom project name
+    from src.ragex_core.project_utils import is_project_name_unique, save_project_metadata
+    
+    # Load existing metadata
+    existing_metadata = load_project_metadata(project_id)
+    
+    if existing_metadata:
+        existing_name = existing_metadata.get('project_name', existing_metadata.get('workspace_basename'))
+        existing_path = existing_metadata.get('workspace_path')
+        
+        # STRICT: No name changes allowed
+        if args.name and existing_name != args.name:
+            print(f"❌ Project already indexed as '{existing_name}'")
+            print(f"   Use 'ragex rm {existing_name}' first to re-index with a different name")
+            sys.exit(1)
+        
+        # Detect moved directory
+        if existing_path != host_workspace_path:
+            if not args.quiet:
+                print(f"🔄 Detected project moved from:")
+                print(f"   {existing_path}")
+                print(f"   → {host_workspace_path}")
+                print(f"📦 Clearing old index and re-scanning...")
+            
+            logger.info(f"Project moved from {existing_path} to {host_workspace_path}")
+            
+            # Clear the entire ChromaDB for this project
+            chroma_path = get_chroma_db_path(project_data_dir)
+            if chroma_path.exists():
+                vector_store = CodeVectorStore(persist_directory=str(chroma_path))
+                vector_store.clear_all()
+            
+            # Update metadata with new path
+            existing_metadata['workspace_path'] = host_workspace_path
+            update_project_metadata(project_id, existing_metadata)
+            
+            # Force full reindex
+            args.force = True
+        
+        # Use existing name
+        project_name = existing_name
+    else:
+        # New project
+        if args.name:
+            # Check if name is unique
+            if not is_project_name_unique(args.name, user_id):
+                print(f"❌ Project name '{args.name}' is already in use")
+                print(f"   Please choose a different name")
+                sys.exit(1)
+            project_name = args.name
+        else:
+            # Default to basename
+            project_name = Path(host_workspace_path).name
+        
+        # Save initial metadata
+        metadata = {
+            'project_name': project_name,
+            'workspace_path': host_workspace_path,
+            'created_at': datetime.now().isoformat(),
+            'last_accessed': datetime.now().isoformat(),
+            'indexed_at': datetime.now().isoformat()
+        }
+        save_project_metadata(project_id, metadata)
+    
+    if not args.quiet:
+        print(f"📦 Project: {project_name}")
     
     # Initialize pattern matcher for ignore handling
     pattern_matcher = PatternMatcher()

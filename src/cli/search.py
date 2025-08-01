@@ -16,6 +16,7 @@ from src.ragex_core.pattern_matcher import PatternMatcher
 from src.tree_sitter_enhancer import TreeSitterEnhancer
 from src.ragex_core.path_mapping import container_to_host_path, PathMappingError
 from src.ragex_core.project_utils import get_chroma_db_path
+from src.ragex_core.project_detection import detect_project_from_cwd
 from src.utils import get_logger
 
 # Try to import semantic search components
@@ -43,6 +44,23 @@ class SearchClient:
         self.enhancer = TreeSitterEnhancer(self.pattern_matcher)
         self.json_output = json_output
         self.initialization_messages = []
+        
+        # Auto-detect project if no index_dir provided
+        if not index_dir:
+            project_info = detect_project_from_cwd()
+            if project_info:
+                index_dir = project_info['project_data_dir']
+                msg = f"Detected project: {project_info['project_name']}"
+                logger.info(msg)
+                if not json_output:
+                    print(f"# {msg}", file=sys.stderr)
+                self.initialization_messages.append(msg)
+            else:
+                msg = "No indexed project found. Run 'ragex index .' first."
+                logger.warning(msg)
+                if not json_output:
+                    print(f"# {msg}", file=sys.stderr)
+                self.initialization_messages.append(msg)
         
         # Initialize semantic search if available
         self.semantic_searcher = None

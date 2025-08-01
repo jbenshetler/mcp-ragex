@@ -205,6 +205,14 @@ except Exception as e:
             exit 1
         }
         ;;
+    "mcp"|"--mcp")
+        # MCP mode - absolute silence required
+        # DO NOT setup project data - that would print
+        # DO NOT check workspace - that would print
+        
+        # Just run the MCP server with all output suppressed
+        exec python -m src.server "$@" 2>/tmp/ragex-mcp-startup.log
+        ;;
     *)
         # Unknown command
         echo "❌ Error: Unknown command '$1'"
@@ -218,6 +226,7 @@ except Exception as e:
         echo "  rm ID              Remove project data"
         echo "  register           Show registration instructions"
         echo "  unregister         Show unregistration instructions"
+        echo "  --mcp              Run MCP server (JSON protocol only)"
         exit 1
         ;;
 esac

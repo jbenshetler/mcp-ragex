@@ -9,3 +9,11 @@ ADMIN_WORKSPACE_PATH = f"/{ADMIN_PROJECT_NAME}"
 # This is used for projects that don't have a real workspace
 # (e.g., when running admin commands without a mounted workspace)
 # The dot prefix and "_admin" suffix make it unlikely to conflict with user projects
+
+# Data directory constants
+DATA_DIR = "/data"
+PROJECTS_DIR = f"{DATA_DIR}/projects"
+MODELS_DIR = f"{DATA_DIR}/models"
+
+# Container workspace mount point
+WORKSPACE_MOUNT = "/workspace"

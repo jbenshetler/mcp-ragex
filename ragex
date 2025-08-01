@@ -224,6 +224,8 @@ class RagexCLI:
             help='Force rebuild of index')
         index_parser.add_argument('-v', '--verbose', action='store_true',
             help='Show verbose output including debug logs')
+        index_parser.add_argument('--name',
+            help='Custom name for the project (must be unique, cannot be changed later)')
         
         # Search command
         search_parser = subparsers.add_parser('search', 
@@ -257,6 +259,8 @@ class RagexCLI:
         # Start command (alias for index .)
         start_parser = subparsers.add_parser('start',
             help='Index current directory (alias for \'index .\')')
+        start_parser.add_argument('--name',
+            help='Custom name for the project (must be unique, cannot be changed later)')
         
         # List projects command
         ls_parser = subparsers.add_parser('ls',
@@ -385,6 +389,8 @@ Environment Variables:
             cmd_args.append('--force')
         if hasattr(args, 'verbose') and args.verbose:
             cmd_args.append('--verbose')
+        if hasattr(args, 'name') and args.name:
+            cmd_args.extend(['--name', args.name])
         return self.exec_via_daemon('index', cmd_args)
     
     def cmd_search(self, args: argparse.Namespace) -> int:
@@ -446,6 +452,9 @@ Environment Variables:
         self.workspace_path = Path('.').resolve()
         # Create a fake args object for index command
         index_args = argparse.Namespace(command='index', path='.', force=False)
+        # Pass through the --name flag if provided
+        if hasattr(args, 'name') and args.name:
+            index_args.name = args.name
         return self.cmd_index(index_args)
     
     def cmd_ls(self, args: argparse.Namespace) -> int:
