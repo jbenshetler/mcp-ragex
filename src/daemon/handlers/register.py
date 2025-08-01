@@ -34,8 +34,11 @@ class RegisterHandler:
             if '--help' in args:
                 return self._show_help(target)
             
+            # Check for --global flag
+            is_global = '--global' in args
+            
             if target == 'claude':
-                return self._register_claude()
+                return self._register_claude(is_global)
             else:
                 return {
                     'success': False,
@@ -56,27 +59,33 @@ class RegisterHandler:
     def _show_help(self, target: str) -> Dict[str, Any]:
         """Show detailed help for register command"""
         if target == 'claude':
-            help_text = """Usage: ragex register claude [--help]
+            help_text = """Usage: ragex register claude [--global] [--help]
 
-Outputs a shell command to register this project with Claude.
+Outputs a shell command to register ragex with Claude.
 The output is designed to be piped to sh or used with eval:
 
-  ragex register claude | sh
-  eval "$(ragex register claude)"
+  ragex register claude | sh          # Project-scoped
+  ragex register claude --global | sh # Global
 
-This will register the MCP server for the current project directory
-with Claude, enabling code search from Claude.
+Options:
+  --global    Register globally (all projects) instead of project-scoped
+
+By default, registers for the current project only (--scope project).
+With --global, registers for all projects (no scope restriction).
 
 The command will:
 1. Add an MCP server configuration to Claude
-2. Use the current project path as the scope
-3. Enable semantic code search for this project
+2. Use project scope (default) or global scope (--global)
+3. Enable semantic code search
 
-Example workflow:
+Example workflows:
+  # Project-specific registration:
   cd /path/to/my-project
   ragex start                    # Index the project
-  ragex register claude | sh     # Register with Claude
-  # Now Claude can search your project code
+  ragex register claude | sh     # Register for this project only
+  
+  # Global registration:
+  ragex register claude --global | sh  # Register for all projects
 """
             return {
                 'success': True,
@@ -92,18 +101,23 @@ Example workflow:
                 'returncode': 1
             }
     
-    def _register_claude(self) -> Dict[str, Any]:
+    def _register_claude(self, is_global: bool = False) -> Dict[str, Any]:
         """Generate claude registration command"""
-        # Get the ragex-mcp path
+        # Get the ragex-mcp path - use absolute path
         home = os.environ.get('HOST_HOME', os.path.expanduser('~'))
         ragex_mcp = os.path.join(home, '.local', 'bin', 'ragex-mcp')
         
-        # Shell-escape paths
-        escaped_ragex = shlex.quote(ragex_mcp)
-        escaped_workspace = shlex.quote(self.workspace_path)
+        # Ensure ragex_mcp path is absolute
+        if not ragex_mcp.startswith('/'):
+            ragex_mcp = os.path.abspath(ragex_mcp)
         
         # Generate the command
-        command = f'claude mcp add ragex {escaped_ragex} --scope {escaped_workspace}'
+        if is_global:
+            # Global registration - no scope
+            command = f'claude mcp add ragex {ragex_mcp}'
+        else:
+            # Project-scoped registration
+            command = f'claude mcp add ragex {ragex_mcp} --scope project'
         
         output = f"{command}\n"
         

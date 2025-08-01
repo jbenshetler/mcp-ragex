@@ -300,6 +300,8 @@ class RagexCLI:
             help='Registration target (e.g., claude)')
         register_parser.add_argument('--help-register', action='store_true',
             help='Show detailed help for register command', dest='help_flag')
+        register_parser.add_argument('--global', action='store_true',
+            help='Register globally instead of project-scoped')
         
         unregister_parser = subparsers.add_parser('unregister',
             help='Show unregistration command (use --help for details)')
@@ -477,6 +479,8 @@ Environment Variables:
         cmd_args = [args.target]
         if hasattr(args, 'help_flag') and args.help_flag:
             cmd_args.append('--help')
+        if hasattr(args, 'global') and getattr(args, 'global'):
+            cmd_args.append('--global')
         return self._run_admin_command('register', cmd_args)
     
     def cmd_unregister(self, args: argparse.Namespace) -> int:
