@@ -82,9 +82,11 @@ jobs:
         context: .
         file: docker/${{ matrix.variant }}/Dockerfile
         push: false
+        load: true
         tags: mcp-ragex:${{ matrix.variant }}-test
         cache-from: type=gha,scope=${{ matrix.variant }}
         cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+        platforms: linux/amd64
         
     - name: Test ${{ matrix.variant }} container functionality
       run: |
