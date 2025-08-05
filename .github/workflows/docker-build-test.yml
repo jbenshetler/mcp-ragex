@@ -34,12 +34,26 @@ jobs:
         # Test configuration functionality (doesn't need containers)
         python -c "
         import sys
+        import os
+        from pathlib import Path
+        
+        # Add current directory to path
         sys.path.insert(0, '.')
-        exec(open('ragex').read())
-        cli = RagexCLI()
+        
+        # Import the RagexCLI class directly
+        with open('ragex', 'r') as f:
+            code = f.read()
+        
+        # Extract just the class definitions and imports we need
+        exec_globals = {}
+        exec(code, exec_globals)
+        
+        # Test RagexCLI instantiation
+        cli = exec_globals['RagexCLI']()
         print('✅ RagexCLI instantiation successful')
         print('✅ Config dir:', cli.get_config_dir())
         print('✅ Docker image:', cli.docker_image)
+        print('✅ GPU detection methods available:', hasattr(cli, 'is_cuda_image'))
         "
 
   build-and-test-containers:
