@@ -4,6 +4,19 @@ set -e
 
 echo "🚀 Installing MCP-RageX Server..."
 
+# Default to CPU, allow explicit override
+MODE="cpu"  # Default
+
+# Parse optional flags
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --cpu) MODE="cpu"; shift ;;
+        --cuda) MODE="cuda"; shift ;;
+        --rocm) MODE="rocm"; shift ;;  # Future
+        *) echo "❌ Unknown option: $1"; echo "Valid options: --cpu, --cuda"; exit 1 ;;
+    esac
+done
+
 # Check Docker
 if ! command -v docker &> /dev/null; then
     echo "❌ Docker not found. Please install Docker first."
@@ -17,13 +30,32 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Pull latest image (skip if using local image)
-if [ -z "$RAGEX_IMAGE" ]; then
-    echo "📦 Pulling latest image..."
-    docker pull ghcr.io/jbenshetler/mcp-ragex:latest
+# Show what we're installing and set image tag
+if [[ "$MODE" == "cuda" ]]; then
+    echo "🚀 Installing CUDA version (~8GB download)..."
+    IMAGE_TAG="cuda-latest"
+elif [[ "$MODE" == "rocm" ]]; then
+    echo "🚀 Installing ROCm version (~8GB download)..."
+    IMAGE_TAG="rocm-latest"
 else
-    echo "📦 Using local image: $RAGEX_IMAGE"
+    echo "🚀 Installing CPU version (~2GB download)..."
+    IMAGE_TAG="cpu-latest"
 fi
+
+# Check for RAGEX_IMAGE override (for local development)
+if [ -n "$RAGEX_IMAGE" ]; then
+    echo "📦 Using local image override: $RAGEX_IMAGE"
+    DOCKER_IMAGE="$RAGEX_IMAGE"
+else
+    DOCKER_IMAGE="ghcr.io/jbenshetler/mcp-ragex:$IMAGE_TAG"
+    echo "📦 Pulling image: $DOCKER_IMAGE"
+    docker pull "$DOCKER_IMAGE"
+fi
+
+# Stop and remove any existing ragex daemon containers
+echo "🧹 Stopping and removing any existing ragex daemon containers..."
+docker ps -a -q -f "name=ragex_daemon_" | xargs -r docker stop 2>/dev/null || true
+docker ps -a -q -f "name=ragex_daemon_" | xargs -r docker rm 2>/dev/null || true
 
 # Create user-specific data volume
 USER_ID=$(id -u)
@@ -34,6 +66,22 @@ docker volume create "$USER_VOLUME"
 # Create helper script
 INSTALL_DIR="${HOME}/.local/bin"
 mkdir -p "$INSTALL_DIR"
+
+# Create config directory (XDG-compliant)
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ragex"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+mkdir -p "$CONFIG_DIR"
+
+# Always overwrite config during installation (user's explicit choice)
+cat > "$CONFIG_FILE" <<EOF
+{
+    "docker_image": "$DOCKER_IMAGE",
+    "mode": "$MODE",
+    "installed_at": "$(date -Iseconds)"
+}
+EOF
+
+echo "✅ Configuration saved: $CONFIG_FILE (mode: $MODE)"
 
 # Copy the smart wrapper scripts
 echo "📝 Installing ragex wrappers..."
@@ -64,6 +112,11 @@ echo "  1. cd your-project"
 echo "  2. ragex index .                    # Index current project"
 echo "  3. ragex info                       # Show project info"
 echo "  4. ragex ls                         # List all your projects"
+echo ""
+echo "💡 Configuration:"
+echo "  ragex configure                     # Show current config"
+echo "  ragex configure --cpu               # Switch to CPU mode"
+echo "  ragex configure --cuda              # Switch to CUDA mode"
 echo ""
 echo "📝 Register with Claude Code:"
 echo "  claude mcp add ragex $(which ragex-mcp 2>/dev/null || echo "${INSTALL_DIR}/ragex-mcp") --scope project"

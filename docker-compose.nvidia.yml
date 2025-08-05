@@ -4,10 +4,8 @@ services:
   ragex:
     build:
       context: .
-      dockerfile: docker/app.Dockerfile
-      args:
-        BASE_IMAGE: ghcr.io/jbenshetler/mcp-ragex-base:latest
-    image: ragex/mcp-server:dev
+      dockerfile: docker/cuda/Dockerfile
+    image: ragex/mcp-server:cuda-dev
     volumes:
       - .:/workspace:ro                    # Current directory (read-only)
       - ragex-dev-data:/data               # Project-specific data
@@ -17,14 +15,16 @@ services:
       - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
       - WORKSPACE_PATH=${PWD}
       - PROJECT_NAME=dev_$(echo "${PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
+      - NVIDIA_VISIBLE_DEVICES=all
     command: serve
+    runtime: nvidia  # Requires nvidia-docker
     stdin_open: true
     tty: true
     user: "${UID:-1000}:${GID:-1000}"
 
   # Development indexer
   indexer:
-    image: ragex/mcp-server:dev
+    image: ragex/mcp-server:cuda-dev
     volumes:
       - .:/workspace:ro
       - ragex-dev-data:/data
@@ -34,7 +34,9 @@ services:
       - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
       - WORKSPACE_PATH=${PWD}
       - PROJECT_NAME=dev_$(echo "${PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
+      - NVIDIA_VISIBLE_DEVICES=all
     command: index /workspace --force
+    runtime: nvidia
     profiles: ["index"]
     user: "${UID:-1000}:${GID:-1000}"
 

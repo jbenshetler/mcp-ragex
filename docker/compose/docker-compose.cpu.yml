@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ragex:
+    extends:
+      file: docker-compose.base.yml
+      service: ragex
+    build:
+      context: ../..
+      dockerfile: docker/cpu/Dockerfile
+    image: ragex/mcp-server:cpu-dev
+
+  # Development indexer
+  indexer:
+    extends:
+      file: docker-compose.base.yml
+      service: ragex
+    image: ragex/mcp-server:cpu-dev
+    environment:
+      - LOG_LEVEL=DEBUG
+      - DOCKER_CONTAINER=true
+      - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
+      - WORKSPACE_PATH=${PWD}
+      - PROJECT_NAME=dev_$(echo "${PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
+    command: index /workspace --force
+    profiles: ["index"]

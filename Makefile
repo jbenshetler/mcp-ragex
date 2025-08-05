@@ -1,71 +1,86 @@
-# Makefile for MCP-RageX Docker development
+# Variables
+REGISTRY := ghcr.io/jbenshetler
+IMAGE_NAME := mcp-ragex
+BASE_IMAGE_NAME := mcp-ragex-base
+VERSION := $(shell git describe --tags --dirty 2>/dev/null || echo "dev")
+PLATFORMS_CPU := linux/amd64,linux/arm64
+PLATFORMS_GPU := linux/amd64
 
-# Default image name for local builds
-IMAGE_NAME := ragex:local
-BASE_IMAGE_NAME := ragex-base:cpu-only
+.DEFAULT_GOAL := help
 
-# Default target
-.PHONY: all
-all: base image install
+## Base image builds
+cpu-base:      ## Build CPU base image
+	docker build -f docker/cpu/Dockerfile.base \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-$(VERSION) \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-latest .
 
-# Build the base Docker image
-.PHONY: base
-base:
-	@echo "🔨 Building base Docker image: $(BASE_IMAGE_NAME)"
-	docker build -t $(BASE_IMAGE_NAME) .
-	@echo "✅ Base image built successfully: $(BASE_IMAGE_NAME)"
+cuda-base:     ## Build CUDA base image  
+	docker build -f docker/cuda/Dockerfile.base \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(VERSION) \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest .
 
-# Build the Docker image locally
-.PHONY: image
-image:
-	@echo "🔨 Building Docker image: $(IMAGE_NAME)"
-	docker build -f docker/app.Dockerfile --build-arg BASE_IMAGE=$(BASE_IMAGE_NAME) -t $(IMAGE_NAME) .
-	@echo "✅ Image built successfully: $(IMAGE_NAME)"
+## Development builds
+cpu:           ## Build CPU image for local development
+	docker build -f docker/cpu/Dockerfile \
+		-t $(IMAGE_NAME):cpu-dev .
 
-# Install ragex using the local image
-.PHONY: install
-install:
-	@echo "📦 Installing ragex with image: $(IMAGE_NAME)"
-	@echo "🧹 Stopping and removing any existing ragex daemon containers..."
-	@docker ps -a -q -f "name=ragex_daemon_" | xargs -r docker stop 2>/dev/null || true
-	@docker ps -a -q -f "name=ragex_daemon_" | xargs -r docker rm 2>/dev/null || true
-	RAGEX_IMAGE=$(IMAGE_NAME) ./install.sh
-	@echo "✅ Installation complete"
+cuda:          ## Build CUDA image for local development
+	docker build -f docker/cuda/Dockerfile \
+		-t $(IMAGE_NAME):cuda-dev .
 
-# Clean up Docker resources
-.PHONY: clean
-clean:
-	@echo "🧹 Cleaning up Docker resources"
-	docker rmi $(IMAGE_NAME) || true
-	docker rmi $(BASE_IMAGE_NAME) || true
-	@echo "✅ Cleanup complete"
+## CI/CD builds  
+cpu-cicd:      ## Build CPU image optimized for CI/CD
+	docker buildx build --platform $(PLATFORMS_CPU) \
+		-f docker/cpu/Dockerfile \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu \
+		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu .
 
-# Test the installation
-.PHONY: test
-test:
-	@echo "🧪 Testing ragex installation"
-	@mkdir -p test-ragex-temp
-	@cd test-ragex-temp && echo "# Test" > README.md && echo "def test(): pass" > test.py
-	@cd test-ragex-temp && ragex init && ragex index . --force
-	@rm -rf test-ragex-temp
-	@echo "✅ Test complete"
+cuda-cicd:     ## Build CUDA image optimized for CI/CD
+	docker buildx build --platform $(PLATFORMS_GPU) \
+		-f docker/cuda/Dockerfile \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda \
+		-t $(REGISTRY)/$(IMAGE_NAME):latest-cuda .
 
-# Show help
-.PHONY: help
-help:
-	@echo "MCP-RageX Docker Development Makefile"
-	@echo ""
-	@echo "Targets:"
-	@echo "  all      - Build base, app image and install (default)"
-	@echo "  base     - Build the base Docker image"
-	@echo "  image    - Build the app Docker image"
-	@echo "  install  - Install ragex using the local image"
-	@echo "  clean    - Remove Docker images"
-	@echo "  test     - Test the ragex installation"
-	@echo "  help     - Show this help message"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make              # Build and install"
-	@echo "  make image        # Just build the image"
-	@echo "  make install      # Just install (assumes image exists)"
-	@echo "  make test         # Test the installation"
+## Publishing targets
+publish-cpu-base:  ## Build and publish CPU base image
+	docker buildx build --push --platform $(PLATFORMS_CPU) \
+		-f docker/cpu/Dockerfile.base \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-$(VERSION) \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-latest .
+
+publish-cuda-base: ## Build and publish CUDA base image  
+	docker buildx build --push --platform $(PLATFORMS_GPU) \
+		-f docker/cuda/Dockerfile.base \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(VERSION) \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest .
+
+publish-cpu:   ## Build and publish CPU image
+	docker buildx build --push --platform $(PLATFORMS_CPU) \
+		-f docker/cpu/Dockerfile \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu \
+		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu .
+
+publish-cuda:  ## Build and publish CUDA image
+	docker buildx build --push --platform $(PLATFORMS_GPU) \
+		-f docker/cuda/Dockerfile \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda \
+		-t $(REGISTRY)/$(IMAGE_NAME):latest-cuda .
+
+## Installation helpers
+install-cpu:   ## Build and install CPU image locally
+	$(MAKE) cpu
+	RAGEX_IMAGE=$(IMAGE_NAME):cpu-dev ./install.sh
+
+install-cuda:  ## Build and install CUDA image locally
+	$(MAKE) cuda
+	RAGEX_IMAGE=$(IMAGE_NAME):cuda-dev ./install.sh
+
+## Utility targets
+clean:         ## Clean up build artifacts
+	docker system prune -f
+	docker buildx prune -f
+
+help:          ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+.PHONY: cpu-base cuda-base cpu cuda cpu-cicd cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean help

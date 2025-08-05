@@ -1,0 +1,45 @@
+# CUDA Base Image for MCP-Ragex
+# This provides common dependencies and Python environment for NVIDIA GPU deployments
+
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
+
+# Install Python and system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3.10-dev \
+    python3-pip \
+    git \
+    ripgrep \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create symlinks for python
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    ln -sf /usr/bin/python3.10 /usr/bin/python3
+
+# Create non-root user
+RUN useradd -m -u 1000 ragex
+
+WORKDIR /app
+
+# Copy and install Python dependencies
+COPY requirements/ ./requirements/
+RUN pip install --no-cache-dir -r requirements/cuda.txt
+
+# Pre-download tree-sitter language parsers
+RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import tree_sitter_javascript as tsjavascript; import tree_sitter_typescript as tstypescript"
+
+# Create data directory
+RUN mkdir -p /data && chown -R ragex:ragex /data
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV RAGEX_DATA_DIR=/data
+ENV HF_HOME=/data/models
+ENV SENTENCE_TRANSFORMERS_HOME=/data/models
+ENV DOCKER_CONTAINER=true
+ENV LOG_LEVEL=INFO
+
+# Switch to non-root user
+USER ragex

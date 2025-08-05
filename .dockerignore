@@ -28,6 +28,19 @@ docs/
 !README.md
 
 # Docker files
-Dockerfile
 docker-compose*.yml
 .dockerignore
+
+# Tests and examples
+tests/
+examples/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+uv.lock
+
+# Documentation
+doc/
+!README.md

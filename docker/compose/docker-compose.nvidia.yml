@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  ragex:
+    extends:
+      file: docker-compose.base.yml
+      service: ragex
+    build:
+      context: ../..
+      dockerfile: docker/cuda/Dockerfile
+    image: ragex/mcp-server:cuda-dev
+    runtime: nvidia  # Requires nvidia-docker
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DOCKER_CONTAINER=true
+      - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
+      - WORKSPACE_PATH=${PWD}
+      - PROJECT_NAME=dev_$(echo "${PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
+      - NVIDIA_VISIBLE_DEVICES=all
+
+  # Development indexer
+  indexer:
+    extends:
+      file: docker-compose.base.yml
+      service: ragex
+    image: ragex/mcp-server:cuda-dev
+    runtime: nvidia
+    environment:
+      - LOG_LEVEL=DEBUG
+      - DOCKER_CONTAINER=true
+      - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
+      - WORKSPACE_PATH=${PWD}
+      - PROJECT_NAME=dev_$(echo "${PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
+      - NVIDIA_VISIBLE_DEVICES=all
+    command: index /workspace --force
+    profiles: ["index"]

@@ -1,0 +1,39 @@
+# CPU Base Image for MCP-Ragex
+# This provides common dependencies and Python environment for CPU-only deployments
+
+FROM python:3.10-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    ripgrep \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 ragex
+
+WORKDIR /app
+
+# Copy and install Python dependencies
+COPY requirements/ ./requirements/  
+RUN pip install --no-cache-dir -r requirements/cpu.txt
+
+# Pre-download tree-sitter language parsers
+RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import tree_sitter_javascript as tsjavascript; import tree_sitter_typescript as tstypescript"
+
+# Create data directory
+RUN mkdir -p /data && chown -R ragex:ragex /data
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV RAGEX_DATA_DIR=/data
+ENV HF_HOME=/data/models
+ENV SENTENCE_TRANSFORMERS_HOME=/data/models
+ENV DOCKER_CONTAINER=true
+ENV LOG_LEVEL=INFO
+ENV CUDA_VISIBLE_DEVICES=""
+
+# Switch to non-root user
+USER ragex

@@ -10,10 +10,11 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 
 # Copy dependency files
-COPY requirements-cpu.txt pyproject.toml ./
+COPY requirements/ ./requirements/
+COPY pyproject.toml ./
 
 # Install Python dependencies (CPU-only versions)
-RUN pip install --user --no-cache-dir -r requirements-cpu.txt
+RUN pip install --user --no-cache-dir -r requirements/cpu.txt
 
 # Stage 2: Runtime
 FROM python:3.10-slim
@@ -60,6 +61,6 @@ ENV LOG_LEVEL=INFO
 ENV CUDA_VISIBLE_DEVICES=""
 
 # Copy and set entrypoint
-COPY --chown=ragex:ragex docker/entrypoint.sh /entrypoint.sh
+COPY --chown=ragex:ragex docker/common/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

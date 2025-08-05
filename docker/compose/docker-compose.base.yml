@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  ragex:
+    volumes:
+      - .:/workspace:ro                    # Current directory (read-only)
+      - ragex-dev-data:/data               # Project-specific data
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DOCKER_CONTAINER=true
+      - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
+      - WORKSPACE_PATH=${PWD}
+      - PROJECT_NAME=dev_$(echo "${PWD}" | sha256sum | cut -d' ' -f1 | head -c 16)
+    command: serve
+    stdin_open: true
+    tty: true
+    user: "${UID:-1000}:${GID:-1000}"
+
+volumes:
+  ragex-dev-data:
+    driver: local
+    name: ragex_dev_data

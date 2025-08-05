@@ -1,0 +1,48 @@
+# Development files
+.git/
+.gitignore
+*.md
+README*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+tests/
+test_*/
+*_test.py
+pytest.ini
+.pytest_cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Docker files (avoid recursion)
+docker-compose*.yml
+Dockerfile*
+.dockerignore

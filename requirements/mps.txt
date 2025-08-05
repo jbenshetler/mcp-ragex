@@ -1,0 +1,10 @@
+# Mac Metal (MPS) PyTorch installation (macOS 12.3+)
+# Standard PyPI includes MPS support for M1/M2 Macs
+torch>=2.1.1
+torchvision>=0.16.1
+
+# PyTorch-based dependencies
+sentence-transformers>=2.2.0
+
+# Include base dependencies
+-r base.txt

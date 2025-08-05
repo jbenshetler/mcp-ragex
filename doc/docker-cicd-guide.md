@@ -1,64 +1,70 @@
 # Docker CI/CD Guide
 
-This guide explains the GitHub Actions workflows for Docker CI/CD and how to configure them for your needs.
+This guide explains the GitHub Actions workflows for Docker CI/CD and how to configure them for the new multi-platform Docker architecture (CPU/GPU).
 
 ## Overview
 
-The repository includes several GitHub Actions workflows for different stages:
+The repository uses a structured Docker architecture with separate CPU and GPU builds:
 
-1. **Build and Test** (`docker-build-test.yml`) - Runs on every PR
-2. **Publish to GHCR** (`docker-publish-ghcr.yml`) - Publishes to GitHub Container Registry
-3. **Publish to Docker Hub** (`docker-publish-dockerhub.yml`) - Optional Docker Hub publishing
-4. **Release Pipeline** (`docker-release.yml`) - Full release workflow with multi-arch builds
+1. **Current Implementation**: CPU-only builds for reliability and speed
+2. **Future Implementation**: GPU builds when CI/CD workflow is stable
+3. **Makefile Integration**: Uses `make cpu-cicd` and `make publish-cpu` commands
+4. **Multi-platform Support**: CPU images support AMD64 and ARM64
 
-## Pre-Open Source Setup (Private Development)
+## Docker Architecture Integration
 
-While developing privately, you can:
+### Current Structure
+The CI/CD workflows integrate with the new Docker architecture:
 
-### Option 1: Use GitHub Container Registry (Recommended)
-- No additional setup needed
-- Images are private by default for private repos
-- Free for your use
-- Automatically becomes public when repo goes public
+- **CPU Builds**: Use `docker/cpu/Dockerfile` 
+- **Base Images**: Can build `docker/cpu/Dockerfile.base` for reuse
+- **Requirements**: Use `requirements/cpu.txt` for CPU-only PyTorch
+- **Makefile Commands**: Workflows call `make cpu-cicd` and `make publish-cpu`
 
-### Option 2: Disable Publishing
-Simply don't run the publish workflows until ready.
+### Future GPU Support
+When GPU CI/CD is enabled:
 
-### Option 3: Use a Private Registry
-Modify the workflows to use your private registry:
-```yaml
-env:
-  REGISTRY: your-registry.com
-  IMAGE_NAME: mcp-ragex
-```
+- **CUDA Builds**: Will use `docker/cuda/Dockerfile`
+- **GPU Requirements**: Will use `requirements/cuda.txt` 
+- **Makefile Commands**: Will call `make cuda-cicd` and `make publish-cuda`
+- **Platform Limitations**: GPU images are AMD64 only
 
 ## Configuration Steps
 
 ### 1. For GitHub Container Registry (GHCR)
-**No configuration needed!** The workflows use the built-in `GITHUB_TOKEN`.
 
-When you're ready to publish:
+#### Required Secrets
+Add `GHCR_TOKEN` to repository secrets:
+
+1. Create Personal Access Token (classic) with scopes:
+   - `write:packages` - Upload packages to GHCR
+   - `read:packages` - Download packages from GHCR
+2. Go to repository Settings → Secrets and variables → Actions
+3. Add secret `GHCR_TOKEN` with your token value
+
+#### Alternative: Fine-grained Token (Recommended)
+Create fine-grained token with repository-specific permissions:
+- **Repository access**: Select your repository
+- **Permissions**: Contents (Read), Metadata (Read), Packages (Write)
+
+### 2. CI/CD Workflow Setup
+
+#### Current Workflow (CPU Only)
+Create `.github/workflows/docker-publish.yml` that:
+- Triggers on push to main and tags
+- Uses `make cpu-cicd` for building
+- Uses `make publish-cpu` for publishing
+- Supports multi-platform (AMD64, ARM64)
+
+#### Sample Workflow Steps
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+# In GitHub Actions workflow
+- name: Build CPU image
+  run: make cpu-cicd
+
+- name: Publish CPU image  
+  run: make publish-cpu
 ```
-
-### 2. For Docker Hub (Optional)
-
-1. Create a Docker Hub account
-2. Generate an access token at https://hub.docker.com/settings/security
-3. Add secrets to your GitHub repository:
-   - Go to Settings → Secrets and variables → Actions
-   - Add `DOCKERHUB_USERNAME` (your Docker Hub username)
-   - Add `DOCKERHUB_TOKEN` (the access token, NOT your password)
-4. Add variable `ENABLE_DOCKERHUB` = `true`
-
-### 3. For Private Registry
-
-Add these secrets:
-- `REGISTRY_URL`: Your registry URL
-- `REGISTRY_USERNAME`: Your username
-- `REGISTRY_PASSWORD`: Your password
 
 ## Workflow Features
 
@@ -86,15 +92,17 @@ Add these secrets:
 
 ## Image Tagging Strategy
 
-Tags are automatically generated based on:
+The new architecture uses platform-specific tags:
 
-| Event | Tags Generated |
-|-------|----------------|
-| Push to main | `latest`, `main` |
-| Push to develop | `develop` |
-| Tag v1.2.3 | `v1.2.3`, `1.2.3`, `1.2`, `1`, `latest` |
-| PR #45 | `pr-45` |
-| Manual | Whatever you specify |
+| Event | CPU Tags | GPU Tags (Future) |
+|-------|----------|-------------------|
+| Push to main | `latest-cpu` | `latest-cuda` |
+| Tag v1.2.3 | `v1.2.3-cpu`, `latest-cpu` | `v1.2.3-cuda`, `latest-cuda` |
+| Development | `dev-cpu` | `dev-cuda` |
+
+### Registry Locations
+- **Application Images**: `ghcr.io/jbenshetler/mcp-ragex:{version}-{platform}`
+- **Base Images**: `ghcr.io/jbenshetler/mcp-ragex-base:{platform}-{version}`
 
 ## Costs and Limits
 
@@ -127,14 +135,12 @@ Tags are automatically generated based on:
 
 When ready to open source:
 
-- [ ] Clean sensitive data from git history
-- [ ] Review .gitignore and .dockerignore
-- [ ] Update image names if needed
-- [ ] Set up Docker Hub account (optional)
-- [ ] Update README with public install instructions
-- [ ] Tag a release version
+- [ ] Set up GHCR_TOKEN secret in repository settings
+- [ ] Create `.github/workflows/docker-publish.yml` workflow file
+- [ ] Tag a release version: `git tag v1.0.0 && git push origin v1.0.0`
 - [ ] Make repository public
-- [ ] Verify workflows run correctly
+- [ ] Verify CPU workflow runs correctly
+- [ ] Plan GPU workflow rollout (future)
 
 ## Testing Workflows Locally
 
@@ -156,31 +162,30 @@ act -W .github/workflows/docker-publish-ghcr.yml -s GITHUB_TOKEN=$GITHUB_TOKEN
 ## Customization Options
 
 ### Different Base Images
-Edit the Dockerfile:
-```dockerfile
-FROM python:3.10-slim  # Change this
-```
+Edit the appropriate Dockerfile:
+- CPU: `docker/cpu/Dockerfile` or `docker/cpu/Dockerfile.base`
+- GPU: `docker/cuda/Dockerfile` or `docker/cuda/Dockerfile.base`
 
 ### Additional Platforms
-Add to the platforms list:
-```yaml
-platforms: linux/amd64,linux/arm64,linux/arm/v7
+CPU images support multiple platforms. GPU images are AMD64 only due to CUDA limitations.
+
+Modify `Makefile` platform variables:
+```makefile
+PLATFORMS_CPU := linux/amd64,linux/arm64,linux/arm/v7
+PLATFORMS_GPU := linux/amd64  # CUDA limitation
 ```
 
 ### Custom Registry
-Change the registry URL:
-```yaml
-env:
-  REGISTRY: my-registry.com
+Change registry in `Makefile`:
+```makefile
+REGISTRY := my-registry.com/username
 ```
 
-### Build Arguments
-Add build args for versioning:
-```yaml
-build-args: |
-  VERSION=${{ github.ref_name }}
-  BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-```
+### Requirements Customization
+Modify platform-specific requirements:
+- `requirements/base.txt` - Common dependencies
+- `requirements/cpu.txt` - CPU-specific PyTorch
+- `requirements/cuda.txt` - CUDA-specific PyTorch
 
 ## Troubleshooting
 

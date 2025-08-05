@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any
 
@@ -26,11 +27,25 @@ class RagexCLI:
     """Main RAGex CLI implementation"""
     
     def __init__(self):
-        self.docker_image = os.environ.get('RAGEX_DOCKER_IMAGE', 'ragex:local')
+        # Load configuration first
+        config = self.load_config()
+        
+        # Priority: CLI env var > saved config > default
+        self.docker_image = (
+            os.environ.get('RAGEX_DOCKER_IMAGE')  # CLI override
+            or config.get('docker_image')         # Saved config
+            or 'ghcr.io/jbenshetler/mcp-ragex:cpu-latest'  # Default to CPU
+        )
+        
         self.user_id = os.getuid()
         self.group_id = os.getgid()
         self.debug = os.environ.get('RAGEX_DEBUG', '').lower() in ('true', '1', 'yes')
         self.embedding_model = os.environ.get('RAGEX_EMBEDDING_MODEL', 'fast')
+        self.config_mode = config.get('mode', 'cpu')
+        
+        # GPU detection
+        self._gpu_available = None
+        self._is_cuda_image = None
         
         # Workspace path - will be set based on command
         self.workspace_path = Path.cwd()
@@ -69,10 +84,71 @@ class RagexCLI:
             self._user_volume = f"ragex_user_{self.user_id}"
         return self._user_volume
     
+    def get_config_dir(self) -> Path:
+        """Get XDG-compliant config directory"""
+        config_home = os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))
+        return Path(config_home) / 'ragex'
+    
+    def load_config(self) -> dict:
+        """Load configuration file"""
+        config_file = self.get_config_dir() / 'config.json'
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"⚠️  Warning: Could not load config file {config_file}: {e}", file=sys.stderr)
+        return {}
+    
+    def save_config(self, config: dict) -> None:
+        """Save configuration file"""
+        config_file = self.get_config_dir() / 'config.json'
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+    
     def debug_print(self, message: str):
         """Print debug message if debug mode is enabled"""
         if self.debug:
             print(f"[DEBUG] {message}", file=sys.stderr)
+    
+    def is_cuda_image(self) -> bool:
+        """Check if current Docker image is a CUDA image"""
+        if self._is_cuda_image is None:
+            # Check if image name contains cuda or has cuda tag
+            image_lower = self.docker_image.lower()
+            self._is_cuda_image = 'cuda' in image_lower or image_lower.endswith(':cuda-dev')
+            self.debug_print(f"Image {self.docker_image} is CUDA: {self._is_cuda_image}")
+        return self._is_cuda_image
+    
+    def is_gpu_available(self) -> bool:
+        """Check if GPU is available on the host system"""
+        if self._gpu_available is None:
+            try:
+                # Check if nvidia-smi exists and works
+                result = subprocess.run(
+                    ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                self._gpu_available = result.returncode == 0 and bool(result.stdout.strip())
+                if self._gpu_available:
+                    gpu_names = result.stdout.strip().split('\n')
+                    self.debug_print(f"Found {len(gpu_names)} GPU(s): {gpu_names}")
+                else:
+                    self.debug_print("nvidia-smi failed or returned no GPUs")
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                self._gpu_available = False
+                self.debug_print("nvidia-smi not found or timed out")
+        
+        return self._gpu_available
+    
+    def should_use_gpu(self) -> bool:
+        """Determine if GPU should be used for container"""
+        use_gpu = self.is_cuda_image() and self.is_gpu_available()
+        self.debug_print(f"Should use GPU: {use_gpu} (CUDA image: {self.is_cuda_image()}, GPU available: {self.is_gpu_available()})")
+        return use_gpu
     
     def generate_project_id(self, workspace_path: Path) -> str:
         """Generate consistent project ID based on user and absolute path"""
@@ -111,10 +187,19 @@ class RagexCLI:
             '-e', f'PROJECT_NAME={self.project_id}',
             '-e', f'RAGEX_EMBEDDING_MODEL={self.embedding_model}',
             '-e', f'HOST_HOME={Path.home()}',
-            '-e', f'RAGEX_LOG_LEVEL={os.environ.get("RAGEX_LOG_LEVEL", "INFO")}',
-            self.docker_image,
-            'daemon'
+            '-e', f'RAGEX_LOG_LEVEL={os.environ.get("RAGEX_LOG_LEVEL", "INFO")}'
         ]
+        
+        # Add GPU support if available and using CUDA image
+        if self.should_use_gpu():
+            docker_cmd.extend(['--gpus', 'all'])
+            if not silent:
+                print("🚀 GPU acceleration enabled")
+        elif self.is_cuda_image() and not self.is_gpu_available():
+            if not silent:
+                print("⚠️  CUDA image detected but no GPU available - running in CPU mode")
+        
+        docker_cmd.extend([self.docker_image, 'daemon'])
         
         self.debug_print(f"Starting daemon: {' '.join(docker_cmd)}")
         
@@ -274,6 +359,18 @@ class RagexCLI:
             help='Remove project(s) by ID or glob')
         rm_parser.add_argument('glob', help='Project ID or glob to remove')
         
+        # Configure command
+        configure_parser = subparsers.add_parser('configure',
+            help='Configure image mode')
+        configure_parser.add_argument('--cpu', action='store_true',
+            help='Use CPU mode')
+        configure_parser.add_argument('--cuda', action='store_true',
+            help='Use CUDA mode')
+        configure_parser.add_argument('--rocm', action='store_true',
+            help='Use ROCm mode (future)')
+        configure_parser.add_argument('--image',
+            help='Use custom image')
+        
         # Info command
         info_parser = subparsers.add_parser('info',
             help='Show project information')
@@ -308,7 +405,6 @@ class RagexCLI:
             help='Show detailed help for unregister command', dest='help_flag')
         unregister_parser.add_argument('--global', action='store_true',
             help='Unregister globally instead of project-scoped')
-        
         
         return parser.parse_args()
     
@@ -487,6 +583,58 @@ Environment Variables:
         if hasattr(args, 'global') and getattr(args, 'global'):
             cmd_args.append('--global')
         return self._run_admin_command('unregister', cmd_args)
+    
+    def cmd_configure(self, args: argparse.Namespace) -> int:
+        """Handle configure command"""
+        config = self.load_config()
+        
+        if args.cpu:
+            config['docker_image'] = 'ghcr.io/jbenshetler/mcp-ragex:cpu-latest'
+            config['mode'] = 'cpu'
+            config['configured_at'] = datetime.now().isoformat()
+            self.save_config(config)
+            print("✅ Configured for CPU mode")
+        elif args.cuda:
+            config['docker_image'] = 'ghcr.io/jbenshetler/mcp-ragex:cuda-latest'
+            config['mode'] = 'cuda'
+            config['configured_at'] = datetime.now().isoformat()
+            self.save_config(config)
+            print("✅ Configured for CUDA mode")
+        elif args.rocm:
+            config['docker_image'] = 'ghcr.io/jbenshetler/mcp-ragex:rocm-latest'
+            config['mode'] = 'rocm'
+            config['configured_at'] = datetime.now().isoformat()
+            self.save_config(config)
+            print("✅ Configured for ROCm mode")
+        elif args.image:
+            config['docker_image'] = args.image
+            config['mode'] = 'custom'
+            config['configured_at'] = datetime.now().isoformat()
+            self.save_config(config)
+            print(f"✅ Configured for custom image: {args.image}")
+        else:
+            # Show current configuration
+            current_image = (
+                os.environ.get('RAGEX_DOCKER_IMAGE')  # CLI override
+                or config.get('docker_image')         # Saved config
+                or 'ghcr.io/jbenshetler/mcp-ragex:cpu-latest'  # Default
+            )
+            override_active = bool(os.environ.get('RAGEX_DOCKER_IMAGE'))
+            
+            print("Current configuration:")
+            print(f"  Mode: {config.get('mode', 'cpu')}")
+            print(f"  Image: {current_image}")
+            if override_active:
+                print(f"  Override: RAGEX_DOCKER_IMAGE environment variable is active")
+            if config.get('configured_at'):
+                print(f"  Last configured: {config.get('configured_at')}")
+            if config.get('installed_at'):
+                print(f"  Installed: {config.get('installed_at')}")
+            
+            config_file = self.get_config_dir() / 'config.json'
+            print(f"  Config file: {config_file}")
+        
+        return 0
     
     def cmd_log(self, args: argparse.Namespace) -> int:
         """Handle log command"""

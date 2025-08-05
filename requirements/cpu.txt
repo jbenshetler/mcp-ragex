@@ -1,0 +1,10 @@
+# CPU-only PyTorch installation
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.1.1+cpu
+torchvision==0.16.1+cpu
+
+# PyTorch-based dependencies
+sentence-transformers>=2.2.0
+
+# Include base dependencies
+-r base.txt
