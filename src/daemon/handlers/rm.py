@@ -103,7 +103,9 @@ class RmHandler:
                         project_name, workspace_path = project_info
                         matched.append((project_name, pattern, workspace_path))
                     else:
+                        # Allow removal of orphaned projects (missing metadata)
                         logger.warning(f"Project {pattern} exists but has no metadata")
+                        matched.append((f"orphaned-{pattern}", pattern, Path("unknown")))
             return matched
         
         # Otherwise treat as a name pattern
