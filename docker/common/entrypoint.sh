@@ -26,7 +26,8 @@ setup_project_data() {
     # Generate project identifier from workspace path (if available) or use default
     if [ -d "/workspace" ] && [ -n "$(ls -A /workspace 2>/dev/null)" ]; then
         # Use hash for unique project ID (directory name)
-        PROJECT_HASH=$(echo "$WORKSPACE_PATH" | sha256sum | cut -d' ' -f1 | head -c 16)
+        # Must match Python's generate_project_id() calculation: f"{user_id}:{abs_path}"
+        PROJECT_HASH=$(echo -n "$(id -u):${WORKSPACE_PATH}" | sha256sum | cut -d' ' -f1 | head -c 16)
         PROJECT_ID="ragex_$(id -u)_${PROJECT_HASH}"
         
         # Check if custom name provided via environment, otherwise use workspace basename
