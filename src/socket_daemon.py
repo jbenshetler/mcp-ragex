@@ -26,6 +26,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger('ragex-socket-daemon')
 
+# Suppress verbose watchdog inotify debug messages
+# These flood the logs with file system events when DEBUG logging is enabled
+watchdog_logger = logging.getLogger('watchdog.observers.inotify_buffer')
+watchdog_logger.setLevel(logging.WARNING)  # Only show warnings and errors from watchdog
+
 # Import watchdog components
 try:
     from src.watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
@@ -344,100 +349,68 @@ class RagexSocketDaemon:
         
         return await self.handlers['search'].handle(args)
     
-    async def _handle_index(self, args: list) -> Dict[str, Any]:
-        """Handle index command"""
-        # Check if we can use the indexing queue for better integration
-        force = '--force' in args
+    def _parse_index_args(self, args: list) -> Dict[str, Any]:
+        """Parse index command arguments to match smart_index.py interface"""
+        import argparse
         
-        if self.indexing_queue and len(args) <= 2:  # Simple index command
-            # Try to use the queue's request_index method
-            success = await self.indexing_queue.request_index("manual", force=force)
-            if success:
-                # Queue indexing succeeded, return success
-                return {
-                    'success': True,
-                    'stdout': 'Index completed successfully\n',
-                    'stderr': '',
-                    'returncode': 0
-                }
-            elif not force:
-                # Queue indexing failed and no force flag, return error
-                return {
-                    'success': False,
-                    'stderr': 'Index already in progress or too soon since last index. Use --force to override.\n',
-                    'stdout': '',
-                    'returncode': 1
-                }
-            # If queue failed but force=True, fall through to subprocess backup
-        
-        # Fall back to running smart_index.py directly
-        import subprocess
-        import sys
-        
-        cmd = [sys.executable, '/app/scripts/smart_index.py'] + args
-        
-        # Log the command being executed
-        logger.info(f"Executing index command: {' '.join(cmd)}")
-        
-        # Check if script exists
-        script_path = '/app/scripts/smart_index.py'
-        if not os.path.exists(script_path):
-            logger.error(f"Script not found: {script_path}")
-            return {
-                'success': False,
-                'error': f'Script not found: {script_path}',
-                'stderr': f'Script not found: {script_path}\n',
-                'stdout': '',
-                'returncode': 1
-            }
-        
-        env = os.environ.copy()
-        env['PYTHONPATH'] = '/app:' + env.get('PYTHONPATH', '')
-        env['RAGEX_WORKING_DIR'] = '/workspace'  # Tell the script to use /workspace as working dir
-        env['DOCKER_USER_ID'] = os.environ.get('DOCKER_USER_ID', str(os.getuid()))  # Pass user ID for project detection
+        parser = argparse.ArgumentParser(description='Index command parser')
+        parser.add_argument('path', nargs='?', default='/workspace', help='Path to index')
+        parser.add_argument('--force', action='store_true', help='Force full re-indexing')
+        parser.add_argument('--quiet', action='store_true', help='Suppress informational messages')
+        parser.add_argument('--stats', action='store_true', help='Show statistics')
+        parser.add_argument('--verbose', action='store_true', help='Show verbose output')
+        parser.add_argument('--name', help='Custom name for the project')
         
         try:
-            result = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env
-            )
+            # Parse known args to handle unexpected flags gracefully
+            parsed_args, unknown = parser.parse_known_args(args)
             
-            stdout, stderr = await result.communicate()
-            
-            stdout_text = stdout.decode('utf-8')
-            stderr_text = stderr.decode('utf-8')
-            
-            # Log output for debugging
-            if stderr_text:
-                logger.error(f"Index command stderr: {stderr_text}")
-            if result.returncode != 0:
-                logger.error(f"Index command failed with code {result.returncode}")
-                
-            response = {
-                'success': result.returncode == 0,
-                'stdout': stdout_text,
-                'stderr': stderr_text,
-                'returncode': result.returncode
+            return {
+                'path': parsed_args.path,
+                'force': parsed_args.force,
+                'quiet': parsed_args.quiet,
+                'stats': parsed_args.stats,
+                'verbose': parsed_args.verbose,
+                'name': parsed_args.name
             }
-            
-            # Add error field for compatibility with socket_client
-            if result.returncode != 0:
-                error_msg = stderr_text.strip() if stderr_text.strip() else f"Command failed with exit code {result.returncode}"
-                response['error'] = error_msg
-                
-            return response
-            
-        except Exception as e:
-            logger.error(f"Exception running index command: {e}", exc_info=True)
+        except SystemExit:
+            # argparse calls sys.exit on error, catch and return defaults
+            return {
+                'path': '/workspace',
+                'force': False,
+                'quiet': False,
+                'stats': False,
+                'verbose': False,
+                'name': None
+            }
+
+    async def _handle_index(self, args: list) -> Dict[str, Any]:
+        """Handle index command with full argument parsing - queue only"""
+        
+        # Parse all smart_index.py compatible arguments
+        parsed_args = self._parse_index_args(args)
+        
+        # Always use queue (no fallback)
+        if not self.indexing_queue:
             return {
                 'success': False,
-                'error': str(e),
-                'stderr': str(e),
                 'stdout': '',
+                'stderr': 'Indexing queue not available\n',
                 'returncode': 1
             }
+        
+        # Call enhanced queue method
+        result = await self.indexing_queue.request_index(
+            source="manual",
+            force=parsed_args.get('force', False),
+            quiet=parsed_args.get('quiet', False),
+            stats=parsed_args.get('stats', False),
+            verbose=parsed_args.get('verbose', False),
+            name=parsed_args.get('name'),
+            path=parsed_args.get('path', '/workspace')
+        )
+        
+        return result
     
     async def _handle_start_continuous_index(self, args: list) -> Dict[str, Any]:
         """Start continuous indexing, creating ChromaDB if needed"""
@@ -449,12 +422,9 @@ class RagexSocketDaemon:
                 logger.info("No ChromaDB found, triggering immediate index")
                 # Request immediate indexing
                 if self.indexing_queue:
-                    success = await self.indexing_queue.request_index("mcp-startup", force=True)
-                    if not success:
-                        # If queue request failed, run index directly
-                        result = await self._handle_index(args)
-                        if not result['success']:
-                            return result
+                    result = await self.indexing_queue.request_index("mcp-startup", force=True)
+                    if not result['success']:
+                        return result
             
             # Ensure continuous indexing is active
             return await self._handle_ensure_continuous_index(args)
@@ -512,11 +482,11 @@ class RagexSocketDaemon:
                         logger.info(f"No ChromaDB found at {chroma_path} - requesting initial index")
                         if self.indexing_queue:
                             # Force index on first run if no DB exists
-                            success = await self.indexing_queue.request_index("startup", force=True)
-                            if success:
+                            result = await self.indexing_queue.request_index("startup", force=True)
+                            if result['success']:
                                 logger.info("✅ Initial index request submitted successfully")
                             else:
-                                logger.warning("❌ Initial index request failed - index may already be in progress")
+                                logger.warning(f"❌ Initial index request failed: {result.get('stderr', 'Unknown error')}")
                     else:
                         logger.info(f"ChromaDB exists at {chroma_path} - skipping initial index")
                 else:
@@ -525,8 +495,8 @@ class RagexSocketDaemon:
                 
                 # Request periodic index (will be skipped if too soon or already running)
                 if self.indexing_queue and not first_run:
-                    success = await self.indexing_queue.request_index("continuous")
-                    if success:
+                    result = await self.indexing_queue.request_index("continuous")
+                    if result['success']:
                         logger.info("Continuous index triggered")
                     else:
                         logger.debug("Continuous index skipped (too soon or in progress)")

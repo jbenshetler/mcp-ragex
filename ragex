@@ -346,13 +346,18 @@ class RagexCLI:
         
         # List projects command
         ls_parser = subparsers.add_parser('ls',
-            help='List projects (optional glob filter, -l for details)')
+            help='List projects (optional glob filter, -l for details)',
+            add_help=False)  # Disable default help to use -h for human-readable
         ls_parser.add_argument('glob', nargs='?',
             help='Project ID or glob to filter projects')
         ls_parser.add_argument('-l', '--long', action='store_true',
             help='Show detailed information including model and index status')
         ls_parser.add_argument('-a', '--all', action='store_true',
             help='Show all projects including admin projects')
+        ls_parser.add_argument('-h', '--human-readable', action='store_true',
+            help='Show sizes in human-readable format (e.g., 1K, 234M, 2G)')
+        ls_parser.add_argument('--help', action='help',
+            help='Show this help message and exit')
         
         # Remove project command
         rm_parser = subparsers.add_parser('rm',
@@ -558,6 +563,8 @@ Environment Variables:
             cmd_args.append('-l')
         if hasattr(args, 'all') and args.all:
             cmd_args.append('-a')
+        if hasattr(args, 'human_readable') and args.human_readable:
+            cmd_args.append('-h')
         if hasattr(args, 'glob') and args.glob:
             cmd_args.append(args.glob)
         return self._run_admin_command('ls', cmd_args)

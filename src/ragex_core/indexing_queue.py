@@ -7,9 +7,10 @@ Collects file change events and triggers re-indexing after a debounce period.
 
 import asyncio
 import logging
+import os
 import time
 from pathlib import Path
-from typing import Set, Optional, Callable, List, Dict
+from typing import Set, Optional, Callable, List, Dict, Any
 from datetime import datetime
 
 from .file_checksum import calculate_file_checksum
@@ -206,34 +207,68 @@ class IndexingQueue:
             self._indexing = False
             self._last_index_completed_time = time.time()
     
-    async def request_index(self, source: str = "manual", force: bool = False) -> bool:
-        """Request an index operation (manual or continuous)
+    async def request_index(self, 
+                           source: str = "manual", 
+                           force: bool = False,
+                           quiet: bool = False,
+                           stats: bool = False, 
+                           verbose: bool = False,
+                           name: str = None,
+                           path: str = None) -> Dict[str, Any]:
+        """Request an index operation with full parameter support
         
         Args:
-            source: Source of the request (e.g., "manual", "continuous", "mcp-startup")
-            force: If True, bypass timing restrictions
+            source: Source of request ("manual", "continuous", "mcp-startup")
+            force: Bypass timing restrictions and force full reindex
+            quiet: Suppress informational messages
+            stats: Show indexing statistics 
+            verbose: Show detailed verbose output
+            name: Custom project name (for new projects only)
+            path: Custom path to index (defaults to workspace)
             
         Returns:
-            True if indexing was started, False if skipped
+            Dict with success status, messages, and statistics
         """
+        # Configure logging based on verbosity flags
+        self._configure_logging(verbose, quiet)
+        
         # Check without acquiring lock first (fast path)
         if self._indexing:
-            logger.info(f"Index already in progress, skipping {source} request")
-            return False
+            message = f"Index already in progress, skipping {source} request"
+            if not quiet:
+                logger.info(message)
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': f"{message}\n",
+                'returncode': 1
+            }
             
         # Skip time check if force flag is set
         if not force:
             time_since_last = time.time() - self._last_index_completed_time
             if time_since_last < self.min_index_interval:
                 wait_time = self.min_index_interval - time_since_last
-                logger.info(f"Too soon since last index ({wait_time:.0f}s remaining). Use --force to override.")
-                return False
+                message = f"Too soon since last index ({wait_time:.0f}s remaining). Use --force to override."
+                if not quiet:
+                    logger.info(message)
+                return {
+                    'success': False,
+                    'stdout': '',
+                    'stderr': f"{message}\n",
+                    'returncode': 1
+                }
         
         # Now acquire lock and trigger indexing
         async with self._lock:
             # Double-check conditions with lock held
             if self._indexing:
-                return False
+                return {
+                    'success': False,
+                    'stdout': '',
+                    'stderr': 'Index already in progress\n',
+                    'returncode': 1
+                }
                 
             # Reset any pending timer since we're doing it now
             if self._timer_task and not self._timer_task.done():
@@ -244,9 +279,30 @@ class IndexingQueue:
             self._removed_files.clear()
             self._file_checksums.clear()
         
-        # Trigger indexing (outside lock)
-        await self._trigger_indexing()
-        return True
+        # Call enhanced indexing with parameters
+        try:
+            result = await self._handle_incremental_index(
+                source=source,
+                force=force,
+                quiet=quiet,
+                stats=stats,
+                verbose=verbose,
+                name=name,
+                path=path or '/workspace'
+            )
+            logger.debug(f"Indexing result: {result}")
+            formatted_result = self._format_output(result, stats, quiet)
+            logger.debug(f"Formatted result: {formatted_result}")
+            return formatted_result
+        except Exception as e:
+            error_msg = f"Indexing failed: {e}"
+            logger.error(error_msg, exc_info=True)
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': f"{error_msg}\n",
+                'returncode': 1
+            }
     
     def get_status(self) -> dict:
         """Get current queue status."""
@@ -260,6 +316,255 @@ class IndexingQueue:
             'min_index_interval': self.min_index_interval
         }
     
+    def _configure_logging(self, verbose: bool, quiet: bool):
+        """Configure logging levels based on verbosity flags"""
+        if verbose:
+            logger.setLevel(logging.DEBUG)
+        elif quiet:
+            logger.setLevel(logging.WARNING)
+        else:
+            logger.setLevel(logging.INFO)
+    
+    def _format_output(self, result: Dict, stats: bool, quiet: bool) -> Dict[str, Any]:
+        """Format output messages and statistics based on flags"""
+        if not result:
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': 'Indexing failed\n',
+                'returncode': 1
+            }
+        
+        # Check for error result
+        if result.get('success') == False or result.get('error'):
+            error_msg = result.get('error', 'Indexing failed')
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': f"{error_msg}\n",
+                'returncode': 1
+            }
+        
+        # Format success response - indexer returns various status types
+        status = result.get('status', 'complete')
+        files_processed = result.get('files_processed', 0)
+        symbols_indexed = result.get('symbols_indexed', 0)
+        
+        output_lines = []
+        
+        if not quiet:
+            if status == "existing":
+                output_lines.append("✅ Index is up-to-date")
+                if stats:
+                    output_lines.append(f"   Files: {files_processed}")
+                    output_lines.append(f"   Symbols: {symbols_indexed}")
+            elif status in ["complete", "updated"]:
+                if stats:
+                    output_lines.append(f"✅ Indexed {files_processed} files")
+                    output_lines.append(f"   Symbols: {symbols_indexed}")
+                    if result.get('files_failed', 0) > 0:
+                        output_lines.append(f"   Failed: {result['files_failed']} files")
+                else:
+                    output_lines.append("Index completed successfully")
+            elif status == "no_files":
+                output_lines.append("⚠️  No source files found to index")
+            elif status == "no_symbols":
+                output_lines.append("⚠️  No symbols extracted from files")
+            else:
+                output_lines.append("Index completed successfully")
+        
+        return {
+            'success': True,
+            'stdout': '\n'.join(output_lines) + '\n' if output_lines else '',
+            'stderr': '',
+            'returncode': 0
+        }
+
+    async def _handle_incremental_index(self, 
+                                       source: str,
+                                       force: bool = False,
+                                       quiet: bool = False, 
+                                       stats: bool = False,
+                                       verbose: bool = False,
+                                       name: str = None,
+                                       path: str = None) -> Dict[str, Any]:
+        """Enhanced incremental indexing with full parameter support"""
+        try:
+            # Import indexing components
+            from .project_utils import (
+                generate_project_id, 
+                get_project_data_dir,
+                get_chroma_db_path,
+                load_project_metadata,
+                save_project_metadata,
+                update_project_metadata,
+                is_project_name_unique,
+                find_existing_project_root
+            )
+            from ..indexer import CodeIndexer
+            from .pattern_matcher import PatternMatcher
+            
+            # Get user ID from environment
+            user_id = os.environ.get('DOCKER_USER_ID', str(os.getuid()))
+            
+            # For project ID generation, we MUST use the host workspace path
+            host_workspace_path = os.environ.get('WORKSPACE_PATH')
+            if not host_workspace_path:
+                raise ValueError("WORKSPACE_PATH environment variable not set")
+            
+            # Check for existing project root
+            project_root = find_existing_project_root(Path(host_workspace_path), user_id)
+            if project_root and str(project_root) != host_workspace_path:
+                if not quiet:
+                    logger.info(f"📍 Detected existing project index at: {project_root}")
+                    logger.info("🔄 Using project root for indexing...")
+                host_workspace_path = str(project_root)
+            
+            # Generate project ID using HOST path for consistency
+            project_id = generate_project_id(host_workspace_path, user_id)
+            project_data_dir = f'/data/projects/{project_id}'
+            
+            # Handle project metadata
+            existing_metadata = load_project_metadata(project_id)
+            
+            if existing_metadata:
+                existing_name = existing_metadata.get('project_name', existing_metadata.get('workspace_basename'))
+                existing_path = existing_metadata.get('workspace_path')
+                
+                # STRICT: No name changes allowed
+                if name and existing_name != name:
+                    raise ValueError(f"Project already indexed as '{existing_name}'. Use 'ragex rm {existing_name}' first to re-index with a different name")
+                
+                # Detect moved directory
+                if existing_path != host_workspace_path:
+                    if not quiet:
+                        logger.info(f"🔄 Detected project moved from: {existing_path} → {host_workspace_path}")
+                        logger.info("📦 Clearing old index and re-scanning...")
+                    
+                    # Clear the entire ChromaDB for this project
+                    from .vector_store import CodeVectorStore
+                    chroma_path = get_chroma_db_path(project_data_dir)
+                    if chroma_path.exists():
+                        vector_store = CodeVectorStore(persist_directory=str(chroma_path))
+                        vector_store.clear_all()
+                    
+                    # Update metadata with new path
+                    existing_metadata['workspace_path'] = host_workspace_path
+                    update_project_metadata(project_id, existing_metadata)
+                    
+                    # Force full reindex
+                    force = True
+                
+                project_name = existing_name
+                # Update last_accessed for existing projects
+                existing_metadata['last_accessed'] = datetime.now().isoformat()
+                update_project_metadata(project_id, existing_metadata)
+            else:
+                # New project
+                if name:
+                    # Check if name is unique
+                    if not is_project_name_unique(name, user_id):
+                        raise ValueError(f"Project name '{name}' is already in use. Please choose a different name")
+                    project_name = name
+                else:
+                    # Default to basename
+                    project_name = Path(host_workspace_path).name
+                
+                # Save initial metadata with all required fields
+                metadata = {
+                    'project_name': project_name,
+                    'project_id': project_id,
+                    'workspace_path': host_workspace_path,
+                    'workspace_basename': Path(host_workspace_path).name,
+                    'created_at': datetime.now().isoformat(),
+                    'last_accessed': datetime.now().isoformat(),
+                    'indexed_at': datetime.now().isoformat(),
+                    'embedding_model': os.environ.get('RAGEX_EMBEDDING_MODEL', 'fast'),
+                    'collection_name': os.environ.get('RAGEX_CHROMA_COLLECTION', 'code_embeddings')
+                }
+                save_project_metadata(project_id, metadata)
+            
+            if not quiet:
+                logger.info(f"📦 Project: {project_name}")
+            
+            # Initialize pattern matcher for ignore handling
+            pattern_matcher = PatternMatcher()
+            pattern_matcher.set_working_directory(path)
+            
+            # Check if index exists
+            index_exists = (Path(project_data_dir) / 'chroma_db').exists()
+            
+            # Initialize indexer with project data directory
+            chroma_persist_dir = get_chroma_db_path(project_data_dir)
+            indexer = CodeIndexer(persist_directory=str(chroma_persist_dir))
+            
+            if not index_exists or force:
+                # First time or forced - run full index
+                if not quiet:
+                    reason = "forced rebuild" if force else "no existing index"
+                    logger.info(f"📊 Creating full index ({reason})")
+                
+                # Get all files to index using the indexer's file discovery
+                file_paths = indexer.find_code_files([path])
+                
+                if not file_paths:
+                    if not quiet:
+                        logger.warning("⚠️  No source files found to index")
+                    return {
+                        'success': True,
+                        'files_processed': 0,
+                        'symbols_indexed': 0
+                    }
+                
+                if not quiet:
+                    logger.info(f"📊 Indexing {len(file_paths)} files...")
+                
+                # Index all files
+                result = await indexer.index_codebase([str(f) for f in file_paths], force=True)
+                
+                # Update metadata
+                update_metadata = {
+                    'files_indexed': result.get('files_processed', 0),
+                    'index_completed_at': datetime.now().isoformat(),
+                    'full_index': True
+                }
+                update_project_metadata(project_id, update_metadata)
+                
+                return result
+            else:
+                # Incremental update - use existing logic but simplified
+                if not quiet:
+                    logger.info("🔍 Checking for changes...")
+                
+                # For now, just do a simple file count check
+                # In the future, this could be enhanced with proper incremental logic
+                file_paths = indexer.find_code_files([path])
+                if file_paths:
+                    result = await indexer.index_codebase([str(f) for f in file_paths], force=False)
+                    
+                    # Update metadata
+                    update_metadata = {
+                        'files_indexed': result.get('files_processed', 0),
+                        'index_completed_at': datetime.now().isoformat(),
+                        'incremental_update': True
+                    }
+                    update_project_metadata(project_id, update_metadata)
+                    
+                    return result
+                else:
+                    return {
+                        'success': True,
+                        'files_processed': 0,
+                        'symbols_indexed': 0
+                    }
+        
+        except Exception as e:
+            logger.error(f"Enhanced indexing failed: {e}", exc_info=verbose)
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
     async def shutdown(self):
         """Shutdown the queue, cancelling pending operations gracefully"""
         logger.info("Shutting down indexing queue...")

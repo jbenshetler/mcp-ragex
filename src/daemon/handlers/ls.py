@@ -30,12 +30,15 @@ class LsHandler:
             pattern = None
             long_format = False
             show_all = False
+            human_readable = False
             
             for arg in args:
                 if arg == '-l' or arg == '--long':
                     long_format = True
                 elif arg == '-a' or arg == '--all':
                     show_all = True
+                elif arg == '-h' or arg == '--human-readable':
+                    human_readable = True
                 elif not arg.startswith('-'):
                     pattern = arg
             
@@ -53,7 +56,7 @@ class LsHandler:
             
             # Format output
             if long_format:
-                output = self._format_long_output(projects)
+                output = self._format_long_output(projects, human_readable)
             else:
                 output = self._format_basic_output(projects)
             
@@ -184,8 +187,8 @@ class LsHandler:
         
         return "\n".join(lines) + "\n"
     
-    def _format_long_output(self, projects: List[Tuple[str, str, Path]]) -> str:
-        """Format long output with additional MODEL and INDEXED columns"""
+    def _format_long_output(self, projects: List[Tuple[str, str, Path]], human_readable: bool = False) -> str:
+        """Format long output with additional MODEL, INDEXED, SYMBOLS, and SIZE columns"""
         if not projects:
             return ""
         
@@ -194,7 +197,9 @@ class LsHandler:
         for name, project_id, path in projects:
             model = self._get_project_model(project_id)
             indexed = self._is_project_indexed(project_id)
-            extended_projects.append((name, project_id, model, indexed, path))
+            symbols = self._get_project_symbols_count(project_id) if indexed else 0
+            size = self._get_project_index_size(project_id, human_readable) if indexed else "0"
+            extended_projects.append((name, project_id, model, indexed, symbols, size, path))
         
         # Calculate column widths
         name_width = max(len(p[0]) for p in extended_projects)
@@ -202,20 +207,24 @@ class LsHandler:
         id_width = 30  # Fixed width for project IDs
         model_width = 10
         indexed_width = 8
+        symbols_width = 8
+        size_width = 12
         
         # Build output
         lines = []
         
         # Header
-        header = f"{'PROJECT NAME':<{name_width}}  {'PROJECT ID':<{id_width}}  {'MODEL':<{model_width}}  {'INDEXED':<{indexed_width}}  PATH"
+        header = f"{'PROJECT NAME':<{name_width}}  {'PROJECT ID':<{id_width}}  {'MODEL':<{model_width}}  {'INDEXED':<{indexed_width}}  {'SYMBOLS':<{symbols_width}}  {'SIZE':<{size_width}}  PATH"
         lines.append(header)
         lines.append("-" * len(header))
         
         # Projects - let paths go as far as needed (left aligned)
-        for name, project_id, model, indexed, path in extended_projects:
+        for name, project_id, model, indexed, symbols, size, path in extended_projects:
             path_str = str(path)
             indexed_str = "yes" if indexed else "no"
-            line = f"{name:<{name_width}}  {project_id:<{id_width}}  {model:<{model_width}}  {indexed_str:<{indexed_width}}  {path_str}"
+            symbols_str = str(symbols) if indexed else "-"
+            size_str = str(size) if indexed else "-"
+            line = f"{name:<{name_width}}  {project_id:<{id_width}}  {model:<{model_width}}  {indexed_str:<{indexed_width}}  {symbols_str:<{symbols_width}}  {size_str:<{size_width}}  {path_str}"
             lines.append(line)
         
         return "\n".join(lines) + "\n"
@@ -247,3 +256,81 @@ class LsHandler:
         # Check if it contains actual data
         sqlite_db = chroma_path / 'chroma.sqlite3'
         return sqlite_db.exists() and sqlite_db.stat().st_size > 0
+    
+    def _get_project_symbols_count(self, project_id: str) -> int:
+        """Get the number of symbols indexed for a project"""
+        try:
+            # Import ChromaDB client
+            import chromadb
+            from chromadb.config import Settings
+            
+            # Get project's ChromaDB path
+            chroma_path = self.data_dir / project_id / 'chroma_db'
+            if not chroma_path.exists():
+                return 0
+            
+            # Connect to ChromaDB
+            client = chromadb.PersistentClient(
+                path=str(chroma_path),
+                settings=Settings(allow_reset=True, anonymized_telemetry=False)
+            )
+            
+            # Get the collection (use default name)
+            collection_name = "code_embeddings"  # Default collection name
+            try:
+                collection = client.get_collection(collection_name)
+                return collection.count()
+            except Exception:
+                # Collection doesn't exist or is empty
+                return 0
+                
+        except Exception as e:
+            logger.warning(f"Failed to get symbols count for {project_id}: {e}")
+            return 0
+    
+    def _get_project_index_size(self, project_id: str, human_readable: bool = False) -> str:
+        """Get the size of the project's index in bytes"""
+        try:
+            chroma_path = self.data_dir / project_id / 'chroma_db'
+            if not chroma_path.exists():
+                return "0"
+            
+            # Calculate directory size
+            total_size = 0
+            for file_path in chroma_path.rglob('*'):
+                if file_path.is_file():
+                    total_size += file_path.stat().st_size
+            
+            if human_readable:
+                return self._format_bytes(total_size)
+            else:
+                return str(total_size)
+                
+        except Exception as e:
+            logger.warning(f"Failed to get index size for {project_id}: {e}")
+            return "0"
+    
+    def _format_bytes(self, size_bytes: int) -> str:
+        """Format bytes in human-readable format (like bintools ls)"""
+        if size_bytes == 0:
+            return "0B"
+        
+        # Define size units
+        units = ['B', 'K', 'M', 'G', 'T', 'P']
+        unit_index = 0
+        size = float(size_bytes)
+        
+        # Convert to appropriate unit
+        while size >= 1024.0 and unit_index < len(units) - 1:
+            size /= 1024.0
+            unit_index += 1
+        
+        # Format with appropriate precision
+        if unit_index == 0:  # Bytes
+            return f"{int(size)}B"
+        elif size >= 100:
+            return f"{int(size)}{units[unit_index]}"
+        elif size >= 10:
+            return f"{size:.1f}{units[unit_index]}"
+        else:
+            return f"{size:.2f}{units[unit_index]}"
