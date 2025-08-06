@@ -352,13 +352,23 @@ class RagexSocketDaemon:
         if self.indexing_queue and len(args) <= 2:  # Simple index command
             # Try to use the queue's request_index method
             success = await self.indexing_queue.request_index("manual", force=force)
-            if not success and not force:
+            if success:
+                # Queue indexing succeeded, return success
+                return {
+                    'success': True,
+                    'stdout': 'Index completed successfully\n',
+                    'stderr': '',
+                    'returncode': 0
+                }
+            elif not force:
+                # Queue indexing failed and no force flag, return error
                 return {
                     'success': False,
                     'stderr': 'Index already in progress or too soon since last index. Use --force to override.\n',
                     'stdout': '',
                     'returncode': 1
                 }
+            # If queue failed but force=True, fall through to subprocess backup
         
         # Fall back to running smart_index.py directly
         import subprocess
