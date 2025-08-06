@@ -68,60 +68,11 @@ jobs:
           VCS_REF=${{ github.sha }}
           VERSION=${{ steps.meta.outputs.version }}
 
-  build-and-push-cuda:
-    name: Build and Push CUDA Image
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch,suffix=-cuda
-          type=ref,event=pr,suffix=-cuda
-          type=semver,pattern={{version}},suffix=-cuda
-          type=semver,pattern={{major}}.{{minor}},suffix=-cuda
-          type=raw,value=latest-cuda,enable={{is_default_branch}}
-          type=raw,value=${{ github.event.inputs.tag }}-cuda,enable=${{ github.event_name == 'workflow_dispatch' }}
-          
-    - name: Build and push CUDA Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: docker/cuda/Dockerfile
-        platforms: linux/amd64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha,scope=cuda
-        cache-to: type=gha,mode=max,scope=cuda
-        build-args: |
-          BUILD_DATE=${{ github.event.repository.updated_at }}
-          VCS_REF=${{ github.sha }}
-          VERSION=${{ steps.meta.outputs.version }}
 
   create-deployment-summary:
     name: Create Deployment Summary
     runs-on: ubuntu-latest
-    needs: [build-and-push-cpu, build-and-push-cuda]
+    needs: [build-and-push-cpu]
     
     steps:
     - name: Create deployment summary
@@ -140,16 +91,10 @@ jobs:
         echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-cpu" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### CUDA Image" >> $GITHUB_STEP_SUMMARY
+        echo "### GPU Support" >> $GITHUB_STEP_SUMMARY
+        echo "- CPU images provide full functionality" >> $GITHUB_STEP_SUMMARY
+        echo "- GPU acceleration available via local CUDA build:" >> $GITHUB_STEP_SUMMARY
         echo '```bash' >> $GITHUB_STEP_SUMMARY
-        echo "# GPU installation (~8GB)" >> $GITHUB_STEP_SUMMARY
-        echo "curl -sSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash -s -- --cuda" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "# Or pull directly:" >> $GITHUB_STEP_SUMMARY
-        echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-cuda" >> $GITHUB_STEP_SUMMARY
+        echo "# Build CUDA image locally" >> $GITHUB_STEP_SUMMARY
+        echo "docker build -t mcp-ragex:cuda -f docker/cuda/Dockerfile ." >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### GPU Acceleration" >> $GITHUB_STEP_SUMMARY
-        echo "✅ Auto-detects NVIDIA GPUs and enables --gpus all" >> $GITHUB_STEP_SUMMARY
-        echo "✅ 7x faster embedding processing with GPU acceleration" >> $GITHUB_STEP_SUMMARY
-        echo "✅ Graceful fallback to CPU mode when GPU unavailable" >> $GITHUB_STEP_SUMMARY

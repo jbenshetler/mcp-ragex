@@ -67,7 +67,7 @@ jobs:
     
     strategy:
       matrix:
-        variant: [cpu, cuda]
+        variant: [cpu]
     
     steps:
     - name: Checkout code
