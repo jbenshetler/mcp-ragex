@@ -178,11 +178,11 @@ except Exception as e:
         }
         ;;
     "mcp"|"--mcp")
-        # MCP mode - absolute silence required
-        # DO NOT setup project data - that would print
-        # DO NOT check workspace - that would print
+        # MCP mode - absolute silence required but need working directory
+        # Set MCP_WORKING_DIR without printing anything
+        export MCP_WORKING_DIR="/workspace"
         
-        # Just run the MCP server with all output suppressed
+        # Just run the MCP server with startup errors logged
         exec python -m src.server "$@" 2>/tmp/ragex-mcp-startup.log
         ;;
     *)

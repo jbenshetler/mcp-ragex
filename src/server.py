@@ -99,12 +99,17 @@ else:
         logger.info(f"Arguments: {sys.argv}")
         logger.info("="*50)
 
+        # For MCP mode, we'll get the workspace directory from client paths parameter
+        # Don't change working directory to avoid breaking Python imports
+
 # Import RipgrepSearcher and constants
 from src.ragex_core.ripgrep_searcher import RipgrepSearcher, ALLOWED_FILE_TYPES, DEFAULT_RESULTS, MAX_RESULTS
 
 
 # Initialize server
 app = Server("ragex-mcp")
+
+# Removed global mcp_config_error - using direct exception handling instead
 
 # Initialize shared pattern matcher
 pattern_matcher = PatternMatcher()
@@ -161,6 +166,49 @@ semantic_searcher = None
 semantic_available = False
 current_project = None
 
+def get_workspace_directory(arguments: dict) -> str:
+    """
+    Determine workspace directory from MCP client paths parameter or environment fallback.
+    
+    Args:
+        arguments: MCP tool call arguments
+        
+    Returns:
+        Resolved workspace directory path
+        
+    Raises:
+        ValueError: If no workspace directory can be determined
+    """
+    logger.info(f"🔍 Debugging paths parameter: {json.dumps(arguments.get('paths'), indent=2)}")
+    
+    if 'paths' in arguments and arguments['paths']:
+        # Use the first path provided by the client as workspace root
+        workspace_dir = str(Path(arguments['paths'][0]).resolve())
+        logger.info(f"📁 Using workspace directory from MCP client: {workspace_dir}")
+        return workspace_dir
+    else:
+        # Try to get workspace directory from environment variable (set by host ragex script)
+        env_workspace = os.environ.get('RAGEX_MCP_WORKSPACE')
+        logger.info(f"🔍 Checking environment RAGEX_MCP_WORKSPACE: {env_workspace}")
+        if env_workspace:
+            # Host workspace path is mounted as /workspace in container
+            workspace_dir = "/workspace"
+            logger.info(f"📁 Using container workspace directory (host path {env_workspace} mounted as /workspace)")
+            return workspace_dir
+        else:
+            # No paths provided and no environment fallback - this is a fatal configuration error
+            logger.error("❌ FATAL: No workspace directory available")
+            logger.error(f"  Available arguments: {json.dumps(list(arguments.keys()))}")
+            logger.error("  MCP client should provide 'paths' parameter OR host should set RAGEX_MCP_WORKSPACE")
+            logger.error("  The MCP server cannot function without a valid workspace path to search")
+            
+            raise ValueError(
+                "MCP server cannot function without workspace directory. "
+                "MCP client should provide 'paths' parameter in search requests OR "
+                "host ragex script should set RAGEX_MCP_WORKSPACE environment variable. "
+                f"Available arguments: {list(arguments.keys())}"
+            )
+
 def initialize_semantic_search():
     """Initialize semantic search with project auto-detection"""
     global semantic_searcher, semantic_available, current_project
@@ -178,14 +226,17 @@ def initialize_semantic_search():
             from .indexer import CodeIndexer
         
         # Auto-detect project from current directory
+        logger.info(f"🔍 Detecting project from CWD: {os.getcwd()}")
         project_info = detect_project_from_cwd()
         if not project_info:
-            logger.warning("✗ No indexed project found in current directory")
-            logger.info("  Run 'ragex index .' first to enable semantic search")
+            logger.error("✗ No indexed project found in current directory")
+            logger.error("  Run 'ragex index .' first to enable semantic search")
             return False
         
         current_project = project_info
         logger.info(f"✓ Detected project: {project_info['project_name']} (ID: {project_info['project_id']})")
+        logger.info(f"  Project data dir: {project_info['project_data_dir']}")
+        logger.info(f"  Workspace path: {project_info.get('workspace_path', 'Not set')}")
         
         # Get ChromaDB path for this project
         chroma_path = get_chroma_db_path(project_info['project_data_dir'])
@@ -523,16 +574,26 @@ async def handle_call_tool(
     if not arguments:
         arguments = {}
     
+    # Log all MCP client connection parameters
+    logger.info(f"🔗 MCP Tool Call: {name}")
+    logger.info(f"  Arguments: {json.dumps(arguments, indent=2)}")
+    logger.info(f"  CWD: {os.getcwd()}")
+    
+    # Error handling is now done directly at the point of failure
+    
     # Handle original search_code tool
     if name == "search_code":
+        # Determine workspace directory from MCP client paths parameter or environment
+        workspace_dir = get_workspace_directory(arguments)
+        
         # Check if this is the new intelligent search (has 'query' param) or old search (has 'pattern' param)
         if 'query' in arguments:
             # New intelligent search
             return await handle_intelligent_search(
                 query=arguments['query'],
+                paths=[workspace_dir],  # Use resolved workspace directory
                 mode=arguments.get('mode', 'auto'),
                 file_types=arguments.get('file_types'),
-                paths=arguments.get('paths'),
                 limit=arguments.get('limit', 50),
                 case_sensitive=arguments.get('case_sensitive', False),
                 include_symbols=arguments.get('include_symbols', False),
@@ -549,9 +610,9 @@ async def handle_call_tool(
             logger.info(f"🔄 CONVERTING pattern search to intelligent search: '{pattern}'")
             return await handle_intelligent_search(
                 query=pattern,
+                paths=[workspace_dir],  # Use resolved workspace directory
                 mode='auto',  # Let auto-detection handle it
                 file_types=arguments.get('file_types'),
-                paths=arguments.get('paths'),
                 limit=arguments.get('limit', 50),
                 case_sensitive=arguments.get('case_sensitive', False),
                 include_symbols=arguments.get('include_symbols', False),
@@ -566,10 +627,13 @@ async def handle_call_tool(
         return await handle_search_capabilities()
     
     elif name == "search_code_simple":
+        # Determine workspace directory from MCP client paths parameter or environment
+        workspace_dir = get_workspace_directory(arguments)
+        
         query = arguments.get('query')
         if not query:
             raise ValueError("Missing query argument")
-        return await handle_simple_search(query)
+        return await handle_intelligent_search(query, paths=[workspace_dir], mode="auto")
     
     elif name == "get_watchdog_status":
         return await handle_watchdog_status()
@@ -584,9 +648,9 @@ async def handle_call_tool(
 # Helper functions for intelligent search
 async def handle_intelligent_search(
     query: str,
+    paths: List[str],  # Required - no dangerous defaulting to cwd
     mode: str = "auto",
     file_types: Optional[List[str]] = None,
-    paths: Optional[List[str]] = None,
     limit: int = 50,
     case_sensitive: bool = False,
     include_symbols: bool = False,  # For compatibility with Claude Code

@@ -795,7 +795,10 @@ Environment Variables:
         
         # Run MCP server inside the container where dependencies are available
         # This takes over stdio for clean JSON communication
+        # Pass the caller's CWD as WORKSPACE_PATH so MCP server can locate projects
+        caller_cwd = os.getcwd()
         docker_cmd = ['docker', 'exec', '-i',  # -i for interactive, no -t for MCP stdio
+                      '-e', f'RAGEX_MCP_WORKSPACE={caller_cwd}',  # Pass caller's CWD to container
                       self.daemon_container_name,
                       'python', '-m', 'src.socket_client', 'mcp']
         
