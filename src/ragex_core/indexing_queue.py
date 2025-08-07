@@ -389,6 +389,7 @@ class IndexingQueue:
                                        name: str = None,
                                        path: str = None) -> Dict[str, Any]:
         """Enhanced incremental indexing with full parameter support"""
+        logger.debug(f"Attempting import at _handle_incremental_index")        
         try:
             # Import indexing components
             from .project_utils import (
@@ -401,7 +402,9 @@ class IndexingQueue:
                 is_project_name_unique,
                 find_existing_project_root
             )
+            logger.debug(f"Attempting import at _handle_incremental_index of CodeIndexer") 
             from ..indexer import CodeIndexer
+            logger.debug(f"Attempting import at _handle_incremental_index of PatternMatcher") 
             from .pattern_matcher import PatternMatcher
             
             # Get user ID from environment
@@ -442,6 +445,7 @@ class IndexingQueue:
                         logger.info("📦 Clearing old index and re-scanning...")
                     
                     # Clear the entire ChromaDB for this project
+                    logger.debug(f"Attempting import at _handle_incremental_index of CodeVectorStore") 
                     from .vector_store import CodeVectorStore
                     chroma_path = get_chroma_db_path(project_data_dir)
                     if chroma_path.exists():

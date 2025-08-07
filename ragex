@@ -319,8 +319,6 @@ class RagexCLI:
         search_parser.add_argument('query', help='Search query')
         search_parser.add_argument('--limit', type=int, default=50,
             help='Maximum results (default: 50)')
-        search_parser.add_argument('--symbol', action='store_true',
-            help='Symbol search mode')
         search_parser.add_argument('--regex', action='store_true',
             help='Regex search mode')
         search_parser.add_argument('--json', action='store_true',
@@ -501,8 +499,6 @@ Environment Variables:
         
         if args.limit != 50:
             cmd_args.extend(['--limit', str(args.limit)])
-        if args.symbol:
-            cmd_args.append('--symbol')
         if args.regex:
             cmd_args.append('--regex')
         if args.json:
@@ -797,10 +793,19 @@ Environment Variables:
         # This takes over stdio for clean JSON communication
         # Pass the caller's CWD as WORKSPACE_PATH so MCP server can locate projects
         caller_cwd = os.getcwd()
+        
+        # Log to syslog what we're passing to container
+        import syslog
+        syslog.openlog("ragex-host", syslog.LOG_PID)
+        syslog.syslog(syslog.LOG_INFO, f"MCP: Starting MCP server with RAGEX_MCP_WORKSPACE={caller_cwd}")
+        
         docker_cmd = ['docker', 'exec', '-i',  # -i for interactive, no -t for MCP stdio
                       '-e', f'RAGEX_MCP_WORKSPACE={caller_cwd}',  # Pass caller's CWD to container
                       self.daemon_container_name,
                       'python', '-m', 'src.socket_client', 'mcp']
+        
+        syslog.syslog(syslog.LOG_INFO, f"MCP: Executing docker command: {' '.join(docker_cmd[:6])} [...]")
+        syslog.closelog()
         
         # Run the MCP server command - it will handle all stdio from here
         # Pass through stdin/stdout/stderr for proper MCP communication

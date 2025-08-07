@@ -59,6 +59,10 @@ When modifying the server:
 - Prefer ragex semantic search for searching, falling back to ragex regex search, and only using the built-in search if the earlier searches fail.
 - Note: `ragex` is now the Python version. The bash version is available as `ragex.sh` for testing.
 
+## Command Warnings
+
+- Do not use `-f` with `ragex log` because it runs forever.
+
 ## Docker Debugging Commands
 
 When debugging Docker containers, use the correct syntax for `docker logs`:

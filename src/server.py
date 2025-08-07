@@ -3,6 +3,20 @@
 MCP Code Search Server - A secure ripgrep-based code search server
 """
 
+# Early import debugging - log to syslog before any complex imports that could fail
+try:
+    import syslog
+    import os
+    import sys
+    syslog.openlog("ragex-mcp-debug", syslog.LOG_PID)
+    syslog.syslog(syslog.LOG_INFO, f"MCP: server.py starting, Python path: {sys.path[:3]}")
+    syslog.syslog(syslog.LOG_INFO, f"MCP: Working directory: {os.getcwd()}")
+    syslog.syslog(syslog.LOG_INFO, f"MCP: RAGEX_MCP_WORKSPACE: {os.environ.get('RAGEX_MCP_WORKSPACE')}")
+    syslog.closelog()
+except Exception as e:
+    # If syslog fails, try stderr (though it might be redirected)
+    print(f"Early debug failed: {e}", file=sys.stderr)
+
 import asyncio
 import json
 import logging
@@ -16,57 +30,90 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
-import mcp.server.stdio
-import mcp.types as types
+try:
+    from mcp.server import Server, NotificationOptions
+    from mcp.server.models import InitializationOptions
+    import mcp.server.stdio
+    import mcp.types as types
+    import syslog
+    syslog.openlog("ragex-mcp-debug", syslog.LOG_PID)
+    syslog.syslog(syslog.LOG_INFO, "MCP: MCP imports successful")
+    syslog.syslog(syslog.LOG_INFO, "🚀 MCP SERVER UPDATED CODE VERSION - DEBUG ENABLED 🚀")
+    syslog.closelog()
+except Exception as e:
+    import syslog
+    syslog.openlog("ragex-mcp-debug", syslog.LOG_PID)
+    syslog.syslog(syslog.LOG_ERR, f"MCP: MCP import failed: {e}")
+    syslog.closelog()
+    raise
 
 # Import Tree-sitter enhancer and utilities
 try:
+    import syslog
+    syslog.openlog("ragex-mcp-debug", syslog.LOG_PID)
+    syslog.syslog(syslog.LOG_INFO, "MCP: Starting src imports")
+    
     from src.tree_sitter_enhancer import TreeSitterEnhancer
     from src.ragex_core.pattern_matcher import PatternMatcher
     from src.ragex_core.project_detection import detect_project_from_cwd
     from src.ragex_core.project_utils import get_chroma_db_path
     from src.ragex_core.reranker import FeatureReranker
+    from src.ragex_core.path_mapping import host_to_container_path
+    from src.ragex_core.semantic_searcher import SemanticSearcher
+    from src.ragex_core.regex_searcher import RegexSearcher
     from src.utils import configure_logging, get_logger
     from src.watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
-except ImportError:
-    from .tree_sitter_enhancer import TreeSitterEnhancer
-    from .ragex_core.pattern_matcher import PatternMatcher
-    from .ragex_core.project_detection import detect_project_from_cwd
-    from .ragex_core.project_utils import get_chroma_db_path
-    from .ragex_core.reranker import FeatureReranker
-    from .utils import configure_logging, get_logger
+    
+    syslog.syslog(syslog.LOG_INFO, "MCP: src imports successful")
+    syslog.closelog()
+except ImportError as e:
+    import syslog
+    syslog.openlog("ragex-mcp-debug", syslog.LOG_PID)
+    syslog.syslog(syslog.LOG_INFO, f"MCP: src import failed, trying relative imports: {e}")
+    syslog.closelog()
+    
     try:
-        from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
-    except ImportError:
-        WATCHDOG_AVAILABLE = False
-        WatchdogMonitor = None
+        from .tree_sitter_enhancer import TreeSitterEnhancer
+        from .ragex_core.pattern_matcher import PatternMatcher
+        from .ragex_core.project_detection import detect_project_from_cwd
+        from .ragex_core.project_utils import get_chroma_db_path
+        from .ragex_core.reranker import FeatureReranker
+        from .ragex_core.path_mapping import host_to_container_path
+        from .ragex_core.semantic_searcher import SemanticSearcher
+        from .ragex_core.regex_searcher import RegexSearcher
+        from .utils import configure_logging, get_logger
+        try:
+            from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
+        except ImportError:
+            WATCHDOG_AVAILABLE = False
+            WatchdogMonitor = None
+            
+        syslog.openlog("ragex-mcp-debug", syslog.LOG_PID)
+        syslog.syslog(syslog.LOG_INFO, "MCP: relative imports successful")
+        syslog.closelog()
+    except ImportError as e2:
+        syslog.openlog("ragex-mcp-debug", syslog.LOG_PID)
+        syslog.syslog(syslog.LOG_ERR, f"MCP: All imports failed: {e2}")
+        syslog.closelog()
+        raise
 
 # Check if we're in MCP mode (--mcp flag)
 is_mcp_mode = '--mcp' in sys.argv
 
 if is_mcp_mode:
-    # CRITICAL: For MCP mode, configure logging to ONLY go to file
-    # NEVER print to stdout/stderr as that would corrupt the JSON protocol
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('/tmp/ragex-mcp.log', mode='a'),
-        ],
-        force=True  # Override any existing configuration
-    )
+    # Configure consistent logging but redirect stderr to protect MCP JSON protocol
+    # Use standard logging infrastructure for consistency with daemon logs
+    configure_logging()
+    logger = get_logger("ragex-mcp")
     
-    # Suppress ALL other loggers that might print
-    for logger_name in ['chromadb', 'sentence_transformers', 'transformers', 'torch', 'urllib3']:
-        logging.getLogger(logger_name).setLevel(logging.ERROR)
-        logging.getLogger(logger_name).handlers = []
+    # Configure MCP server logger to write to container logs like socket daemon
+    # Add additional handler to ensure MCP server logs appear in docker logs
+    import logging
     
-    # Get logger for this module
-    logger = logging.getLogger("ragex-mcp")
+    # Save original stderr before it gets redirected
+    _original_stderr = sys.stderr
     
-    # Redirect stderr to prevent ANY output except our JSON
+    # Redirect stderr to prevent ANY output except our JSON protocol
     class SilentIO:
         def write(self, text):
             if text and text != '\n':
@@ -76,9 +123,30 @@ if is_mcp_mode:
         def isatty(self):
             return False
     
-    # Save original stderr for emergencies
+    # Save original stderr for emergencies  
     _original_stderr = sys.stderr
     sys.stderr = SilentIO()
+    
+    # Now configure MCP server loggers to write to original stderr (docker logs)
+    # Create a handler that writes to the original stderr (which goes to docker logs)
+    stderr_handler = logging.StreamHandler(_original_stderr)
+    stderr_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+    stderr_handler.setLevel(logging.INFO)
+    
+    # Add this handler to the MCP logger and related loggers
+    mcp_loggers = [
+        "ragex-mcp", 
+        "regex-searcher", 
+        "symbol-searcher", 
+        "semantic-searcher"
+    ]
+    
+    for logger_name in mcp_loggers:
+        target_logger = logging.getLogger(logger_name)
+        target_logger.addHandler(stderr_handler)
+        target_logger.setLevel(logging.INFO)
 else:
     # Configure logging based on environment
     # Only configure logging if we're the main process, not when imported by socket daemon
@@ -161,10 +229,52 @@ except Exception as e:
 reranker = FeatureReranker()
 logger.info("Feature reranker initialized")
 
-# Initialize semantic search components
+# Initialize all search components (eager initialization)
 semantic_searcher = None
 semantic_available = False
+regex_searcher = None
+regex_available = False
 current_project = None
+
+def translate_mcp_paths_to_container(paths: Optional[List[str]]) -> Optional[List[str]]:
+    """
+    Translate host paths to container paths for MCP mode.
+    
+    Args:
+        paths: List of host paths from MCP client
+        
+    Returns:
+        List of container paths, or None if paths is None
+    """
+    if not paths:
+        return paths
+    
+    # Get the host workspace directory (MCP uses RAGEX_MCP_WORKSPACE)
+    mcp_workspace = os.environ.get('RAGEX_MCP_WORKSPACE')
+    
+    if not mcp_workspace:
+        # Not in MCP mode, return paths unchanged
+        logger.debug("No RAGEX_MCP_WORKSPACE set, skipping path translation")
+        return paths
+    
+    try:
+        # Use the existing host_to_container_path function, but pass the MCP workspace
+        translated_paths = []
+        for path in paths:
+            container_path = host_to_container_path(path, workspace_host=mcp_workspace)
+            translated_paths.append(container_path)
+            logger.debug(f"Path translation: {path} → {container_path}")
+        
+        logger.info(f"Translated {len(paths)} host paths to container paths")
+        return translated_paths
+        
+    except Exception as e:
+        logger.error(f"Failed to translate paths: {e}")
+        logger.info(f"Host paths: {paths}")
+        logger.info(f"MCP workspace: {mcp_workspace}")
+        # Return original paths rather than failing completely
+        return paths
+
 
 def get_workspace_directory(arguments: dict) -> str:
     """
@@ -179,21 +289,31 @@ def get_workspace_directory(arguments: dict) -> str:
     Raises:
         ValueError: If no workspace directory can be determined
     """
+    import syslog
+    syslog.openlog("ragex-mcp", syslog.LOG_PID)
+    
     logger.info(f"🔍 Debugging paths parameter: {json.dumps(arguments.get('paths'), indent=2)}")
+    syslog.syslog(syslog.LOG_INFO, f"MCP: get_workspace_directory called with paths={arguments.get('paths')}")
     
     if 'paths' in arguments and arguments['paths']:
         # Use the first path provided by the client as workspace root
         workspace_dir = str(Path(arguments['paths'][0]).resolve())
         logger.info(f"📁 Using workspace directory from MCP client: {workspace_dir}")
+        syslog.syslog(syslog.LOG_INFO, f"MCP: Using client paths: {workspace_dir}")
+        syslog.closelog()
         return workspace_dir
     else:
         # Try to get workspace directory from environment variable (set by host ragex script)
         env_workspace = os.environ.get('RAGEX_MCP_WORKSPACE')
         logger.info(f"🔍 Checking environment RAGEX_MCP_WORKSPACE: {env_workspace}")
+        syslog.syslog(syslog.LOG_INFO, f"MCP: Environment RAGEX_MCP_WORKSPACE={env_workspace}")
+        
         if env_workspace:
             # Host workspace path is mounted as /workspace in container
             workspace_dir = "/workspace"
             logger.info(f"📁 Using container workspace directory (host path {env_workspace} mounted as /workspace)")
+            syslog.syslog(syslog.LOG_INFO, f"MCP: Using env workspace: {env_workspace} → {workspace_dir}")
+            syslog.closelog()
             return workspace_dir
         else:
             # No paths provided and no environment fallback - this is a fatal configuration error
@@ -202,6 +322,9 @@ def get_workspace_directory(arguments: dict) -> str:
             logger.error("  MCP client should provide 'paths' parameter OR host should set RAGEX_MCP_WORKSPACE")
             logger.error("  The MCP server cannot function without a valid workspace path to search")
             
+            syslog.syslog(syslog.LOG_ERR, f"MCP: FATAL - No workspace directory, args={list(arguments.keys())}")
+            syslog.closelog()
+            
             raise ValueError(
                 "MCP server cannot function without workspace directory. "
                 "MCP client should provide 'paths' parameter in search requests OR "
@@ -209,34 +332,80 @@ def get_workspace_directory(arguments: dict) -> str:
                 f"Available arguments: {list(arguments.keys())}"
             )
 
-def initialize_semantic_search():
-    """Initialize semantic search with project auto-detection"""
-    global semantic_searcher, semantic_available, current_project
+def initialize_all_searchers():
+    """Initialize all searchers with project auto-detection (eager initialization)"""
+    global semantic_searcher, semantic_available, regex_searcher, regex_available, current_project
+    
+    # Add high-visibility startup logging
+    logger.info("🚀 MCP SERVER: Starting initialization of unified searcher architecture")
+    
+    # Also write to a debug file to ensure we can see this
+    try:
+        with open("/tmp/mcp_debug.log", "a") as f:
+            f.write(f"{datetime.now().isoformat()} - MCP SERVER: Starting initialization of unified searcher architecture\n")
+            f.flush()
+    except Exception:
+        pass
     
     try:
         # Import semantic search modules
         try:
-            from src.embedding_manager import EmbeddingManager
-            from src.vector_store import CodeVectorStore
+            from src.ragex_core.embedding_manager import EmbeddingManager
+            from src.ragex_core.vector_store import CodeVectorStore
             from src.indexer import CodeIndexer
         except ImportError:
             # Try relative imports as fallback
-            from .embedding_manager import EmbeddingManager
-            from .vector_store import CodeVectorStore
+            from .ragex_core.embedding_manager import EmbeddingManager
+            from .ragex_core.vector_store import CodeVectorStore
             from .indexer import CodeIndexer
         
-        # Auto-detect project from current directory
-        logger.info(f"🔍 Detecting project from CWD: {os.getcwd()}")
-        project_info = detect_project_from_cwd()
+        # Auto-detect project from workspace directory (MCP environment variable) or current directory
+        workspace_dir = os.environ.get('RAGEX_MCP_WORKSPACE')
+        
+        # Debug log to syslog what we received
+        import syslog
+        syslog.openlog("ragex-mcp", syslog.LOG_PID)
+        syslog.syslog(syslog.LOG_INFO, f"MCP: initialize_semantic_search called, RAGEX_MCP_WORKSPACE={workspace_dir}")
+        
+        if workspace_dir:
+            # Use the workspace directory passed by host ragex script  
+            # Since we're in container, translate to /workspace mount point
+            search_dir = "/workspace"
+            logger.info(f"🔍 Detecting project from MCP workspace: {workspace_dir} → {search_dir}")
+            syslog.syslog(syslog.LOG_INFO, f"MCP: Using workspace dir {workspace_dir} → {search_dir}")
+        else:
+            # Fallback to current working directory
+            search_dir = os.getcwd()
+            logger.info(f"🔍 Detecting project from CWD: {search_dir}")
+            syslog.syslog(syslog.LOG_INFO, f"MCP: No workspace dir, using CWD: {search_dir}")
+        
+        # Temporarily change directory for project detection
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(search_dir)
+            project_info = detect_project_from_cwd()
+            
+            if project_info:
+                syslog.syslog(syslog.LOG_INFO, f"MCP: Project detected: {project_info['project_name']}")
+            else:
+                syslog.syslog(syslog.LOG_WARNING, f"MCP: No project found in {search_dir}")
+        finally:
+            os.chdir(original_cwd)
+            syslog.closelog()
         if not project_info:
             logger.error("✗ No indexed project found in current directory")
             logger.error("  Run 'ragex index .' first to enable semantic search")
             return False
         
         current_project = project_info
+        
+        # Set workspace path to /workspace (container mount point) when using MCP
+        if workspace_dir:
+            current_project['workspace_path'] = '/workspace'
+        
         logger.info(f"✓ Detected project: {project_info['project_name']} (ID: {project_info['project_id']})")
         logger.info(f"  Project data dir: {project_info['project_data_dir']}")
-        logger.info(f"  Workspace path: {project_info.get('workspace_path', 'Not set')}")
+        logger.info(f"  Workspace path: {current_project.get('workspace_path', 'Not set')}")
         
         # Get ChromaDB path for this project
         chroma_path = get_chroma_db_path(project_info['project_data_dir'])
@@ -246,29 +415,49 @@ def initialize_semantic_search():
             logger.info("  Run: ragex index .")
             return False
         
+        # Initialize all three searcher types with project context
+        workspace_path = current_project['workspace_path']
+        logger.info(f"🔧 Initializing all searchers with project context:")
+        logger.info(f"  Project: {current_project['project_name']} (ID: {current_project['project_id']})")
+        logger.info(f"  Workspace: {workspace_path}")
+        logger.info(f"  Data dir: {current_project['project_data_dir']}")
+        
+        # Initialize semantic searcher
         try:
-            vector_store = CodeVectorStore(persist_directory=str(chroma_path))
-            stats = vector_store.get_statistics()
-            logger.info(f"ChromaDB stats: {stats}")
-            
-            if stats['total_symbols'] > 0:
-                embedder = EmbeddingManager()
-                semantic_searcher = {
-                    'embedder': embedder,
-                    'vector_store': vector_store,
-                    'indexer': CodeIndexer()
-                }
-                semantic_available = True
-                logger.info(f"✓ Semantic search ENABLED with {stats['total_symbols']} symbols from {stats['unique_files']} files")
-                logger.info(f"  Languages: {', '.join(stats.get('languages', {}).keys())}")
-                return True
-            else:
-                logger.warning("✗ Semantic index exists but is EMPTY")
-                logger.info("  Run: ragex index .")
-                return False
+            semantic_searcher = SemanticSearcher(current_project, workspace_path)
+            semantic_available = True
+            logger.info("✓ SemanticSearcher initialized successfully")
+            print("✓ MCP SERVER: SemanticSearcher initialized successfully", flush=True)
         except Exception as e:
-            logger.error(f"✗ Failed to load ChromaDB from {chroma_path}: {e}")
-            logger.exception("Full traceback:")
+            logger.error(f"✗ Failed to initialize SemanticSearcher: {e}")
+            logger.exception("SemanticSearcher error:")
+            print(f"✗ MCP SERVER: Failed to initialize SemanticSearcher: {e}", flush=True)
+            semantic_available = False
+        
+        # Initialize regex searcher
+        try:
+            regex_searcher = RegexSearcher(current_project, workspace_path)
+            regex_available = True
+            logger.info("✓ RegexSearcher initialized successfully")
+        except Exception as e:
+            logger.error(f"✗ Failed to initialize RegexSearcher: {e}")
+            logger.exception("RegexSearcher error:")
+            regex_available = False
+        
+        # Log summary
+        available_searchers = []
+        if semantic_available:
+            available_searchers.append("semantic")
+        if symbol_available:
+            available_searchers.append("symbol") 
+        if regex_available:
+            available_searchers.append("regex")
+        
+        if available_searchers:
+            logger.info(f"🎉 Searcher initialization complete! Available: {', '.join(available_searchers)}")
+            return True
+        else:
+            logger.error("❌ No searchers could be initialized")
             return False
             
     except ImportError as e:
@@ -278,8 +467,8 @@ def initialize_semantic_search():
         logger.warning(f"Failed to initialize semantic search: {e}")
         return False
 
-# Try to initialize semantic search on startup
-initialize_semantic_search()
+# Initialize all searchers on startup
+initialize_all_searchers()
 
 
 # Search mode detection and enhancement
@@ -327,8 +516,8 @@ def detect_query_type(query: str) -> str:
     if any(re.search(pattern, query) for pattern in regex_indicators):
         return "regex"
     
-    # Check for symbol-like queries
-    symbol_indicators = [
+    # Check for simple identifier-like queries - treat as semantic now
+    simple_identifier_indicators = [
         r'^[a-zA-Z_][a-zA-Z0-9_]*$',  # Simple identifier
         r'^class\s+\w+',              # "class MyClass"
         r'^def\s+\w+',                # "def function_name"
@@ -336,8 +525,9 @@ def detect_query_type(query: str) -> str:
         r'^\w+\s*\(',                 # "funcName("
     ]
     
-    if any(re.search(pattern, query, re.IGNORECASE) for pattern in symbol_indicators):
-        return "symbol"
+    # These used to be symbol searches, now route to semantic
+    if any(re.search(pattern, query, re.IGNORECASE) for pattern in simple_identifier_indicators):
+        return "semantic"
     
     # Check for natural language queries
     natural_language_indicators = [
@@ -386,14 +576,6 @@ def enhance_query_for_mode(query: str, mode: str) -> str:
         
         return enhanced
     
-    elif mode == "symbol":
-        # Clean up symbol queries
-        # Remove common prefixes
-        cleaned = re.sub(r'^(def|class|function)\s+', '', query, flags=re.IGNORECASE)
-        # Remove parentheses
-        cleaned = re.sub(r'\s*\(.*\)', '', cleaned)
-        return cleaned.strip()
-    
     elif mode == "regex":
         # Escape special chars if it doesn't look like intentional regex
         if not any(char in query for char in r'.*+?[]{}()^$|\\'):
@@ -407,19 +589,12 @@ def get_fallback_chain(preferred_mode: str, query: str) -> List[str]:
     """Get intelligent fallback chain based on preferred mode"""
     
     if preferred_mode == "semantic":
-        # Semantic failed -> try symbol if looks like identifier, else regex
-        if query.replace("_", "").isalnum():
-            return ["symbol", "regex"]
-        else:
-            return ["regex", "symbol"]
-    
-    elif preferred_mode == "symbol":
-        # Symbol failed -> try regex (maybe partial match), then semantic
-        return ["regex", "semantic"]
+        # Semantic failed -> try regex
+        return ["regex"]
     
     elif preferred_mode == "regex":
         # Regex failed -> try semantic (maybe they meant natural language)
-        return ["semantic", "symbol"]
+        return ["semantic"]
     
     return []
 
@@ -434,18 +609,9 @@ def generate_search_guidance(query: str, mode: str) -> Dict:
     
     if mode == "semantic":
         guidance["suggestions"] = [
-            f"Try symbol mode if you know specific names: search_code('{query.split()[0] if query.split() else query}', mode='symbol')",
             f"Try regex mode for patterns: search_code('{query}.*', mode='regex')",
             "Make query more specific: 'functions that handle file upload validation'",
             "Try broader terms: 'file processing code' or 'queue management'"
-        ]
-    
-    elif mode == "symbol":
-        guidance["suggestions"] = [
-            f"Try semantic mode: search_code('functions related to {query}', mode='semantic')",
-            f"Try partial regex: search_code('{query}.*', mode='regex')",
-            "Check spelling and capitalization",
-            "Try variations: CamelCase, snake_case, kebab-case"
         ]
     
     elif mode == "regex":
@@ -475,8 +641,8 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "mode": {
                         "type": "string",
-                        "enum": ["auto", "semantic", "symbol", "regex"],
-                        "description": "Search mode - 'auto' (default): automatically detects best mode. 'semantic': natural language search for concepts/functionality. 'symbol': exact function/class/variable names. 'regex': pattern matching with regular expressions",
+                        "enum": ["auto", "semantic", "regex"],
+                        "description": "Search mode - 'auto' (default): automatically detects best mode. 'semantic': natural language search for concepts/functionality. 'regex': pattern matching with regular expressions",
                         "default": "auto"
                     },
                     "file_types": {
@@ -661,6 +827,24 @@ async def handle_intelligent_search(
     """
     Intelligent code search with automatic mode detection and fallback.
     """
+    # Add search execution logging
+    logger.info(f"🔍 MCP SEARCH STARTED: query='{query}', mode='{mode}', limit={limit}")
+    
+    # Also write to debug file
+    try:
+        with open("/tmp/mcp_debug.log", "a") as f:
+            f.write(f"{datetime.now().isoformat()} - MCP SEARCH STARTED: query='{query}', mode='{mode}', limit={limit}\n")
+            f.flush()
+    except Exception:
+        pass
+    
+    # Translate host paths to container paths for MCP mode
+    container_paths = translate_mcp_paths_to_container(paths)
+    if container_paths != paths:
+        logger.info(f"🔄 Translated {len(paths)} host paths to container paths")
+        logger.info(f"  Original paths: {paths}")
+        logger.info(f"  Translated paths: {container_paths}")
+        paths = container_paths
     
     # Detect or validate mode
     if mode == "auto":
@@ -670,30 +854,37 @@ async def handle_intelligent_search(
         detected_mode = mode
         logger.info(f"🔍 EXPLICIT → {detected_mode.upper()} search: '{query}'")
     
-    # Check if semantic search is available
+    # Check searcher availability for requested mode
     if detected_mode == "semantic" and not semantic_available:
-        logger.warning("🧠 SEMANTIC search requested but not available → falling back to REGEX")
-        detected_mode = "regex"
+        error_msg = "Semantic search requested but not available. Ensure project is indexed and ChromaDB is accessible."
+        logger.error(f"❌ SEMANTIC search failed: {error_msg}")
+        raise ValueError(f"Semantic search unavailable: {error_msg}")
+    elif detected_mode == "regex" and not regex_available:
+        error_msg = "Regex search requested but not available. Check ripgrep and workspace initialization."
+        logger.error(f"❌ REGEX search failed: {error_msg}")
+        raise ValueError(f"Regex search unavailable: {error_msg}")
     
     # Enhance query for the selected mode
     enhanced_query = enhance_query_for_mode(query, detected_mode)
     if enhanced_query != query:
         logger.info(f"Enhanced query: '{query}' → '{enhanced_query}'")
     
-    # Execute search based on mode
+    # Execute search using new searcher instances
     if detected_mode == "semantic":
-        logger.info(f"🧠 EXECUTING semantic search with embeddings")
-        result = await execute_semantic_search(enhanced_query, file_types, paths, limit, similarity_threshold)
-    elif detected_mode == "symbol":
-        logger.info(f"🎯 EXECUTING symbol search with Tree-sitter")
-        result = await execute_symbol_search(enhanced_query, file_types, paths, limit)
-    else:  # regex mode
-        logger.info(f"⚡ EXECUTING regex search with ripgrep")
-        result = await searcher.search(
-            pattern=enhanced_query,
-            file_types=file_types,
-            paths=paths,
+        logger.info(f"🧠 EXECUTING semantic search with new SemanticSearcher")
+        result = await semantic_searcher.search(
+            query=enhanced_query,
             limit=limit,
+            file_types=file_types,
+            similarity_threshold=similarity_threshold
+        )
+    else:  # regex mode
+        logger.info(f"⚡ EXECUTING regex search with new RegexSearcher")
+        result = await regex_searcher.search(
+            query=enhanced_query,
+            limit=limit,
+            paths=paths,  # RegexSearcher handles string paths internally
+            file_types=file_types,
             case_sensitive=case_sensitive
         )
     
@@ -706,6 +897,11 @@ async def handle_intelligent_search(
         "search_mode": detected_mode,
         "fallback_used": False
     })
+    
+    # Log search completion
+    total_matches = result.get("total_matches", 0)
+    success = result.get("success", False)
+    logger.info(f"✅ MCP SEARCH COMPLETED: {detected_mode} search for '{query}' → {total_matches} matches (success={success})")
     
     # Return JSON result for MCP clients
     # This allows the client to access fields like 'total_matches' directly
@@ -956,10 +1152,12 @@ async def execute_symbol_search(query: str, file_types: Optional[List[str]], pat
     """Execute symbol search using Tree-sitter"""
     # For now, use enhanced ripgrep search
     # This could be enhanced to use the Tree-sitter enhancer directly
+    # Convert string paths to Path objects for ripgrep searcher
+    path_objects = [Path(p) for p in paths] if paths else None
     return await searcher.search(
         pattern=query,
         file_types=file_types,
-        paths=paths,
+        paths=path_objects,
         limit=limit,
         case_sensitive=False
     )

@@ -14,15 +14,20 @@ import warnings
 # Suppress the specific FutureWarning about encoder_attention_mask
 warnings.filterwarnings("ignore", message=".*encoder_attention_mask.*is deprecated.*", category=FutureWarning)
 
+logger = logging.getLogger("code-indexer")
+
+logger.info("indexer attempting import of TreeSitterEnhancer")
 from src.tree_sitter_enhancer import TreeSitterEnhancer
+logger.info("indexer attempting import of EmbeddingManager")
 from src.ragex_core.embedding_manager import EmbeddingManager
+logger.info("indexer attempting import of CodeVectorStore")
 from src.ragex_core.vector_store import CodeVectorStore
+logger.info("indexer attempting import of PatternMatcher")
 from src.ragex_core.pattern_matcher import PatternMatcher
 from src.ragex_core.path_mapping import container_to_host_path, is_container_path
 
-logger = logging.getLogger("code-indexer")
 
-
+logger.info("indexer attempting import of EmbeddingConfig")
 from src.ragex_core.embedding_config import EmbeddingConfig
 
 

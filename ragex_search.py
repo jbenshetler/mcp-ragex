@@ -149,21 +149,6 @@ class SearchClient:
         
         return matches
     
-    async def search_symbol(self, query: str, limit: int = 50):
-        """Perform symbol search using ripgrep with symbol-friendly patterns"""
-        # Search for the symbol as a whole word
-        pattern = f"\\b{re.escape(query)}\\b"
-        
-        result = await self.searcher.search(
-            pattern=pattern,
-            limit=limit,
-            case_sensitive=False
-        )
-        
-        if result.get("success") and result.get("matches"):
-            return result["matches"]
-        return []
-    
     async def search_regex(self, pattern: str, limit: int = 50):
         """Perform regex search using ripgrep"""
         result = await self.searcher.search(
@@ -267,7 +252,7 @@ class SearchClient:
             if (before_context > 0 or after_context > 0) and match != matches[-1]:
                 print("--")
     
-    async def run_search(self, query: str, symbol_search: bool = False, regex_search: bool = False,
+    async def run_search(self, query: str, regex_search: bool = False,
                         limit: int = 50, before_context: int = 0, after_context: int = 0,
                         brief: bool = False) -> List[Dict]:
         """
@@ -275,7 +260,6 @@ class SearchClient:
         
         Args:
             query: The search query
-            symbol_search: Use symbol search mode
             regex_search: Use regex search mode
             limit: Maximum number of results
             before_context: Lines to show before matches
@@ -286,9 +270,7 @@ class SearchClient:
             List of matches
         """
         # Determine search mode
-        if symbol_search:
-            mode = "symbol"
-        elif regex_search:
+        if regex_search:
             mode = "regex"
         else:
             mode = "semantic"
@@ -299,8 +281,6 @@ class SearchClient:
         matches = []
         if mode == "semantic":
             matches = await self.search_semantic(query, limit)
-        elif mode == "symbol":
-            matches = await self.search_symbol(query, limit)
         elif mode == "regex":
             matches = await self.search_regex(query, limit)
         
@@ -319,7 +299,6 @@ class SearchClient:
 async def main():
     parser = argparse.ArgumentParser(description='Search codebase with grep-like output')
     parser.add_argument('query', help='Search query')
-    parser.add_argument('--symbol', action='store_true', help='Symbol search mode (literal symbol names)')
     parser.add_argument('--regex', action='store_true', help='Regex search mode')
     parser.add_argument('-A', '--after-context', type=int, default=0, help='Lines after match')
     parser.add_argument('-B', '--before-context', type=int, default=0, help='Lines before match')
@@ -338,7 +317,6 @@ async def main():
     # Run search using the new method
     await client.run_search(
         query=args.query,
-        symbol_search=args.symbol,
         regex_search=args.regex,
         limit=args.limit,
         before_context=args.before_context,

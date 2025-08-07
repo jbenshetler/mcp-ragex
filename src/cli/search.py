@@ -144,24 +144,6 @@ class SearchClient:
         
         return matches
     
-    async def search_symbol(self, query: str, limit: int = 50) -> List[Dict]:
-        """Perform symbol search using ripgrep"""
-        import re
-        pattern = f"\\b{re.escape(query)}\\b"
-        
-        # Always use /workspace in container
-        workspace_path = Path('/workspace')
-        result = await self.searcher.search(
-            pattern=pattern,
-            paths=[workspace_path],
-            limit=limit,
-            case_sensitive=False
-        )
-        
-        if result.get("success") and result.get("matches"):
-            return result["matches"]
-        return []
-    
     async def search_regex(self, pattern: str, limit: int = 50) -> List[Dict]:
         """Perform regex search using ripgrep"""
         # Always use /workspace in container
@@ -219,9 +201,7 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
         client = search_client
     
     # Determine search mode
-    if args.symbol:
-        mode = "symbol"
-    elif args.regex:
+    if args.regex:
         mode = "regex"
     else:
         mode = "semantic"
@@ -234,8 +214,6 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
     try:
         if mode == "semantic":
             matches = await client.search_semantic(args.query, args.limit)
-        elif mode == "symbol":
-            matches = await client.search_symbol(args.query, args.limit)
         elif mode == "regex":
             matches = await client.search_regex(args.query, args.limit)
     except PathMappingError as e:
@@ -288,7 +266,6 @@ def parse_args(args: List[str]) -> argparse.Namespace:
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Search codebase')
     parser.add_argument('query', help='Search query')
-    parser.add_argument('--symbol', action='store_true', help='Symbol search mode')
     parser.add_argument('--regex', action='store_true', help='Regex search mode')
     parser.add_argument('-A', '--after-context', type=int, default=0, help='Lines after match')
     parser.add_argument('-B', '--before-context', type=int, default=0, help='Lines before match')

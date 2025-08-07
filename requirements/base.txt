@@ -5,6 +5,16 @@ aiofiles
 pathspec>=0.11.0
 watchdog>=3.0.0
 
+# Semantic search dependencies
+sentence-transformers==2.2.2  # Use 2.2.2 instead
+transformers==4.36.2  # Use 4.36.2 for better compatibility
+tokenizers==0.15.0
+safetensors==0.4.1  # Add this
+huggingface-hub==0.19.4
+chromadb>=0.4.0
+tqdm>=4.65.0
+numpy>=1.23.0,<1.24.0
+
 # Tree-sitter dependencies
 tree-sitter>=0.22.0
 tree-sitter-python>=0.23.0
@@ -14,7 +24,7 @@ tree-sitter-typescript>=0.23.0
 # Semantic search dependencies (non-PyTorch)
 chromadb>=0.4.0
 tqdm>=4.65.0
-numpy>=1.24.0,<2.0
+numpy>=1.23.0,<1.24.0  # Avoid uint64 issues with older PyTorch
 
 # Development dependencies (optional)
 pytest>=7.0

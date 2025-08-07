@@ -185,7 +185,7 @@ class EmbeddingConfig:
         )
         self._collection_name = (
             collection_name or 
-            os.getenv("RAGEX_CHROMA_COLLECTION", "code_search")
+            os.getenv("RAGEX_CHROMA_COLLECTION", "code_embeddings")
         )
         
         # HNSW configuration with environment overrides

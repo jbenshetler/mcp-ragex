@@ -12,17 +12,20 @@ PLATFORMS_GPU := linux/amd64
 cpu-base:      ## Build CPU base image
 	docker build -f docker/cpu/Dockerfile.base \
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-$(VERSION) \
-		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-latest .
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-latest . \
+		$(NO_CACHE)
 
 cuda-base:     ## Build CUDA base image  
 	docker build -f docker/cuda/Dockerfile.base \
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(VERSION) \
-		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest .
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest . \
+		$(NO_CACHE)
 
 ## Development builds
 cpu:           ## Build CPU image for local development
 	docker build -f docker/cpu/Dockerfile \
-		-t $(IMAGE_NAME):cpu-dev .
+		-t $(IMAGE_NAME):cpu-dev . \
+		$(NO_CACHE)
 
 cuda:          ## Build CUDA image for local development
 	docker build -f docker/cuda/Dockerfile \

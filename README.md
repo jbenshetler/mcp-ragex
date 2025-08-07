@@ -1,6 +1,6 @@
 # RAGex MCP Server
 
-A secure, intelligent **MCP (Model Context Protocol) server** for **Claude** and AI assistants, providing semantic code search using **RAG**, **tree-sitter**, and **ripgrep**. Search code using natural language, symbols, or regex patterns.
+A secure, intelligent **MCP (Model Context Protocol) server** for **Claude** and AI assistants, providing semantic code search using **RAG**, **tree-sitter**, and **ripgrep**. Search code using natural language or regex patterns.
 
 ## What is RAGex?
 
@@ -25,7 +25,6 @@ Unlike simple grep-based tools, RAGex understands code semantically:
 ### 🔍 **Intelligent Search Modes**
 - **Auto-detection**: Automatically chooses the best search mode based on query patterns
 - **Regex mode**: Fast pattern matching with ripgrep for exact patterns
-- **Symbol mode**: Language-aware symbol search using Tree-sitter
 - **Semantic mode**: Natural language search using sentence-transformers embeddings
 
 ### 🚀 **Performance & Security**
@@ -548,7 +547,7 @@ search_code("error.*Exception")                # → regex mode
 #### Explicit Mode Selection
 ```bash
 # Symbol search - when you know exact names
-search_code("AuthenticationService", mode="symbol")
+search_code("AuthenticationService")
 
 # Semantic search - when you know the concept
 search_code("functions that validate user input", mode="semantic")
@@ -577,13 +576,13 @@ search_code("functions that validate user input")
 
 ```bash
 # Find specific classes
-search_code("UserService", mode="symbol")
+search_code("UserService")
 
 # Find specific functions
-search_code("validateInput", mode="symbol")
+search_code("validateInput")
 
 # Find methods
-search_code("submitToQueue", mode="symbol")
+search_code("submitToQueue")
 ```
 
 ### 🔧 **Regex Search Examples**
@@ -684,7 +683,7 @@ tail -f /tmp/ragex-mcp.log
 
 **At INFO level:**
 - Project detection and initialization
-- Search mode detection (semantic/regex/symbol)
+- Search mode detection (semantic/regex)
 - Search query execution
 - Number of results found
 - Index progress and file counts

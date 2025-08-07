@@ -2,23 +2,27 @@
 """
 Embedding manager for semantic code search using sentence-transformers
 """
+import logging
+logger = logging.getLogger("embedding-manager")
 
 import re
 from typing import List, Dict, Optional, Union
+logger.info("embedding_manager.py attempting to import np")
 import numpy as np
+logger.info(f"np.__version__={np.__version__}")
+logger.info("embedding_manager.py attempting to import SentenceTransformer")
 from sentence_transformers import SentenceTransformer
-import logging
 import warnings
 
 # Suppress the specific FutureWarning about encoder_attention_mask
 warnings.filterwarnings("ignore", message=".*encoder_attention_mask.*is deprecated.*", category=FutureWarning)
 
+logger.info("embedding_manager.py attempting to import EmbeddingConfig, ModelConfig")
 try:
     from src.ragex_core.embedding_config import EmbeddingConfig, ModelConfig
 except ImportError:
     from .embedding_config import EmbeddingConfig, ModelConfig
 
-logger = logging.getLogger("embedding-manager")
 
 
 class EmbeddingManager:

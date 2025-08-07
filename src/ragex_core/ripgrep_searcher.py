@@ -146,7 +146,18 @@ class RipgrepSearcher:
         cmd.extend(str(p) for p in search_paths)
         
         # Log the full command
-        logger.debug(f"Ripgrep command: {' '.join(cmd)}")
+        logger.info(f"🔍 Ripgrep command: {' '.join(cmd)}")
+        logger.info(f"🔍 Working directory: {Path.cwd()}")
+        logger.info(f"🔍 Search paths exist check:")
+        for path in search_paths:
+            exists = path.exists()
+            logger.info(f"    {path}: exists={exists}")
+            if exists and path.is_dir():
+                try:
+                    file_count = len(list(path.glob('**/*')))
+                    logger.info(f"      Contains {file_count} files/dirs")
+                except Exception as e:
+                    logger.info(f"      Error counting files: {e}")
         
         # Track search time
         search_start = time.time()
@@ -166,14 +177,25 @@ class RipgrepSearcher:
             
             # Log search completion time
             search_time = time.time() - search_start
-            logger.info(f"Search completed in {search_time:.3f} seconds")
+            logger.info(f"🔍 Search completed in {search_time:.3f} seconds")
+            logger.info(f"🔍 Process return code: {process.returncode}")
+            logger.info(f"🔍 Stdout length: {len(stdout)} bytes")
+            logger.info(f"🔍 Stderr length: {len(stderr)} bytes")
+            
+            if stderr:
+                stderr_text = stderr.decode()
+                logger.info(f"🔍 Stderr content: {stderr_text}")
             
             if process.returncode not in (0, 1):  # 0=matches found, 1=no matches
                 raise RuntimeError(f"ripgrep failed: {stderr.decode()}")
             
+            # Log raw stdout for debugging
+            stdout_text = stdout.decode()
+            logger.info(f"🔍 Raw stdout (first 500 chars): {stdout_text[:500]}")
+            
             # Parse results
             matches = []
-            for line in stdout.decode().strip().split('\n'):
+            for line in stdout_text.strip().split('\n'):
                 if not line:
                     continue
                     
@@ -192,7 +214,8 @@ class RipgrepSearcher:
                     continue
             
             # Log search results
-            logger.info(f"Found {len(matches)} matches, returning {min(len(matches), limit)}")
+            logger.info(f"🔍 Parsed {len(matches)} matches from ripgrep output")
+            logger.info(f"🔍 Returning {min(len(matches), limit)} matches (limit={limit})")
             
             return {
                 "success": True,
