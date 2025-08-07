@@ -1,11 +1,14 @@
-# CPU System Base Image for MCP-Ragex
+# ARM64 System Base Image for MCP-Ragex
 # This provides ONLY system dependencies and Python environment - no ML libraries
 
-FROM python:3.10
+FROM python:3.10-slim
 
-# Install minimal required system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
     ripgrep \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

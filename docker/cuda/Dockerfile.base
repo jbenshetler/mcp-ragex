@@ -23,12 +23,10 @@ RUN useradd -m -u 1000 ragex
 
 WORKDIR /app
 
-# Copy and install Python dependencies
-COPY requirements/ ./requirements/
-RUN pip install --no-cache-dir -r requirements/cuda.txt
-
-# Pre-download tree-sitter language parsers
-RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import tree_sitter_javascript as tsjavascript; import tree_sitter_typescript as tstypescript"
+# Copy requirements and install CUDA dependencies
+COPY requirements/ /tmp/requirements/
+RUN pip install --no-cache-dir -r /tmp/requirements/cuda.txt
+RUN pip install --no-cache-dir -r /tmp/requirements/base-ml.txt
 
 # Create data directory
 RUN mkdir -p /data && chown -R ragex:ragex /data

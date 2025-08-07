@@ -368,6 +368,8 @@ cpu:                    ## Build CPU image for development (ARCH=amd64|arm64)
 		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cpu-base-$(ARCH) \
 		-f docker/app/Dockerfile \
 		-t $(IMAGE_NAME):cpu-dev \
+		-t $(IMAGE_NAME):cpu-$(ARCH)-dev \
+		-t $(IMAGE_NAME):$(ARCH)-dev \
 		--load .
 
 cuda:                   ## Build CUDA image for development (AMD64 only)
@@ -376,33 +378,41 @@ cuda:                   ## Build CUDA image for development (AMD64 only)
 		--platform linux/amd64 \
 		-f docker/app/Dockerfile \
 		-t $(IMAGE_NAME):cuda-dev \
+		-t $(IMAGE_NAME):cuda-amd64-dev \
+		-t $(IMAGE_NAME):amd64-cuda-dev \
 		--load .
 
 # Production builds
 publish-cpu:            ## Build and publish CPU images (multi-platform)
+	# AMD64 build with multiple tags
 	docker buildx build \
 		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cpu-base-amd64 \
 		--platform linux/amd64 \
 		-f docker/app/Dockerfile \
-		-t $(REGISTRY)/$(IMAGE_NAME):cpu-amd64 \
+		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-amd64 \
 		--push .
+	# ARM64 build with multiple tags
 	docker buildx build \
 		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cpu-base-arm64 \
 		--platform linux/arm64 \
 		-f docker/app/Dockerfile \
-		-t $(REGISTRY)/$(IMAGE_NAME):cpu-arm64 \
+		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-arm64 \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-arm64 \
 		--push .
 	# Create multi-platform manifest
-	docker manifest create $(REGISTRY)/$(IMAGE_NAME):cpu-latest \
-		$(REGISTRY)/$(IMAGE_NAME):cpu-amd64 \
-		$(REGISTRY)/$(IMAGE_NAME):cpu-arm64
-	docker manifest push $(REGISTRY)/$(IMAGE_NAME):cpu-latest
+	docker manifest create $(REGISTRY)/$(IMAGE_NAME):latest-cpu \
+		$(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
+		$(REGISTRY)/$(IMAGE_NAME):latest-cpu-arm64
+	docker manifest push $(REGISTRY)/$(IMAGE_NAME):latest-cpu
 
 publish-cuda:           ## Build and publish CUDA image
 	docker buildx build \
 		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cuda-base \
 		--platform linux/amd64 \
 		-f docker/app/Dockerfile \
+		-t $(REGISTRY)/$(IMAGE_NAME):cuda-amd64 \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-amd64 \
 		-t $(REGISTRY)/$(IMAGE_NAME):cuda-latest \
 		--push .
 
@@ -427,20 +437,87 @@ help:                   ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 ```
 
-## Architecture and ARCH Parameter Usage
+## Docker Tagging Strategy
 
-### CPU Builds
+### Multi-Tag Strategy for Architecture Differentiation
+
+The build system uses a multi-tag strategy to provide multiple ways to reference the same image while maintaining backward compatibility.
+
+#### Development Build Tags
+
+Each development build receives multiple tags:
+
+**CPU AMD64 build** (`make cpu` or `make cpu ARCH=amd64`):
+- `mcp-ragex:cpu-dev` (backward compatible, latest built)
+- `mcp-ragex:cpu-amd64-dev` (architecture-specific)
+- `mcp-ragex:amd64-dev` (short form)
+
+**CPU ARM64 build** (`make cpu ARCH=arm64`):
+- `mcp-ragex:cpu-dev` (backward compatible, latest built)  
+- `mcp-ragex:cpu-arm64-dev` (architecture-specific)
+- `mcp-ragex:arm64-dev` (short form)
+
+**CUDA AMD64 build** (`make cuda`):
+- `mcp-ragex:cuda-dev` (backward compatible)
+- `mcp-ragex:cuda-amd64-dev` (architecture-specific)
+- `mcp-ragex:amd64-cuda-dev` (short form with compute type)
+
+#### Production Build Tags
+
+**Platform-specific tags**:
+- `ghcr.io/user/mcp-ragex:latest-cpu-amd64`
+- `ghcr.io/user/mcp-ragex:latest-cpu-arm64`
+- `ghcr.io/user/mcp-ragex:cuda-amd64`
+
+**Multi-platform manifest tags**:
+- `ghcr.io/user/mcp-ragex:latest-cpu` (automatically pulls correct architecture)
+
+### Architecture and ARCH Parameter Usage
+
+#### CPU Builds
 ```bash
 make cpu              # CPU AMD64 (default, uses ARCH=amd64)
 make cpu ARCH=arm64   # CPU ARM64 (Apple Silicon)
 ```
 
-### CUDA Builds
+#### CUDA Builds
 ```bash
 make cuda             # CUDA AMD64 (ARCH parameter not needed/ignored)
 ```
 
 **Note**: CUDA is only available on AMD64 architecture. NVIDIA doesn't provide ARM64 CUDA support in their official Docker images.
+
+### Usage Examples
+
+#### Running Images by Tag
+
+```bash
+# Backward compatible - runs latest built image
+docker run mcp-ragex:cpu-dev
+
+# Architecture-specific selection
+docker run mcp-ragex:cpu-amd64-dev      # Explicitly AMD64 CPU
+docker run mcp-ragex:cpu-arm64-dev      # Explicitly ARM64 CPU
+docker run mcp-ragex:cuda-amd64-dev     # CUDA build
+
+# Short form tags
+docker run mcp-ragex:amd64-dev          # AMD64 CPU (short)
+docker run mcp-ragex:arm64-dev          # ARM64 CPU (short)
+docker run mcp-ragex:amd64-cuda-dev     # CUDA (short with compute type)
+```
+
+#### Local Image Listing
+
+```bash
+$ docker images mcp-ragex
+REPOSITORY   TAG              IMAGE ID     SIZE
+mcp-ragex    cpu-dev          abc123       1.6GB  # Latest (AMD64 in this case)
+mcp-ragex    cpu-amd64-dev    abc123       1.6GB  # Same image, arch-specific tag
+mcp-ragex    amd64-dev        abc123       1.6GB  # Same image, short tag
+mcp-ragex    cpu-arm64-dev    def456       4.0GB  # ARM64 build
+mcp-ragex    arm64-dev        def456       4.0GB  # Same image, short tag
+mcp-ragex    cuda-amd64-dev   xyz789       8.0GB  # CUDA build
+```
 
 ## Cloud Build Optimization
 
@@ -497,9 +574,14 @@ docker pull ghcr.io/user/mcp-ragex:cpu-base-arm64
 docker pull ghcr.io/user/mcp-ragex:cuda-base
 
 # Fast development builds (2-3 minutes)
-make cpu              # Uses cached AMD64 base layer
-make cpu ARCH=arm64   # Uses cached ARM64 base layer  
-make cuda             # Uses cached CUDA base layer
+make cpu              # AMD64: Creates cpu-dev, cpu-amd64-dev, amd64-dev tags
+make cpu ARCH=arm64   # ARM64: Creates cpu-dev, cpu-arm64-dev, arm64-dev tags  
+make cuda             # CUDA: Creates cuda-dev, cuda-amd64-dev, amd64-cuda-dev tags
+
+# Use specific tags to run the right architecture
+docker run mcp-ragex:cpu-amd64-dev    # Always AMD64
+docker run mcp-ragex:cpu-arm64-dev    # Always ARM64
+docker run mcp-ragex:cuda-amd64-dev   # CUDA build
 ```
 
 ### Dependency Updates
@@ -533,8 +615,10 @@ make publish-cuda     # CUDA GPU
 2. **Cloud Efficiency**: All builds complete under 10 minutes, 14GB RAM
 3. **Cache Optimization**: Base layers cached for weeks
 4. **Multi-Architecture**: Native ARM64 and AMD64 support
-5. **Dependency Management**: Requirements files for reproducibility
-6. **Production Ready**: Automated CI/CD with manifest lists
+5. **Architecture Clarity**: Multiple tags for easy architecture identification
+6. **Backward Compatibility**: Existing `cpu-dev` and `cuda-dev` tags still work
+7. **Dependency Management**: Requirements files for reproducibility
+8. **Production Ready**: Automated CI/CD with manifest lists
 
 ## File Structure
 

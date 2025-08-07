@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+# System dependencies shared across all variants
+RUN apt-get update && apt-get install -y \
+    ripgrep \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create user and directories
+RUN useradd -m -s /bin/bash appuser
+WORKDIR /app
+USER appuser

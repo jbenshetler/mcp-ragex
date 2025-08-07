@@ -1,0 +1,10 @@
+# Lightweight application dependencies
+mcp>=0.1.0
+pydantic>=2.0
+aiofiles
+pathspec>=0.11.0
+watchdog>=3.0.0
+
+# Testing dependencies (useful for pre-production)
+pytest>=7.0
+pytest-asyncio
