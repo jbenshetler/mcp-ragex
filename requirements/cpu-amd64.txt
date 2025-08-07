@@ -1,6 +1,6 @@
 # CPU-only PyTorch installation for AMD64
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.1.2+cpu  # Downgrade to 2.1.2
+torch==2.1.2+cpu  # Use CPU-specific builds for smaller image size
 torchvision==0.16.2+cpu  # Match torch version
 
 # Include base dependencies

@@ -1,0 +1,7 @@
+# CPU-only PyTorch installation for ARM64 (Apple Silicon)
+# Use regular builds since +cpu suffix not available for ARM64
+torch==2.1.2
+torchvision==0.16.2
+
+# Include base dependencies
+-r base.txt

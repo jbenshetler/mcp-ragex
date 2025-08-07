@@ -1,0 +1,28 @@
+# CPU-optimized Dockerfile for ARM64 (Apple Silicon)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ripgrep \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements with CPU-specific PyTorch
+COPY requirements/base.txt requirements/
+COPY requirements/cpu-arm64.txt requirements/
+
+# Install CPU-optimized PyTorch for ARM64
+RUN pip install --no-cache-dir -r requirements/cpu-arm64.txt
+
+# Copy application code
+COPY src/ src/
+COPY docker/common/entrypoint.sh .
+
+# Set permissions and user
+RUN chmod +x entrypoint.sh
+RUN useradd -m -s /bin/bash appuser
+USER appuser
+
+ENTRYPOINT ["./entrypoint.sh"]

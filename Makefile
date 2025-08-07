@@ -6,6 +6,9 @@ VERSION := $(shell git describe --tags --dirty 2>/dev/null || echo "dev")
 PLATFORMS_CPU := linux/amd64,linux/arm64
 PLATFORMS_GPU := linux/amd64
 
+# Architecture support - defaults to amd64
+ARCH ?= amd64
+
 .DEFAULT_GOAL := help
 
 ## Base image builds
@@ -22,9 +25,11 @@ cuda-base:     ## Build CUDA base image
 		$(NO_CACHE)
 
 ## Development builds
-cpu:           ## Build CPU image for local development
-	docker build -f docker/cpu/Dockerfile \
-		-t $(IMAGE_NAME):cpu-dev . \
+cpu:           ## Build CPU image for local development (ARCH=amd64|arm64)
+	docker buildx build --platform linux/$(ARCH) \
+		-f docker/cpu/Dockerfile.conditional \
+		-t $(IMAGE_NAME):cpu-dev \
+		--load . \
 		$(NO_CACHE)
 
 cuda:          ## Build CUDA image for local development
@@ -32,11 +37,17 @@ cuda:          ## Build CUDA image for local development
 		-t $(IMAGE_NAME):cuda-dev .
 
 ## CI/CD builds  
-cpu-cicd:      ## Build CPU image optimized for CI/CD
+cpu-cicd:      ## Build CPU image optimized for CI/CD (multi-platform)
 	docker buildx build --platform $(PLATFORMS_CPU) \
-		-f docker/cpu/Dockerfile \
+		-f docker/cpu/Dockerfile.conditional \
 		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu \
 		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu .
+
+cpu-multiarch: ## Build CPU image for multiple architectures locally
+	docker buildx build --platform $(PLATFORMS_CPU) \
+		-f docker/cpu/Dockerfile.conditional \
+		-t $(IMAGE_NAME):cpu-multiarch \
+		--load .
 
 cuda-cicd:     ## Build CUDA image optimized for CI/CD
 	docker buildx build --platform $(PLATFORMS_GPU) \
@@ -57,9 +68,9 @@ publish-cuda-base: ## Build and publish CUDA base image
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(VERSION) \
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest .
 
-publish-cpu:   ## Build and publish CPU image
+publish-cpu:   ## Build and publish CPU image (multi-platform)
 	docker buildx build --push --platform $(PLATFORMS_CPU) \
-		-f docker/cpu/Dockerfile \
+		-f docker/cpu/Dockerfile.conditional \
 		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu \
 		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu .
 
@@ -84,6 +95,15 @@ clean:         ## Clean up build artifacts
 	docker buildx prune -f
 
 help:          ## Show this help
+	@echo "Architecture Support:"
+	@echo "  ARCH=amd64    Build for AMD64 (default, ~1.6GiB with CPU-only PyTorch)"
+	@echo "  ARCH=arm64    Build for ARM64 (~4GiB with regular PyTorch)"
+	@echo ""
+	@echo "Usage Examples:"
+	@echo "  make cpu              # Build for AMD64"
+	@echo "  make cpu ARCH=arm64   # Build for ARM64"
+	@echo "  make cpu-multiarch    # Build for both architectures"
+	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: cpu-base cuda-base cpu cuda cpu-cicd cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean help
+.PHONY: cpu-base cuda-base cpu cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean help
