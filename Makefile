@@ -20,11 +20,11 @@ cpu-base:      ## Build CPU system base image (ARCH=amd64|arm64)
 		. \
 		$(NO_CACHE)
 
-arm64-base:    ## Build ARM64 system base image
+arm64-base:    ## Build ARM64 system base image and push to GHCR
 	docker buildx build --platform linux/arm64 \
 		-f docker/arm64/Dockerfile.base \
-		-t $(IMAGE_NAME):arm64-base \
-		--output type=docker . \
+		-t $(REGISTRY)/$(IMAGE_NAME):arm64-base-temp \
+		--push . \
 		$(NO_CACHE)
 
 cpu-ml:        ## Build CPU ML layer (ARCH=amd64|arm64)
@@ -36,12 +36,12 @@ cpu-ml:        ## Build CPU ML layer (ARCH=amd64|arm64)
 		. \
 		$(NO_CACHE)
 
-arm64-ml:      ## Build ARM64 ML layer (cross-compiled)
+arm64-ml:      ## Build ARM64 ML layer (pull base from GHCR, push ML to GHCR)
 	docker buildx build --platform linux/arm64 \
 		-f docker/arm64/Dockerfile.ml \
-		--build-arg BASE_IMAGE=$(IMAGE_NAME):arm64-base \
-		-t $(IMAGE_NAME):arm64-ml \
-		--output type=docker . \
+		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):arm64-base-temp \
+		-t $(REGISTRY)/$(IMAGE_NAME):arm64-ml-temp \
+		--push . \
 		$(NO_CACHE)
 
 cuda-base:     ## Build CUDA system base image
@@ -80,13 +80,13 @@ cpu:           ## Build CPU image for local development (ARCH=amd64|arm64) - use
 			$(NO_CACHE); \
 	fi
 
-arm64:         ## Build ARM64 image for local development (cross-compiled)
-	@echo "Building layered ARM64 image (cross-compiled)..."
+arm64:         ## Build ARM64 image for local development (registry-based)
+	@echo "Building layered ARM64 image via registry..."
 	$(MAKE) arm64-base
 	$(MAKE) arm64-ml
 	docker buildx build --platform linux/arm64 \
 		-f docker/app/Dockerfile \
-		--build-arg BASE_IMAGE=$(IMAGE_NAME):arm64-ml \
+		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):arm64-ml-temp \
 		-t $(IMAGE_NAME):cpu-dev \
 		-t $(IMAGE_NAME):cpu-arm64-dev \
 		-t $(IMAGE_NAME):arm64-dev \
@@ -176,6 +176,16 @@ clean:         ## Clean up build artifacts
 	docker system prune -f
 	docker buildx prune -f
 
+clean-arm64-temp: ## Clean up temporary ARM64 registry tags
+	@echo "Cleaning up temporary ARM64 registry tags..."
+	@docker manifest inspect $(REGISTRY)/$(IMAGE_NAME):arm64-base-temp > /dev/null 2>&1 && \
+		echo "Removing $(REGISTRY)/$(IMAGE_NAME):arm64-base-temp..." || \
+		echo "Tag arm64-base-temp not found"
+	@docker manifest inspect $(REGISTRY)/$(IMAGE_NAME):arm64-ml-temp > /dev/null 2>&1 && \
+		echo "Removing $(REGISTRY)/$(IMAGE_NAME):arm64-ml-temp..." || \
+		echo "Tag arm64-ml-temp not found"
+	@echo "Note: Use 'gh api repos/OWNER/REPO/packages/container/PACKAGE/versions' to list and delete via GitHub API"
+
 help:          ## Show this help
 	@echo "Layered Multi-Tag Docker Build System"
 	@echo ""
@@ -190,7 +200,7 @@ help:          ## Show this help
 	@echo ""
 	@echo "Development Build Tags (each build creates multiple tags):"
 	@echo "  make cpu              # Creates: cpu-dev, cpu-amd64-dev, amd64-dev"
-	@echo "  make arm64            # Creates: cpu-dev, cpu-arm64-dev, arm64-dev"
+	@echo "  make arm64            # Creates: cpu-dev, cpu-arm64-dev, arm64-dev (registry-based)"
 	@echo "  make cuda             # Creates: cuda-dev, cuda-amd64-dev, amd64-cuda-dev"
 	@echo ""
 	@echo "Individual Layers (for debugging/testing):"
@@ -205,4 +215,4 @@ help:          ## Show this help
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean help
+.PHONY: cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean clean-arm64-temp help
