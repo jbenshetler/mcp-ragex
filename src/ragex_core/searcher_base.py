@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Base class for all search implementations in MCP-RageX.
+Base class for all search implementations in MCP-RAGex.
 
 Provides common project context management and interface standardization
 for semantic, symbol, and regex search implementations.

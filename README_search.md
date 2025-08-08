@@ -1,4 +1,4 @@
-# RageX Search Client
+# RAGex Search Client
 
 A command-line search tool for the RAGex indexed codebase with grep-like output.
 

@@ -165,7 +165,7 @@ except Exception as e:
         # Change to workspace directory so commands run in the correct context
         cd /workspace
         
-        echo "🚀 Starting RageX socket daemon..."
+        echo "🚀 Starting RAGex socket daemon..."
         echo "📊 Project: ${PROJECT_NAME}"
         echo "💾 Data dir: ${RAGEX_PROJECT_DATA_DIR}"
         echo "📁 Working directory: $(pwd)"

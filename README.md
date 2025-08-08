@@ -751,7 +751,7 @@ tail -f /tmp/ragex-mcp.log
 The server provides an enhanced ignore system with comprehensive defaults and multi-level support:
 
 ### Default Exclusions
-MCP-RageX includes comprehensive default exclusions for:
+MCP-RAGex includes comprehensive default exclusions for:
 - **Python**: `.venv/**`, `__pycache__/**`, `*.pyc`, `.eggs/**`, `.tox/**`, etc.
 - **JavaScript/TypeScript**: `node_modules/**`, `*.tsbuildinfo`, `.npm/**`, etc.
 - **Build artifacts**: `build/**`, `dist/**`, `*.o`, `*.so`, `*.exe`, etc.
@@ -760,7 +760,7 @@ MCP-RageX includes comprehensive default exclusions for:
 - **Media/Archives**: `*.jpg`, `*.mp4`, `*.zip`, etc.
 
 ### Initialize .mcpignore
-When starting a new project, MCP-RageX can create a `.mcpignore` file with all defaults visible:
+When starting a new project, MCP-RAGex can create a `.mcpignore` file with all defaults visible:
 
 ```bash
 # Create comprehensive .mcpignore with categorized patterns

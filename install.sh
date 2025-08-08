@@ -2,7 +2,7 @@
 # install.sh
 set -e
 
-echo "🚀 Installing MCP-RageX Server..."
+echo "🚀 Installing MCP-RAGex Server..."
 
 # Default to CPU, allow explicit override
 MODE="cpu"  # Default

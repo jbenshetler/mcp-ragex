@@ -1,4 +1,4 @@
-# MCP-RageX
+# MCP-RAGex
 
 Intelligent code search server for Claude and AI assistants using RAG, tree-sitter, and ripgrep.
 

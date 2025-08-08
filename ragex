@@ -538,7 +538,7 @@ Environment Variables:
     
     def cmd_info(self, args: argparse.Namespace) -> int:
         """Handle info command"""
-        print("🔧 RageX Project Information")
+        print("🔧 RAGex Project Information")
         print(f"   User ID: {self.user_id}")
         print(f"   Workspace: {self.workspace_path}")
         print(f"   Project ID: {self.project_id}")

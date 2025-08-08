@@ -145,7 +145,7 @@ clean() {
 # Show help
 show_help() {
     cat << EOF
-Docker Development Helper for MCP-RageX
+Docker Development Helper for MCP-RAGex
 
 Usage: $0 [command] [options]
 

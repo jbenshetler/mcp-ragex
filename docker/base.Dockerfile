@@ -1,4 +1,4 @@
-# Base image with all dependencies for MCP-RageX
+# Base image with all dependencies for MCP-RAGex
 # This image is built weekly or when dependencies change
 # It contains all the slow-to-install components
 
@@ -45,8 +45,8 @@ RUN useradd -m -u 1000 ragex && \
 RUN rm -rf /tmp/* /var/tmp/* ~/.cache/pip
 
 # Label the image
-LABEL org.opencontainers.image.title="MCP-RageX Base"
-LABEL org.opencontainers.image.description="Base image with dependencies for MCP-RageX"
+LABEL org.opencontainers.image.title="MCP-RAGex Base"
+LABEL org.opencontainers.image.description="Base image with dependencies for MCP-RAGex"
 LABEL org.opencontainers.image.authors="jbenshetler"
 LABEL org.opencontainers.image.source="https://github.com/jbenshetler/mcp-ragex"
 LABEL org.opencontainers.image.licenses="MIT"

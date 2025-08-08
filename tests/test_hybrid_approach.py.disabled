@@ -121,7 +121,7 @@ class TestInitIgnoreFile:
         content = ignore_path.read_text()
         
         # Check header
-        assert "MCP-RageX ignore patterns" in content
+        assert "MCP-RAGex ignore patterns" in content
         assert "Generated on" in content
         
         # Check comprehensive patterns are included
@@ -174,7 +174,7 @@ class TestInitIgnoreFile:
         # Original content replaced
         content = ignore_path.read_text()
         assert "# Original content" not in content
-        assert "MCP-RageX ignore patterns" in content
+        assert "MCP-RAGex ignore patterns" in content
     
     def test_custom_patterns(self, tmp_path):
         """Test adding custom patterns"""

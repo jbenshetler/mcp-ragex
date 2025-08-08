@@ -1,5 +1,5 @@
 """
-Ignore file processing module for MCP-RageX
+Ignore file processing module for MCP-RAGex
 
 This module provides a flexible, multi-level ignore file system that supports:
 - Multiple .mcpignore files at different directory levels

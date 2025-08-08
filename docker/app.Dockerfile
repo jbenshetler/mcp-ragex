@@ -1,4 +1,4 @@
-# Application image for MCP-RageX
+# Application image for MCP-RAGex
 # This lightweight image builds on the base image and adds only the application code
 
 # Allow base image to be specified at build time
@@ -6,7 +6,7 @@ ARG BASE_IMAGE=ghcr.io/jbenshetler/mcp-ragex-base:latest
 FROM ${BASE_IMAGE}
 
 # Metadata
-LABEL org.opencontainers.image.title="MCP-RageX"
+LABEL org.opencontainers.image.title="MCP-RAGex"
 LABEL org.opencontainers.image.description="Intelligent code search server for Claude and AI assistants"
 LABEL org.opencontainers.image.authors="jbenshetler"
 LABEL org.opencontainers.image.source="https://github.com/jbenshetler/mcp-ragex"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Socket client for communicating with RageX daemon
+Socket client for communicating with RAGex daemon
 
 This lightweight client sends commands to the socket daemon and returns results.
 """

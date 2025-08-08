@@ -1,6 +1,6 @@
 # Docker CI/CD Summary
 
-This document summarizes the GitHub Actions Docker CI/CD setup for MCP-RageX.
+This document summarizes the GitHub Actions Docker CI/CD setup for MCP-RAGex.
 
 ## What Was Created
 

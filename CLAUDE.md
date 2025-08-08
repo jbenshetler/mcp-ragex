@@ -46,6 +46,10 @@ When modifying the server:
 2. Check error handling with invalid inputs (regex, paths)
 3. Test with real codebases for performance
 
+## Testing Changes
+
+- To test changes, run `make install-cpu && ragex start`
+
 ## Security Considerations
 
 - All regex patterns are validated before execution

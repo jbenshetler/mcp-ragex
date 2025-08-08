@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RageX Socket Daemon - High-performance command executor
+RAGex Socket Daemon - High-performance command executor
 
 This daemon accepts commands via Unix domain socket and executes them
 using subprocess for stability.
@@ -68,7 +68,7 @@ class RagexSocketDaemon:
         self.pattern_matcher = None
         self._setup_file_watching()
         
-        logger.info("RageX socket daemon initialized")
+        logger.info("RAGex socket daemon initialized")
     
     def _handle_shutdown(self, signum, frame):
         """Handle shutdown signals gracefully"""

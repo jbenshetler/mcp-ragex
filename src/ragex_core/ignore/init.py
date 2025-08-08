@@ -28,7 +28,7 @@ def generate_ignore_content(custom_patterns: Optional[List[str]] = None,
     
     # Header
     lines.extend([
-        f"# {IGNORE_FILENAME} - MCP-RageX ignore patterns",
+        f"# {IGNORE_FILENAME} - MCP-RAGex ignore patterns",
         f"# Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "#",
         "# This file uses gitignore syntax to exclude files from code analysis.",
