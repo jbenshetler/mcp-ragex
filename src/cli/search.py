@@ -242,14 +242,51 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
         return 1
     
     if json_output:
-        # Output MCP-compatible JSON
+        # Output compact JSON (preserve reranking data, trim large fields to prevent socket errors)
+        compact_matches = []
+        for match in matches:
+            compact_match = {
+                "file": match.get("file"),
+                "line": match.get("line") or match.get("line_number"),
+                "type": match.get("type", "unknown"),
+                "name": match.get("name", ""),
+                "similarity": round(match.get("similarity", 0.0), 3),
+            }
+            
+            # CRITICAL: Preserve all reranking data for good results and valid scoring
+            if "reranked_score" in match:
+                compact_match["reranked_score"] = round(match["reranked_score"], 3)
+            if "feature_scores" in match:
+                # Keep feature scores but round to 3 decimals to reduce size
+                compact_match["feature_scores"] = {
+                    k: round(v, 3) if isinstance(v, (int, float)) else v
+                    for k, v in match["feature_scores"].items()
+                }
+            if "rank" in match:
+                compact_match["rank"] = match["rank"]
+            if "score_delta" in match:
+                compact_match["score_delta"] = round(match["score_delta"], 3)
+                
+            # Include only first line of code to keep response size manageable
+            if "code" in match and match["code"]:
+                first_line = match["code"].split('\n')[0].strip()
+                if len(first_line) > 80:  # Trim very long lines
+                    first_line = first_line[:80] + "..."
+                compact_match["code"] = first_line
+            elif "line" in match:  # Regex results
+                line_content = match["line"].strip()
+                if len(line_content) > 80:
+                    line_content = line_content[:80] + "..."
+                compact_match["line_content"] = line_content
+            
+            compact_matches.append(compact_match)
+        
         result = {
             "success": True,
             "query": args.query,
             "mode": mode,
             "total_matches": len(matches),
-            "matches": matches,
-            "messages": client.initialization_messages
+            "matches": compact_matches,
         }
         print(json.dumps(result, indent=2))
     else:

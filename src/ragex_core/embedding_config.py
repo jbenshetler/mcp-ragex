@@ -282,12 +282,16 @@ class EmbeddingConfig:
                 "M": self.hnsw_M
             },
             "environment_overrides": {
+                # Container-level environment variables (managed in embedding_config.py)
                 "RAGEX_EMBEDDING_MODEL": os.getenv("RAGEX_EMBEDDING_MODEL"),
                 "RAGEX_CHROMA_PERSIST_DIR": os.getenv("RAGEX_CHROMA_PERSIST_DIR"),
                 "RAGEX_CHROMA_COLLECTION": os.getenv("RAGEX_CHROMA_COLLECTION"),
                 "RAGEX_HNSW_CONSTRUCTION_EF": os.getenv("RAGEX_HNSW_CONSTRUCTION_EF"),
                 "RAGEX_HNSW_SEARCH_EF": os.getenv("RAGEX_HNSW_SEARCH_EF"),
                 "RAGEX_HNSW_M": os.getenv("RAGEX_HNSW_M")
+                # NOTE: Host-level CLI variables (like RAGEX_LOG_MAX_SIZE, RAGEX_LOG_MAX_FILES) 
+                # are handled directly in the ragex CLI script since they control Docker 
+                # container creation, not container-internal behavior.
             }
         }
     

@@ -177,8 +177,14 @@ class RagexCLI:
             print(f"🚀 Starting ragex daemon for {self.project_name}...")
         
         # Docker run command for daemon
+        log_max_size = os.environ.get('RAGEX_LOG_MAX_SIZE', '50m')
+        log_max_files = os.environ.get('RAGEX_LOG_MAX_FILES', '3')
+        
         docker_cmd = [
             'docker', 'run', '-d',
+            '--log-driver', 'json-file',
+            '--log-opt', f'max-size={log_max_size}',
+            '--log-opt', f'max-file={log_max_files}',
             '--name', self.daemon_container_name,
             '-u', f'{self.user_id}:{self.group_id}',
             '-v', f'{self.user_volume}:/data',
@@ -447,6 +453,8 @@ Environment Variables:
   RAGEX_PROJECT_NAME       Override project name
   RAGEX_DOCKER_IMAGE       Docker image to use
   RAGEX_DEBUG              Enable debug output
+  RAGEX_LOG_MAX_SIZE       Docker log rotation max size (default: 50m for daemon, 10m for admin)
+  RAGEX_LOG_MAX_FILES      Docker log rotation max files (default: 3 for daemon, 2 for admin)
 """
     
     def run(self) -> int:
@@ -538,6 +546,12 @@ Environment Variables:
         print(f"   User Volume: {self.user_volume}")
         print(f"   Docker Image: {self.docker_image}")
         print(f"   Embedding Model: {self.embedding_model}")
+        
+        # Show log rotation configuration
+        log_max_size = os.environ.get('RAGEX_LOG_MAX_SIZE', '50m (daemon), 10m (admin)')
+        log_max_files = os.environ.get('RAGEX_LOG_MAX_FILES', '3 (daemon), 2 (admin)')
+        print(f"   Log Max Size: {log_max_size}")
+        print(f"   Log Max Files: {log_max_files}")
         print()
         return self.cmd_status(args)
     
@@ -655,8 +669,15 @@ Environment Variables:
     
     def _run_admin_command(self, command: str, args: List[str] = None) -> int:
         """Run administrative commands that don't need workspace"""
+        # Use smaller log limits for short-lived admin commands
+        admin_log_max_size = os.environ.get('RAGEX_LOG_MAX_SIZE', '10m')
+        admin_log_max_files = os.environ.get('RAGEX_LOG_MAX_FILES', '2')
+        
         docker_cmd = [
             'docker', 'run', '--rm',
+            '--log-driver', 'json-file',
+            '--log-opt', f'max-size={admin_log_max_size}',
+            '--log-opt', f'max-file={admin_log_max_files}',
             '-u', f'{self.user_id}:{self.group_id}',
             '-v', f'{self.user_volume}:/data',
             '-e', 'PROJECT_NAME=admin',

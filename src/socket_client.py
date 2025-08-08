@@ -11,7 +11,8 @@ import sys
 import os
 
 SOCKET_PATH = "/tmp/ragex.sock"
-BUFFER_SIZE = 65536
+BUFFER_SIZE = 65536  # Initial buffer size
+MAX_RESPONSE_SIZE = 10 * 1024 * 1024  # 10MB maximum response
 
 
 def send_command(command: str, args: list) -> dict:
@@ -33,17 +34,50 @@ def send_command(command: str, args: list) -> dict:
         # Send request
         client.send(json.dumps(request).encode('utf-8'))
         
-        # Receive response
-        data = client.recv(BUFFER_SIZE)
-        if not data:
+        # Receive response (handle large responses by reading in chunks)
+        data_chunks = []
+        total_size = 0
+        
+        while True:
+            chunk = client.recv(BUFFER_SIZE)
+            if not chunk:
+                break
+            data_chunks.append(chunk)
+            total_size += len(chunk)
+            
+            # Safety check to prevent memory exhaustion
+            if total_size > MAX_RESPONSE_SIZE:
+                return {
+                    'success': False,
+                    'error': f'Response too large: {total_size} bytes (max: {MAX_RESPONSE_SIZE})'
+                }
+            
+            # Check if we have a complete JSON response
+            full_data = b''.join(data_chunks)
+            try:
+                response = json.loads(full_data.decode('utf-8'))
+                return response
+            except json.JSONDecodeError:
+                # Not a complete JSON yet, continue reading
+                continue
+        
+        # If we get here, connection was closed without complete response
+        if not data_chunks:
             return {
                 'success': False,
                 'error': 'No response from daemon'
             }
         
-        # Parse response
-        response = json.loads(data.decode('utf-8'))
-        return response
+        # Try to parse what we have
+        full_data = b''.join(data_chunks)
+        try:
+            response = json.loads(full_data.decode('utf-8'))
+            return response
+        except json.JSONDecodeError as e:
+            return {
+                'success': False,
+                'error': f'Invalid JSON response: {str(e)}'
+            }
         
     except FileNotFoundError:
         print(f"Socket not found at {SOCKET_PATH}", file=sys.stderr)
