@@ -11,8 +11,8 @@ USER root
 COPY --chown=ragex:ragex requirements/ /tmp/requirements/
 
 # Install CUDA PyTorch and ML dependencies
-RUN pip install --no-cache-dir -r /tmp/requirements/cuda.txt
-RUN pip install --no-cache-dir -r /tmp/requirements/base-ml.txt
+RUN pip install --no-cache-dir --no-warn-script-location -r /tmp/requirements/cuda.txt
+RUN pip install --no-cache-dir --no-warn-script-location -r /tmp/requirements/base-ml.txt
 
 # Pre-download tree-sitter language parsers
 RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import tree_sitter_javascript as tsjavascript; import tree_sitter_typescript as tstypescript"

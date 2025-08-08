@@ -9,7 +9,7 @@ COPY --chown=ragex:ragex src/ ./src/
 
 # Copy requirements and install app-specific dependencies
 COPY --chown=ragex:ragex requirements/app.txt /tmp/
-RUN pip install --no-cache-dir -r /tmp/app.txt
+RUN pip install --no-cache-dir --no-warn-script-location -r /tmp/app.txt
 
 # Copy entrypoint and set permissions
 COPY --chown=ragex:ragex docker/common/entrypoint.sh /entrypoint.sh
