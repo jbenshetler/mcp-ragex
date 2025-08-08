@@ -589,8 +589,8 @@ def get_fallback_chain(preferred_mode: str, query: str) -> List[str]:
     """Get intelligent fallback chain based on preferred mode"""
     
     if preferred_mode == "semantic":
-        # Semantic failed -> try regex
-        return ["regex"]
+        # Don't fallback to regex - semantic queries don't work in regex
+        return []  # No fallbacks
     
     elif preferred_mode == "regex":
         # Regex failed -> try semantic (maybe they meant natural language)
@@ -760,7 +760,7 @@ async def handle_call_tool(
                 paths=[workspace_dir],  # Use resolved workspace directory
                 mode=arguments.get('mode', 'auto'),
                 file_types=arguments.get('file_types'),
-                limit=arguments.get('limit', 50),
+                limit=arguments.get('limit', DEFAULT_RESULTS),
                 case_sensitive=arguments.get('case_sensitive', False),
                 include_symbols=arguments.get('include_symbols', False),
                 similarity_threshold=arguments.get('similarity_threshold', 0.25),
@@ -779,7 +779,7 @@ async def handle_call_tool(
                 paths=[workspace_dir],  # Use resolved workspace directory
                 mode='auto',  # Let auto-detection handle it
                 file_types=arguments.get('file_types'),
-                limit=arguments.get('limit', 50),
+                limit=arguments.get('limit', DEFAULT_RESULTS),
                 case_sensitive=arguments.get('case_sensitive', False),
                 include_symbols=arguments.get('include_symbols', False),
                 similarity_threshold=arguments.get('similarity_threshold', 0.25),
@@ -856,7 +856,11 @@ async def handle_intelligent_search(
     
     # Check searcher availability for requested mode
     if detected_mode == "semantic" and not semantic_available:
-        error_msg = "Semantic search requested but not available. Ensure project is indexed and ChromaDB is accessible."
+        error_msg = "Semantic search is not available. This usually means:\n" \
+                   "1. Project is not indexed - run 'ragex index .' first\n" \
+                   "2. ChromaDB index is missing or corrupted\n" \
+                   "3. Embedding dependencies are not installed\n" \
+                   "Try using 'regex' mode instead for pattern-based search."
         logger.error(f"❌ SEMANTIC search failed: {error_msg}")
         raise ValueError(f"Semantic search unavailable: {error_msg}")
     elif detected_mode == "regex" and not regex_available:
