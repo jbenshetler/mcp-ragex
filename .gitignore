@@ -99,3 +99,4 @@ chroma_db/**
 .claude/settings.local.json
 chroma_db/chroma.sqlite3
 chroma_db/index_metadata.json
+uv.lock
