@@ -102,7 +102,7 @@ class SearchClient:
                     print(f"# {msg}", file=sys.stderr)
                 self.initialization_messages.append({"level": "error", "message": msg})
     
-    async def search_semantic(self, query: str, limit: int = 50) -> List[Dict]:
+    async def search_semantic(self, query: str, limit: int = 50, min_similarity: float = 0.0) -> List[Dict]:
         """Perform semantic search"""
         if not self.semantic_searcher:
             return []
@@ -135,6 +135,12 @@ class SearchClient:
                 })
                 if len(matches) >= limit * 2:  # Get more for reranking
                     break
+        
+        # Filter by minimum similarity if specified
+        if min_similarity > 0.0:
+            original_count = len(matches)
+            matches = [m for m in matches if m.get('similarity', 0.0) >= min_similarity]
+            logger.info(f"Similarity filter ({min_similarity}): {original_count} -> {len(matches)} matches")
         
         # Apply feature-based reranking
         if matches:
@@ -169,13 +175,14 @@ class SearchClient:
             line_num = match.get('line', match.get('line_number', 0))
             
             if mode == "semantic" and 'code' in match:
-                # Show semantic result
+                # Show semantic result with similarity score
                 symbol_lines = match['code'].split('\n')
                 if symbol_lines:
                     line_content = symbol_lines[0].rstrip()
-                    print(f"{file_path}:{line_num}:[{match.get('type', 'unknown')}] {line_content}")
+                    similarity = match.get('similarity', 0.0)
+                    print(f"{file_path}:{line_num}:[{match.get('type', 'unknown')}] ({similarity:.3f}) {line_content}")
             else:
-                # Show regex/symbol result
+                # Show regex/symbol result (no similarity score)
                 if 'line' in match:
                     print(f"{file_path}:{line_num}:{match['line'].rstrip()}")
                 elif 'line_content' in match:
@@ -213,7 +220,8 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
     matches = []
     try:
         if mode == "semantic":
-            matches = await client.search_semantic(args.query, args.limit)
+            min_similarity = getattr(args, 'min_similarity', 0.0)
+            matches = await client.search_semantic(args.query, args.limit, min_similarity)
         elif mode == "regex":
             matches = await client.search_regex(args.query, args.limit)
     except PathMappingError as e:
@@ -270,6 +278,7 @@ def parse_args(args: List[str]) -> argparse.Namespace:
     parser.add_argument('-A', '--after-context', type=int, default=0, help='Lines after match')
     parser.add_argument('-B', '--before-context', type=int, default=0, help='Lines before match')
     parser.add_argument('--limit', type=int, default=50, help='Maximum results')
+    parser.add_argument('--min-similarity', type=float, default=0.0, help='Minimum similarity score for semantic results (0.0-1.0)')
     parser.add_argument('--brief', action='store_true', help='Brief output')
     parser.add_argument('--index-dir', type=str, help='Directory containing chroma_db index')
     parser.add_argument('--json', action='store_true', help='Output MCP-compatible JSON format')
