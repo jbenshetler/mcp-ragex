@@ -13,18 +13,18 @@ ARCH ?= amd64
 
 ## Base image builds (layered architecture)
 cpu-base:      ## Build CPU system base image (ARCH=amd64|arm64)
-	docker buildx build --platform linux/$(ARCH) \
+	docker build \
 		-f docker/cpu/Dockerfile.base \
 		-t $(IMAGE_NAME):cpu-base \
 		-t $(IMAGE_NAME):cpu-$(ARCH)-base \
-		--load . \
+		. \
 		$(NO_CACHE)
 
 arm64-base:    ## Build ARM64 system base image
 	docker buildx build --platform linux/arm64 \
 		-f docker/arm64/Dockerfile.base \
 		-t $(IMAGE_NAME):arm64-base \
-		--load . \
+		--output type=docker . \
 		$(NO_CACHE)
 
 cpu-ml:        ## Build CPU ML layer (ARCH=amd64|arm64)
@@ -36,44 +36,75 @@ cpu-ml:        ## Build CPU ML layer (ARCH=amd64|arm64)
 		. \
 		$(NO_CACHE)
 
-arm64-ml:      ## Build ARM64 ML layer
+arm64-ml:      ## Build ARM64 ML layer (cross-compiled)
 	docker buildx build --platform linux/arm64 \
 		-f docker/arm64/Dockerfile.ml \
 		--build-arg BASE_IMAGE=$(IMAGE_NAME):arm64-base \
 		-t $(IMAGE_NAME):arm64-ml \
+		--output type=docker . \
+		$(NO_CACHE)
+
+cuda-base:     ## Build CUDA system base image
+	docker buildx build --platform linux/amd64 \
+		-f docker/cuda/Dockerfile.base \
+		-t $(IMAGE_NAME):cuda-base \
+		-t $(IMAGE_NAME):cuda-amd64-base \
 		--load . \
 		$(NO_CACHE)
 
-cuda-base:     ## Build CUDA base image  
-	docker build -f docker/cuda/Dockerfile.base \
-		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(VERSION) \
-		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest . \
+cuda-ml:       ## Build CUDA ML layer
+	docker build \
+		-f docker/cuda/Dockerfile.ml \
+		--build-arg BASE_IMAGE=$(IMAGE_NAME):cuda-base \
+		-t $(IMAGE_NAME):cuda-ml \
+		-t $(IMAGE_NAME):cuda-amd64-ml \
+		. \
 		$(NO_CACHE)
 
 ## Development builds (layered)
 cpu:           ## Build CPU image for local development (ARCH=amd64|arm64) - uses layered builds
-	@echo "Building layered CPU image for $(ARCH)..."
-	$(MAKE) cpu-base ARCH=$(ARCH)
-	$(MAKE) cpu-ml ARCH=$(ARCH)
-	docker build \
+	@if [ "$(ARCH)" = "arm64" ]; then \
+		echo "Routing ARM64 build to dedicated cross-compilation target..."; \
+		$(MAKE) arm64; \
+	else \
+		echo "Building layered CPU image for $(ARCH)..."; \
+		$(MAKE) cpu-base ARCH=$(ARCH); \
+		$(MAKE) cpu-ml ARCH=$(ARCH); \
+		docker build \
+			-f docker/app/Dockerfile \
+			--build-arg BASE_IMAGE=$(IMAGE_NAME):cpu-$(ARCH)-ml \
+			-t $(IMAGE_NAME):cpu-dev \
+			-t $(IMAGE_NAME):cpu-$(ARCH)-dev \
+			-t $(IMAGE_NAME):$(ARCH)-dev \
+			. \
+			$(NO_CACHE); \
+	fi
+
+arm64:         ## Build ARM64 image for local development (cross-compiled)
+	@echo "Building layered ARM64 image (cross-compiled)..."
+	$(MAKE) arm64-base
+	$(MAKE) arm64-ml
+	docker buildx build --platform linux/arm64 \
 		-f docker/app/Dockerfile \
-		--build-arg BASE_IMAGE=$(IMAGE_NAME):cpu-$(ARCH)-ml \
+		--build-arg BASE_IMAGE=$(IMAGE_NAME):arm64-ml \
 		-t $(IMAGE_NAME):cpu-dev \
-		-t $(IMAGE_NAME):cpu-$(ARCH)-dev \
-		-t $(IMAGE_NAME):$(ARCH)-dev \
-		. \
+		-t $(IMAGE_NAME):cpu-arm64-dev \
+		-t $(IMAGE_NAME):arm64-dev \
+		--output type=docker . \
 		$(NO_CACHE)
 
-arm64:         ## Build ARM64 image for local development - convenience target
-	$(MAKE) cpu ARCH=arm64
-
-cuda:          ## Build CUDA image for local development (AMD64 only)
-	docker buildx build --platform linux/amd64 \
-		-f docker/cuda/Dockerfile \
+cuda:          ## Build CUDA image for local development (AMD64 only) - uses layered builds
+	@echo "Building layered CUDA image for AMD64..."
+	$(MAKE) cuda-base
+	$(MAKE) cuda-ml
+	docker build \
+		-f docker/app/Dockerfile \
+		--build-arg BASE_IMAGE=$(IMAGE_NAME):cuda-ml \
 		-t $(IMAGE_NAME):cuda-dev \
 		-t $(IMAGE_NAME):cuda-amd64-dev \
 		-t $(IMAGE_NAME):amd64-cuda-dev \
-		--load .
+		. \
+		$(NO_CACHE)
 
 ## CI/CD builds  
 cpu-cicd:      ## Build CPU image optimized for CI/CD (multi-platform)
@@ -174,4 +205,4 @@ help:          ## Show this help
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: cpu-base arm64-base cpu-ml arm64-ml cuda-base cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean help
+.PHONY: cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean help

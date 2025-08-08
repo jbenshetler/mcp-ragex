@@ -1,7 +1,7 @@
 # CPU ML Image for MCP-Ragex
 # This provides ML dependencies on top of CPU base image
 
-ARG BASE_IMAGE=mcp-ragex:cpu-amd64-base
+ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 # Copy requirements files
