@@ -11,7 +11,7 @@ services:
     image: ragex/mcp-server:cuda-dev
     runtime: nvidia  # Requires nvidia-docker
     environment:
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - RAGEX_LOG_LEVEL=${RAGEX_LOG_LEVEL:-INFO}
       - DOCKER_CONTAINER=true
       - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
       - WORKSPACE_PATH=${PWD}
@@ -26,7 +26,7 @@ services:
     image: ragex/mcp-server:cuda-dev
     runtime: nvidia
     environment:
-      - LOG_LEVEL=DEBUG
+      - RAGEX_LOG_LEVEL=DEBUG
       - DOCKER_CONTAINER=true
       - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
       - WORKSPACE_PATH=${PWD}

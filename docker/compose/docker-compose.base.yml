@@ -6,7 +6,7 @@ services:
       - .:/workspace:ro                    # Current directory (read-only)
       - ragex-dev-data:/data               # Project-specific data
     environment:
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - RAGEX_LOG_LEVEL=${RAGEX_LOG_LEVEL:-INFO}
       - DOCKER_CONTAINER=true
       - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
       - WORKSPACE_PATH=${PWD}

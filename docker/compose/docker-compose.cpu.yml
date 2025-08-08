@@ -17,7 +17,7 @@ services:
       service: ragex
     image: ragex/mcp-server:cpu-dev
     environment:
-      - LOG_LEVEL=DEBUG
+      - RAGEX_LOG_LEVEL=DEBUG
       - DOCKER_CONTAINER=true
       - RAGEX_EMBEDDING_MODEL=${RAGEX_EMBEDDING_MODEL:-fast}
       - WORKSPACE_PATH=${PWD}
