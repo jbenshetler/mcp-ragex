@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Handler for register command"""
 
-import logging
 import os
 import shlex
 from pathlib import Path
 from typing import Dict, Any
 
-logger = logging.getLogger(__name__)
+from src.utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class RegisterHandler:

@@ -2,15 +2,15 @@
 """Handler for rm (remove project) command"""
 
 import fnmatch
-import logging
 import os
 import shutil
 from pathlib import Path
 from typing import Dict, Any, List
 
 from src.ragex_core.project_utils import get_project_info
+from src.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RmHandler:

@@ -322,8 +322,7 @@ class IndexingQueue:
             logger.setLevel(logging.DEBUG)
         elif quiet:
             logger.setLevel(logging.WARNING)
-        else:
-            logger.setLevel(logging.INFO)
+        # else: Don't override - let the global RAGEX_LOG_LEVEL setting take precedence
     
     def _format_output(self, result: Dict, stats: bool, quiet: bool) -> Dict[str, Any]:
         """Format output messages and statistics based on flags"""

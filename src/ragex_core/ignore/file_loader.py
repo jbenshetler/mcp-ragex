@@ -3,14 +3,14 @@ File loader for parsing and validating ignore files
 """
 
 import os
-import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass, field
 
 from .constants import IGNORE_FILENAME, MAX_IGNORE_FILE_SIZE, MAX_PATTERNS_PER_FILE
+from src.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

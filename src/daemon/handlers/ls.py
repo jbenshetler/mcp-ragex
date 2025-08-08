@@ -2,7 +2,6 @@
 """Handler for ls (list projects) command"""
 
 import fnmatch
-import logging
 import os
 import shutil
 import sys
@@ -11,8 +10,9 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from src.ragex_core.project_utils import get_project_info, load_project_metadata
 from src.ragex_core.constants import ADMIN_PROJECT_NAME, ADMIN_WORKSPACE_PATH
+from src.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LsHandler:

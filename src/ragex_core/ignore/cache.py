@@ -2,15 +2,15 @@
 Caching system for ignore decisions and compiled patterns
 """
 
-import logging
 from pathlib import Path
 from typing import Dict, Optional, Set, Tuple, List
 from collections import OrderedDict
 import threading
 
 from .constants import MAX_CACHE_SIZE
+from src.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LRUCache:

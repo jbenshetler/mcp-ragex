@@ -6,6 +6,7 @@ Provides environment-aware logging that:
 - Outputs JSON in Docker environments
 - Provides human-readable output for local development
 - Supports log rotation for file-based logging
+- Includes custom TRACE level for detailed debugging
 """
 
 import sys
@@ -16,6 +17,24 @@ from datetime import datetime
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Dict, Any
+
+# Define TRACE level (lower number = more detailed)
+TRACE_LEVEL = 5
+logging.addLevelName(TRACE_LEVEL, "TRACE")
+
+# Add a trace method to the logger
+def trace(self, message, *args, **kwargs):
+    if self.isEnabledFor(TRACE_LEVEL):
+        self._log(TRACE_LEVEL, message, args, **kwargs)
+
+# Add the method to the Logger class
+logging.Logger.trace = trace
+
+# Also add it as a module-level convenience function
+def add_trace_to_logger():
+    """Ensure trace method is available on all logger instances"""
+    if not hasattr(logging.Logger, 'trace'):
+        logging.Logger.trace = trace
 
 
 class DockerFormatter(logging.Formatter):
@@ -61,8 +80,16 @@ def configure_logging(
         backup_count: Number of backup files to keep
         quiet_libraries: Suppress verbose third-party library logs
     """
+    # Ensure trace method is available
+    add_trace_to_logger()
     # Determine log level (RAGEX_LOG_LEVEL takes precedence over LOG_LEVEL)
-    level = log_level or os.environ.get('RAGEX_LOG_LEVEL') or os.environ.get('LOG_LEVEL', 'INFO')
+    level_str = log_level or os.environ.get('RAGEX_LOG_LEVEL') or os.environ.get('LOG_LEVEL', 'INFO')
+    
+    # Convert string level to numeric level, handling custom TRACE level
+    if level_str.upper() == 'TRACE':
+        level = TRACE_LEVEL
+    else:
+        level = getattr(logging, level_str.upper(), logging.INFO)
     
     # Clear any existing handlers
     root_logger = logging.getLogger()
@@ -117,7 +144,7 @@ def configure_logging(
         console_handler.setFormatter(logging.Formatter(
             '%(levelname)s: %(message)s'
         ))
-        console_handler.setLevel(logging.WARNING)  # Only warnings and above to console
+        console_handler.setLevel(level)  # Match the main log level
         root_logger.addHandler(console_handler)
     
     # Configure root logger
@@ -141,7 +168,7 @@ def configure_logging(
     
     # Log startup information
     logger = logging.getLogger('mcp-ragex')
-    logger.info(f"Logging configured - Level: {level}, Docker: {in_docker}")
+    logger.info(f"Logging configured - Level: {level_str.upper()}, Docker: {in_docker}")
     
 
 def get_logger(name: str) -> logging.Logger:
@@ -154,6 +181,8 @@ def get_logger(name: str) -> logging.Logger:
     Returns:
         Configured logger instance
     """
+    # Ensure trace method is available before returning logger
+    add_trace_to_logger()
     return logging.getLogger(name)
 
 

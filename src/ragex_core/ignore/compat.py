@@ -2,15 +2,15 @@
 Backward compatibility wrapper for PatternMatcher
 """
 
-import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 from ..pattern_matcher import PatternMatcher
 from .manager import IgnoreManager
 from .constants import DEFAULT_EXCLUSIONS
+from src.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EnhancedPatternMatcher(PatternMatcher):

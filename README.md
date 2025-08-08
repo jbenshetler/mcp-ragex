@@ -644,9 +644,13 @@ ragex start
 
 # Or set for a single command
 RAGEX_LOG_LEVEL=DEBUG ragex start
+
+# For very verbose debugging (generates lots of output)
+RAGEX_LOG_LEVEL=TRACE ragex start
 ```
 
 **Available Log Levels:**
+- `TRACE`: Very detailed debugging (ignore decisions, file system operations)
 - `DEBUG`: Detailed debugging info (file processing, embeddings, scores)
 - `INFO`: General operation info (search queries, index progress) - **default**
 - `WARN`: Warnings and potential issues only
@@ -679,6 +683,39 @@ ragex log project-name
 tail -f /tmp/ragex-mcp.log
 ```
 
+### Log Rotation and Storage
+
+RAGex automatically manages log file sizes through Docker's log rotation to prevent disk space issues:
+
+**Default Log Limits:**
+- **Daemon logs**: 50MB per file, 3 files maximum (150MB total)
+- **Admin commands**: 10MB per file, 2 files maximum (20MB total)
+
+**Customizing Log Rotation:**
+
+```bash
+# Set custom log rotation limits
+export RAGEX_LOG_MAX_SIZE=100m      # Maximum size per log file
+export RAGEX_LOG_MAX_FILES=5        # Maximum number of log files to keep
+
+# Apply settings when starting daemon
+ragex stop
+ragex start
+
+# View current log rotation settings
+ragex configure
+```
+
+**Available Size Units:**
+- `k` or `kb`: Kilobytes (e.g., `500k`)
+- `m` or `mb`: Megabytes (e.g., `50m`) 
+- `g` or `gb`: Gigabytes (e.g., `1g`)
+
+**Log Storage Location:**
+- Logs are stored inside Docker containers and managed by Docker's log driver
+- Use `ragex log` to view logs (automatic log rotation is handled transparently)
+- Old log files are automatically deleted when limits are exceeded
+
 ### What Gets Logged
 
 **At INFO level:**
@@ -694,6 +731,12 @@ tail -f /tmp/ragex-mcp.log
 - ChromaDB query internals
 - Similarity scores for each result
 - Pattern matcher decisions
+
+**At TRACE level adds:**
+- File ignore decisions for every file checked
+- Detailed file system operations
+- Internal component state transitions
+- Very verbose debugging information
 
 ## Security Features
 

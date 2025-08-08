@@ -10,11 +10,12 @@ This module implements a multi-signal re-ranking system that considers:
 """
 
 import re
-import logging
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from src.utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class FeatureReranker:

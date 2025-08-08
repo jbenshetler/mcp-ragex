@@ -18,18 +18,17 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from src.ragex_core.project_utils import get_project_data_dir, get_chroma_db_path
 
-# Configure logging
-log_level = os.environ.get('RAGEX_LOG_LEVEL', 'INFO')
-logging.basicConfig(
-    level=getattr(logging, log_level.upper(), logging.INFO),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure logging - use our centralized logging setup
+from src.utils import configure_logging
+configure_logging()
 logger = logging.getLogger('ragex-socket-daemon')
 
 # Suppress verbose watchdog inotify debug messages
 # These flood the logs with file system events when DEBUG logging is enabled
+# But allow TRACE level when specifically requested for deep debugging
 watchdog_logger = logging.getLogger('watchdog.observers.inotify_buffer')
-watchdog_logger.setLevel(logging.WARNING)  # Only show warnings and errors from watchdog
+if os.environ.get('RAGEX_LOG_LEVEL', '').upper() != 'TRACE':
+    watchdog_logger.setLevel(logging.WARNING)  # Only show warnings and errors from watchdog unless TRACE
 
 # Import watchdog components
 try:

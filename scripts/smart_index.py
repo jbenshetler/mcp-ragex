@@ -208,7 +208,7 @@ def main():
     else:
         # Only show warnings and errors by default
         logging.basicConfig(
-            level=logging.WARNING,
+            level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             force=True
         )

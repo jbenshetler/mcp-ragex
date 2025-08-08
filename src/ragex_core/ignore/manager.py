@@ -3,7 +3,6 @@ Main ignore manager API for multi-level ignore file support with hot reloading
 """
 
 import os
-import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Union, Set
 import threading
@@ -13,8 +12,9 @@ from .rule_engine import IgnoreRuleEngine, CompiledRules
 from .file_loader import IgnoreFileLoader, IgnoreFileInfo
 from .cache import IgnoreCache
 from .registry import IgnoreFileRegistry
+from src.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Track warnings that have already been shown to avoid duplicates
 _shown_warnings: Set[str] = set()
@@ -137,7 +137,7 @@ class IgnoreManager:
             # Cache the decision
             self._cache.cache_decision(path, result.should_ignore, ignore_files)
             
-            logger.debug(
+            logger.trace(
                 f"Ignore check for {path}: {result.should_ignore} "
                 f"(matched: {result.matched_pattern} from {result.matched_file})"
             )

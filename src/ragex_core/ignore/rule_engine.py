@@ -2,14 +2,14 @@
 Rule engine for pattern compilation and matching with multi-level support
 """
 
-import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Set, Tuple
 from dataclasses import dataclass
 
 import pathspec
+from src.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
