@@ -74,10 +74,31 @@ class CodeIndexer:
         
         # Initialize components with shared config
         try:
-            self.tree_sitter = TreeSitterEnhancer()
+            # Try to import parallel extractor first
+            try:
+                from .parallel_symbol_extractor import ParallelSymbolExtractor
+                from .parallel_config import get_optimal_config
+                
+                # Check if we should use parallel processing
+                use_parallel = os.environ.get('RAGEX_USE_PARALLEL', 'true').lower() == 'true'
+                
+                if use_parallel:
+                    config = get_optimal_config()
+                    self.tree_sitter = ParallelSymbolExtractor(config=config, pattern_matcher=self.pattern_matcher)
+                    self._use_parallel = True
+                    logger.info(f"Initialized parallel symbol extractor with {config.max_workers} workers")
+                else:
+                    self.tree_sitter = TreeSitterEnhancer()
+                    self._use_parallel = False
+                    logger.info("Using sequential symbol extraction")
+            except ImportError as e:
+                logger.warning(f"Parallel extractor not available, falling back to sequential: {e}")
+                self.tree_sitter = TreeSitterEnhancer()
+                self._use_parallel = False
         except Exception as e:
             logger.warning(f"Tree-sitter enhancer disabled due to: {e}")
             self.tree_sitter = None
+            self._use_parallel = False
         self.embedder = EmbeddingManager(config=self.config)
         self.vector_store = CodeVectorStore(config=self.config)
         self.pattern_matcher = PatternMatcher()
@@ -245,37 +266,75 @@ class CodeIndexer:
         all_symbols = []
         failed_files = []
         
-        # Process files with progress bar
-        with tqdm(total=len(all_files), desc="Extracting symbols") as pbar:
-            for file_path in all_files:
-                try:
-                    symbols = await self.extract_symbols_from_file(file_path)
+        if self._use_parallel and hasattr(self.tree_sitter, 'extract_symbols_parallel'):
+            # Use parallel extraction
+            logger.info(f"Using parallel extraction for {len(all_files)} files")
+            
+            def progress_wrapper(progress_info):
+                """Wrapper to handle progress updates from parallel extractor"""
+                if progress_callback:
+                    # Call the original callback with file and status info
+                    # This is a simplified progress mapping
+                    asyncio.create_task(progress_callback("batch_progress", "processing"))
+            
+            # Run parallel extraction
+            results = await self.tree_sitter.extract_symbols_parallel(
+                [str(f) for f in all_files],
+                include_docs_and_comments=True,
+                progress_callback=progress_wrapper
+            )
+            
+            # Process results
+            for result in results:
+                if result.success:
+                    # Calculate checksum for this file  
+                    from src.ragex_core.file_checksum import calculate_file_checksum
+                    file_checksum = calculate_file_checksum(result.file_path)
                     
-                    if symbols:
-                        # Calculate checksum for this file
-                        from src.ragex_core.file_checksum import calculate_file_checksum
-                        file_checksum = calculate_file_checksum(file_path)
+                    # Add checksum to all symbols from this file
+                    for symbol_dict in result.symbols:
+                        symbol_dict['file_checksum'] = file_checksum
+                    
+                    all_symbols.extend(result.symbols)
+                else:
+                    failed_files.append(result.file_path)
+                    if result.error:
+                        logger.error(f"Failed to process {result.file_path}: {result.error}")
+        else:
+            # Use sequential extraction
+            logger.info(f"Using sequential extraction for {len(all_files)} files")
+            
+            # Process files with progress bar
+            with tqdm(total=len(all_files), desc="Extracting symbols") as pbar:
+                for file_path in all_files:
+                    try:
+                        symbols = await self.extract_symbols_from_file(file_path)
                         
-                        # Add checksum to all symbols from this file
-                        for symbol in symbols:
-                            symbol['file_checksum'] = file_checksum
-                        
-                        all_symbols.extend(symbols)
-                        status = "success"
-                    else:
+                        if symbols:
+                            # Calculate checksum for this file
+                            from src.ragex_core.file_checksum import calculate_file_checksum
+                            file_checksum = calculate_file_checksum(file_path)
+                            
+                            # Add checksum to all symbols from this file
+                            for symbol in symbols:
+                                symbol['file_checksum'] = file_checksum
+                            
+                            all_symbols.extend(symbols)
+                            status = "success"
+                        else:
+                            failed_files.append(str(file_path))
+                            status = "failed"
+                    except Exception as e:
+                        logger.error(f"Failed to process {file_path}: {e}")
                         failed_files.append(str(file_path))
                         status = "failed"
-                except Exception as e:
-                    logger.error(f"Failed to process {file_path}: {e}")
-                    failed_files.append(str(file_path))
-                    status = "failed"
-                
-                # Update progress
-                pbar.update(1)
-                
-                # Call progress callback if provided
-                if progress_callback:
-                    await progress_callback(str(file_path), status)
+                    
+                    # Update progress
+                    pbar.update(1)
+                    
+                    # Call progress callback if provided
+                    if progress_callback:
+                        await progress_callback(str(file_path), status)
         
         logger.info(f"Extracted {len(all_symbols)} symbols from {len(all_files) - len(failed_files)} files")
         
