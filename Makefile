@@ -2,12 +2,22 @@
 REGISTRY := ghcr.io/jbenshetler
 IMAGE_NAME := mcp-ragex
 BASE_IMAGE_NAME := mcp-ragex-base
-VERSION := $(shell git describe --tags --dirty 2>/dev/null || echo "dev")
+# Version management - git tag based
+VERSION := $(shell git describe --tags --exact-match 2>/dev/null)
+CURRENT_VERSION := $(shell git tag --sort=-version:refname | head -1)
+NEXT_PATCH := $(shell git tag --sort=-version:refname | head -1 | sed 's/v//' | awk -F. '{print "v" $$1 "." $$2 "." $$3+1}')
+NEXT_MINOR := $(shell git tag --sort=-version:refname | head -1 | sed 's/v//' | awk -F. '{print "v" $$1 "." $$2+1 ".0"}')
+BUILD_VERSION := $(shell git describe --tags --dirty 2>/dev/null || echo "dev")
 PLATFORMS_CPU := linux/amd64,linux/arm64
 PLATFORMS_GPU := linux/amd64
 
 # Architecture support - defaults to amd64
 ARCH ?= amd64
+
+# Dependency checking helper
+check-base-exists = @docker image inspect $(1) >/dev/null 2>&1 || \
+	(echo "❌ Required base image missing: $(1)"; \
+	 echo "   Run: make $(2)"; exit 1)
 
 .DEFAULT_GOAL := help
 
@@ -27,7 +37,8 @@ arm64-base:    ## Build ARM64 system base image and push to GHCR
 		--push . \
 		$(NO_CACHE)
 
-cpu-ml:        ## Build CPU ML layer (ARCH=amd64|arm64)
+cpu-ml:        ## Build CPU ML layer (ARCH=amd64|arm64) - requires cpu-base
+	$(call check-base-exists,$(IMAGE_NAME):cpu-$(ARCH)-base,cpu-base)
 	docker build \
 		-f docker/cpu/Dockerfile.ml \
 		--build-arg BASE_IMAGE=$(IMAGE_NAME):cpu-$(ARCH)-base \
@@ -52,7 +63,8 @@ cuda-base:     ## Build CUDA system base image
 		--load . \
 		$(NO_CACHE)
 
-cuda-ml:       ## Build CUDA ML layer
+cuda-ml:       ## Build CUDA ML layer - requires cuda-base
+	$(call check-base-exists,$(IMAGE_NAME):cuda-base,cuda-base)
 	docker build \
 		-f docker/cuda/Dockerfile.ml \
 		--build-arg BASE_IMAGE=$(IMAGE_NAME):cuda-base \
@@ -125,17 +137,89 @@ cuda-cicd:     ## Build CUDA image optimized for CI/CD
 		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda \
 		-t $(REGISTRY)/$(IMAGE_NAME):latest-cuda .
 
+## Version Management
+version-patch:   ## Auto-increment patch version (0.3.0 → 0.3.1)
+	@if [ -n "$(VERSION)" ]; then \
+		echo "❌ Current commit already has version tag: $(VERSION)"; \
+		echo "   Cannot create new version on tagged commit"; \
+		exit 1; \
+	fi
+	@git diff --exit-code || (echo "❌ Working tree has uncommitted changes"; exit 1)
+	@echo "🏷️  Creating new patch version: $(NEXT_PATCH)"
+	git tag $(NEXT_PATCH)
+	git push origin $(NEXT_PATCH)
+	@echo "✅ Version $(NEXT_PATCH) created and pushed"
+
+version-minor:   ## Auto-increment minor version (0.3.0 → 0.4.0)
+	@if [ -n "$(VERSION)" ]; then \
+		echo "❌ Current commit already has version tag: $(VERSION)"; \
+		echo "   Cannot create new version on tagged commit"; \
+		exit 1; \
+	fi
+	@git diff --exit-code || (echo "❌ Working tree has uncommitted changes"; exit 1)
+	@echo "🏷️  Creating new minor version: $(NEXT_MINOR)"
+	git tag $(NEXT_MINOR)
+	git push origin $(NEXT_MINOR)
+	@echo "✅ Version $(NEXT_MINOR) created and pushed"
+
+check-version:   ## Verify clean state and version exists
+	@if [ -z "$(VERSION)" ]; then \
+		echo "❌ No version tag found on current commit"; \
+		echo "   Create one with 'make version-patch' or 'make version-minor'"; \
+		exit 1; \
+	fi
+	@git diff --exit-code || (echo "❌ Working tree has uncommitted changes"; exit 1)
+	@if docker manifest inspect $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu >/dev/null 2>&1; then \
+		echo "❌ Version $(VERSION) already exists in registry!"; \
+		echo "   Use 'make version-patch' to create new version"; \
+		exit 1; \
+	fi
+	@echo "✅ Version $(VERSION) is ready to publish"
+
+## Build All Targets
+build-all:       ## Build all platform images locally
+	$(MAKE) cpu
+	$(MAKE) cuda
+	$(MAKE) arm64
+
 ## Publishing targets
+publish-all: check-version ## Build and publish all images to GHCR with version tags
+	@echo "🚀 Publishing all images for version $(VERSION)..."
+	# CPU multi-platform (amd64 + arm64)
+	docker buildx build --push --platform $(PLATFORMS_CPU) \
+		-f docker/cpu/Dockerfile.conditional \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu \
+		-t $(REGISTRY)/$(IMAGE_NAME):cpu-latest .
+	# CUDA (amd64 only)
+	docker buildx build --push --platform linux/amd64 \
+		-f docker/cuda/Dockerfile \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda \
+		-t $(REGISTRY)/$(IMAGE_NAME):cuda-latest .
+	@echo "✅ All images published for version $(VERSION)"
+
+release:         ## Complete release workflow (check + build + publish)
+	@echo "🎯 Starting release workflow for version $(VERSION)..."
+	$(MAKE) check-version
+	$(MAKE) build-all
+	$(MAKE) publish-all
+	@echo "🎉 Release $(VERSION) completed successfully!"
+	@echo "📦 Published images:"
+	@echo "   - $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu (multi-arch)"
+	@echo "   - $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda (amd64)"
+	@echo "   - $(REGISTRY)/$(IMAGE_NAME):cpu-latest"
+	@echo "   - $(REGISTRY)/$(IMAGE_NAME):cuda-latest"
+
+## Legacy publishing targets (kept for compatibility)
 publish-cpu-base:  ## Build and publish CPU base image
 	docker buildx build --push --platform $(PLATFORMS_CPU) \
 		-f docker/cpu/Dockerfile.base \
-		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-$(VERSION) \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-$(BUILD_VERSION) \
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cpu-latest .
 
 publish-cuda-base: ## Build and publish CUDA base image  
 	docker buildx build --push --platform $(PLATFORMS_GPU) \
 		-f docker/cuda/Dockerfile.base \
-		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(VERSION) \
+		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(BUILD_VERSION) \
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest .
 
 publish-cpu:   ## Build and publish CPU images (multi-platform)
@@ -143,12 +227,12 @@ publish-cpu:   ## Build and publish CPU images (multi-platform)
 	docker buildx build --push --platform linux/amd64 \
 		-f docker/cpu/Dockerfile.conditional \
 		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-amd64 .
+		-t $(REGISTRY)/$(IMAGE_NAME):$(BUILD_VERSION)-cpu-amd64 .
 	# ARM64 build with multiple tags
 	docker buildx build --push --platform linux/arm64 \
 		-f docker/cpu/Dockerfile.conditional \
 		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-arm64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-arm64 .
+		-t $(REGISTRY)/$(IMAGE_NAME):$(BUILD_VERSION)-cpu-arm64 .
 	# Create multi-platform manifest
 	docker manifest create $(REGISTRY)/$(IMAGE_NAME):latest-cpu \
 		$(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
@@ -159,7 +243,7 @@ publish-cuda:  ## Build and publish CUDA image (AMD64 only)
 	docker buildx build --push --platform linux/amd64 \
 		-f docker/cuda/Dockerfile \
 		-t $(REGISTRY)/$(IMAGE_NAME):cuda-amd64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-amd64 \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(BUILD_VERSION)-cuda-amd64 \
 		-t $(REGISTRY)/$(IMAGE_NAME):cuda-latest .
 
 ## Installation helpers
@@ -171,10 +255,40 @@ install-cuda:  ## Build and install CUDA image locally
 	$(MAKE) cuda
 	RAGEX_IMAGE=$(IMAGE_NAME):cuda-dev ./install.sh
 
+## Registry Management
+registry-stats:  ## Show registry storage usage and recent versions
+	@echo "📊 Registry Statistics:"
+	@gh api repos/jbenshetler/mcp-ragex/packages/container/mcp-ragex \
+		--jq '{name, visibility, updated_at, download_count}'
+	@echo ""
+	@echo "📋 Recent Versions (last 10):"
+	@gh api repos/jbenshetler/mcp-ragex/packages/container/mcp-ragex/versions \
+		--jq '.[:10] | .[] | {name, created_at, size_bytes}'
+
+list-registry:   ## List all published versions
+	@echo "📦 All Published Versions:"
+	@gh api repos/jbenshetler/mcp-ragex/packages/container/mcp-ragex/versions \
+		--jq '.[] | {name, created_at}' | head -20
+
+registry-cleanup: ## Delete versions older than 3 months (protects latest-* tags)
+	@echo "🧹 Deleting registry versions older than 3 months..."
+	@echo "   (Protecting latest-cpu, latest-cuda, cpu-latest, cuda-latest tags)"
+	@gh api repos/jbenshetler/mcp-ragex/packages/container/mcp-ragex/versions \
+		--jq '.[] | select(.created_at < "'$(shell date -d '3 months ago' -I)'" and (.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+") ) and (.name | test("latest") | not)) | .id' | \
+		xargs -I {} sh -c 'echo "Deleting version ID: {}"; gh api -X DELETE repos/jbenshetler/mcp-ragex/packages/container/mcp-ragex/versions/{}' || true
+	@echo "✅ Registry cleanup completed"
+
 ## Utility targets
 clean:         ## Clean up build artifacts
 	docker system prune -f
 	docker buildx prune -f
+
+clean-registry:  ## Clean local registry cache and build artifacts
+	@echo "🧹 Cleaning local Docker cache..."
+	docker system df
+	docker buildx prune -f
+	docker builder prune -f
+	docker system prune -f
 
 clean-arm64-temp: ## Clean up temporary ARM64 registry tags
 	@echo "Cleaning up temporary ARM64 registry tags..."
@@ -187,32 +301,39 @@ clean-arm64-temp: ## Clean up temporary ARM64 registry tags
 	@echo "Note: Use 'gh api repos/OWNER/REPO/packages/container/PACKAGE/versions' to list and delete via GitHub API"
 
 help:          ## Show this help
-	@echo "Layered Multi-Tag Docker Build System"
+	@echo "🚀 MCP-RAGex Docker Build System"
 	@echo ""
-	@echo "Architecture Support:"
-	@echo "  ARCH=amd64    Build for AMD64 (default, ~1.6GiB with CPU-only PyTorch)"
-	@echo "  ARCH=arm64    Build for ARM64 (~4GiB with regular PyTorch)"
+	@echo "🏷️  Version Management:"
+	@echo "  make version-patch    # Auto-increment patch (0.3.0 → 0.3.1)"
+	@echo "  make version-minor    # Auto-increment minor (0.3.0 → 0.4.0)"
+	@echo "  make check-version    # Verify version ready for publishing"
 	@echo ""
-	@echo "Layered Build Process:"
-	@echo "  1. System Base Layer  # Python, system deps (fast rebuild)"
-	@echo "  2. ML Layer          # PyTorch, transformers (slow, cached)"
-	@echo "  3. Application Layer # Your code (fastest rebuild)"
+	@echo "🏗️  Building:"
+	@echo "  make cpu              # Build CPU image locally"
+	@echo "  make cuda             # Build CUDA image locally"
+	@echo "  make arm64            # Build ARM64 image locally"
+	@echo "  make build-all        # Build all platform images"
 	@echo ""
-	@echo "Development Build Tags (each build creates multiple tags):"
-	@echo "  make cpu              # Creates: cpu-dev, cpu-amd64-dev, amd64-dev"
-	@echo "  make arm64            # Creates: cpu-dev, cpu-arm64-dev, arm64-dev (registry-based)"
-	@echo "  make cuda             # Creates: cuda-dev, cuda-amd64-dev, amd64-cuda-dev"
+	@echo "📦 Publishing:"
+	@echo "  make release          # Complete release workflow (recommended)"
+	@echo "  make publish-all      # Publish all images to GHCR"
 	@echo ""
-	@echo "Individual Layers (for debugging/testing):"
-	@echo "  make cpu-base         # Build system base only"
-	@echo "  make cpu-ml           # Build ML layer (requires base)"
+	@echo "🗂️  Registry Management:"
+	@echo "  make registry-stats   # Show storage usage"
+	@echo "  make list-registry    # List published versions"
+	@echo "  make registry-cleanup # Delete old versions (3+ months)"
 	@echo ""
-	@echo "Usage Examples:"
-	@echo "  docker run mcp-ragex:cpu-dev          # Latest built (backward compatible)"
-	@echo "  docker run mcp-ragex:cpu-amd64-dev    # Specifically AMD64 CPU"
-	@echo "  docker run mcp-ragex:cpu-arm64-dev    # Specifically ARM64 CPU"
-	@echo "  docker run mcp-ragex:cuda-amd64-dev   # CUDA build"
+	@echo "🛠️  Development:"
+	@echo "  make install-cpu      # Build and install CPU locally"
+	@echo "  make install-cuda     # Build and install CUDA locally"
 	@echo ""
+	@echo "🧹 Maintenance:"
+	@echo "  make clean            # Clean build artifacts"
+	@echo "  make clean-registry   # Clean local Docker cache"
+	@echo ""
+	@echo "Current Version: $(CURRENT_VERSION) (next patch: $(NEXT_PATCH), next minor: $(NEXT_MINOR))"
+	@echo ""
+	@echo "📋 All Available Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean clean-arm64-temp help
+.PHONY: version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean clean-arm64-temp help
