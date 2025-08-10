@@ -81,6 +81,7 @@ class EmbeddingConfig:
     # Predefined model configurations
     MODEL_PRESETS: Dict[str, ModelConfig] = {
         # Fast model - good for quick prototyping and smaller codebases
+        # Pre-bundled in all Docker images for offline operation
         "fast": ModelConfig(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             dimensions=384,
@@ -107,21 +108,21 @@ class EmbeddingConfig:
             normalize_embeddings=True
         ),
         
-        # Code-specific models (if available)
-        "code-small": ModelConfig(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",  # Fallback to general model
-            dimensions=384,
-            max_seq_length=256,
-            batch_size=64,
-            normalize_embeddings=True
-        ),
-        
-        # Multilingual support
+        # Multilingual support - works with multiple languages
         "multilingual": ModelConfig(
             model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
             dimensions=384,
             max_seq_length=128,
             batch_size=32,
+            normalize_embeddings=True
+        ),
+        
+        # Code-specific models (experimental - falls back to fast for now)
+        "code-small": ModelConfig(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",  # Using fast model as fallback
+            dimensions=384,
+            max_seq_length=256,
+            batch_size=64,
             normalize_embeddings=True
         )
     }
@@ -156,6 +157,7 @@ class EmbeddingConfig:
                 if env_model.lower() in self.MODEL_PRESETS:
                     preset = env_model.lower()
                     logger.info(f"Using preset from environment: {preset}")
+                    # Continue to preset resolution below
                 else:
                     # Assume it's a model name, create config with defaults
                     self._model_config = ModelConfig(
@@ -169,7 +171,7 @@ class EmbeddingConfig:
                     logger.warning("Using default dimensions (384) - adjust if needed")
                     return
             
-            # Use preset
+            # Use preset (either from environment or parameter)
             preset = preset or self.DEFAULT_PRESET
             if preset not in self.MODEL_PRESETS:
                 logger.warning(f"Unknown preset '{preset}', using default '{self.DEFAULT_PRESET}'")
