@@ -222,17 +222,21 @@ publish-cuda-base: ## Build and publish CUDA base image
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(BUILD_VERSION) \
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest .
 
-publish-cpu:   ## Build and publish CPU images (multi-platform)
-	# AMD64 build with multiple tags
+publish-cpu-amd64: ## Build and publish CPU image (AMD64 only) - fast for development
 	docker buildx build --push --platform linux/amd64 \
 		-f docker/cpu/Dockerfile.conditional \
 		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
 		-t $(REGISTRY)/$(IMAGE_NAME):$(BUILD_VERSION)-cpu-amd64 .
-	# ARM64 build with multiple tags
+
+publish-cpu-arm64: ## Build and publish CPU image (ARM64 only) - for Apple Silicon
 	docker buildx build --push --platform linux/arm64 \
 		-f docker/cpu/Dockerfile.conditional \
 		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-arm64 \
 		-t $(REGISTRY)/$(IMAGE_NAME):$(BUILD_VERSION)-cpu-arm64 .
+
+publish-cpu:   ## Build and publish CPU images (multi-platform)
+	$(MAKE) publish-cpu-amd64
+	$(MAKE) publish-cpu-arm64
 	# Create multi-platform manifest
 	docker manifest create $(REGISTRY)/$(IMAGE_NAME):latest-cpu \
 		$(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
@@ -336,4 +340,4 @@ help:          ## Show this help
 	@echo "📋 All Available Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu publish-cuda install-cpu install-cuda clean clean-arm64-temp help
+.PHONY: version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu-amd64 publish-cpu-arm64 publish-cpu publish-cuda install-cpu install-cuda clean clean-arm64-temp help
