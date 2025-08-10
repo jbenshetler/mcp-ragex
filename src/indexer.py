@@ -28,7 +28,10 @@ from src.ragex_core.path_mapping import container_to_host_path, is_container_pat
 
 
 logger.info("indexer attempting import of EmbeddingConfig")
-from src.ragex_core.embedding_config import EmbeddingConfig
+try:
+    from src.ragex_core.embedding_config import EmbeddingConfig
+except ImportError:
+    from .ragex_core.embedding_config import EmbeddingConfig
 
 
 class CodeIndexer:
@@ -58,7 +61,10 @@ class CodeIndexer:
         elif model_name is not None:
             # Legacy support
             logger.warning("Using model_name parameter is deprecated, use config instead")
-            from .embedding_config import ModelConfig
+            try:
+                from src.ragex_core.embedding_config import ModelConfig
+            except ImportError:
+                from .ragex_core.embedding_config import ModelConfig
             self.config = EmbeddingConfig(custom_model=ModelConfig(
                 model_name=model_name,
                 dimensions=384,

@@ -4,8 +4,9 @@ set -e
 
 echo "🚀 Installing MCP-RAGex Server..."
 
-# Default to CPU, allow explicit override
+# Default to CPU, secure network mode
 MODE="cpu"  # Default
+NETWORK_MODE="none"  # Default to secure (no network)
 
 # Parse optional flags
 while [[ $# -gt 0 ]]; do
@@ -13,7 +14,8 @@ while [[ $# -gt 0 ]]; do
         --cpu) MODE="cpu"; shift ;;
         --cuda) MODE="cuda"; shift ;;
         --rocm) MODE="rocm"; shift ;;  # Future
-        *) echo "❌ Unknown option: $1"; echo "Valid options: --cpu, --cuda"; exit 1 ;;
+        --network) NETWORK_MODE="bridge"; shift ;;  # Enable network access
+        *) echo "❌ Unknown option: $1"; echo "Valid options: --cpu, --cuda, --network"; exit 1 ;;
     esac
 done
 
@@ -77,11 +79,21 @@ cat > "$CONFIG_FILE" <<EOF
 {
     "docker_image": "$DOCKER_IMAGE",
     "mode": "$MODE",
+    "network_mode": "$NETWORK_MODE",
     "installed_at": "$(date -Iseconds)"
 }
 EOF
 
 echo "✅ Configuration saved: $CONFIG_FILE (mode: $MODE)"
+
+# Show security status to user
+if [[ "$NETWORK_MODE" == "none" ]]; then
+    echo "🔒 Installed in secure mode (no network access)"
+    echo "   Only pre-bundled fast model will be available"
+else
+    echo "🌐 Installed with network access enabled" 
+    echo "   All embedding models can be downloaded"
+fi
 
 # Copy the smart wrapper scripts
 echo "📝 Installing ragex wrappers..."

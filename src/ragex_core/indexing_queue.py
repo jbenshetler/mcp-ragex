@@ -214,7 +214,8 @@ class IndexingQueue:
                            stats: bool = False, 
                            verbose: bool = False,
                            name: str = None,
-                           path: str = None) -> Dict[str, Any]:
+                           path: str = None,
+                           model: str = None) -> Dict[str, Any]:
         """Request an index operation with full parameter support
         
         Args:
@@ -225,12 +226,43 @@ class IndexingQueue:
             verbose: Show detailed verbose output
             name: Custom project name (for new projects only)
             path: Custom path to index (defaults to workspace)
+            model: Embedding model to use (fast/balanced/accurate/multilingual)
             
         Returns:
             Dict with success status, messages, and statistics
         """
         # Configure logging based on verbosity flags
         self._configure_logging(verbose, quiet)
+        
+        # Validate model and network access requirements
+        if model and model != 'fast':
+            # Check if container has network access
+            import subprocess
+            try:
+                result = subprocess.run(
+                    ['curl', '--connect-timeout', '2', '-s', 'https://httpbin.org/ip'],
+                    capture_output=True,
+                    timeout=5
+                )
+                has_network = result.returncode == 0
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                has_network = False
+            
+            if not has_network:
+                error_msg = (f"❌ Model '{model}' requires network access but container has no network access.\n"
+                           f"   \n"
+                           f"   Available options:\n"
+                           f"   1. Use the pre-bundled model: ragex index . --model fast\n"
+                           f"   2. Enable network access by reinstalling:\n"
+                           f"      install.sh --cpu --network")
+                if not quiet:
+                    logger.error(error_msg)
+                return {
+                    'success': False,
+                    'stdout': '',
+                    'stderr': error_msg + '\n',
+                    'returncode': 1
+                }
         
         # Check without acquiring lock first (fast path)
         if self._indexing:
@@ -288,7 +320,8 @@ class IndexingQueue:
                 stats=stats,
                 verbose=verbose,
                 name=name,
-                path=path or '/workspace'
+                path=path or '/workspace',
+                model=model
             )
             logger.debug(f"Indexing result: {result}")
             formatted_result = self._format_output(result, stats, quiet)
@@ -386,7 +419,8 @@ class IndexingQueue:
                                        stats: bool = False,
                                        verbose: bool = False,
                                        name: str = None,
-                                       path: str = None) -> Dict[str, Any]:
+                                       path: str = None,
+                                       model: str = None) -> Dict[str, Any]:
         """Enhanced incremental indexing with full parameter support"""
         logger.debug(f"Attempting import at _handle_incremental_index")        
         try:
@@ -459,6 +493,25 @@ class IndexingQueue:
                     force = True
                 
                 project_name = existing_name
+                
+                # For existing projects, validate model compatibility
+                existing_model = existing_metadata.get('embedding_model', 'fast')
+                if model and model != existing_model:
+                    error_msg = (f"❌ Cannot change embedding model from '{existing_model}' to '{model}'\n"
+                               f"   Existing embeddings are incompatible with new model.\n"
+                               f"   To use '{model}', create a new project or remove existing index with --force.")
+                    if not quiet:
+                        logger.error(error_msg)
+                    return {
+                        'success': False,
+                        'stdout': '',
+                        'stderr': error_msg + '\n',
+                        'returncode': 1
+                    }
+                
+                # Use existing project's model
+                embedding_model = existing_model
+                
                 # Update last_accessed for existing projects
                 existing_metadata['last_accessed'] = datetime.now().isoformat()
                 update_project_metadata(project_id, existing_metadata)
@@ -473,6 +526,9 @@ class IndexingQueue:
                     # Default to basename
                     project_name = Path(host_workspace_path).name
                 
+                # For new projects, user can specify model
+                embedding_model = model or os.environ.get('RAGEX_EMBEDDING_MODEL', 'fast')
+                
                 # Save initial metadata with all required fields
                 metadata = {
                     'project_name': project_name,
@@ -482,13 +538,14 @@ class IndexingQueue:
                     'created_at': datetime.now().isoformat(),
                     'last_accessed': datetime.now().isoformat(),
                     'indexed_at': datetime.now().isoformat(),
-                    'embedding_model': os.environ.get('RAGEX_EMBEDDING_MODEL', 'fast'),
+                    'embedding_model': embedding_model,
                     'collection_name': os.environ.get('RAGEX_CHROMA_COLLECTION', 'code_embeddings')
                 }
                 save_project_metadata(project_id, metadata)
             
             if not quiet:
                 logger.info(f"📦 Project: {project_name}")
+                logger.info(f"🤖 Embedding model: {embedding_model}")
             
             # Initialize pattern matcher for ignore handling
             pattern_matcher = PatternMatcher()
@@ -497,9 +554,12 @@ class IndexingQueue:
             # Check if index exists
             index_exists = (Path(project_data_dir) / 'chroma_db').exists()
             
-            # Initialize indexer with project data directory
+            # Initialize indexer with project data directory and embedding model
             chroma_persist_dir = get_chroma_db_path(project_data_dir)
-            indexer = CodeIndexer(persist_directory=str(chroma_persist_dir))
+            indexer = CodeIndexer(
+                persist_directory=str(chroma_persist_dir),
+                model_name=embedding_model
+            )
             
             if not index_exists or force:
                 # First time or forced - run full index

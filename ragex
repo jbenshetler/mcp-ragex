@@ -180,11 +180,16 @@ class RagexCLI:
         log_max_size = os.environ.get('RAGEX_LOG_MAX_SIZE', '50m')
         log_max_files = os.environ.get('RAGEX_LOG_MAX_FILES', '3')
         
+        # Load permanent network policy from config
+        config = self.load_config()
+        network_mode = config.get('network_mode', 'none')  # Default secure
+        
         docker_cmd = [
             'docker', 'run', '-d',
             '--log-driver', 'json-file',
             '--log-opt', f'max-size={log_max_size}',
             '--log-opt', f'max-file={log_max_files}',
+            '--network', network_mode,
             '--name', self.daemon_container_name,
             '-u', f'{self.user_id}:{self.group_id}',
             '-v', f'{self.user_volume}:/data',
@@ -318,6 +323,9 @@ class RagexCLI:
             help='Show verbose output including debug logs')
         index_parser.add_argument('--name',
             help='Custom name for the project (must be unique, cannot be changed later)')
+        index_parser.add_argument('--model', 
+            choices=['fast', 'balanced', 'accurate', 'multilingual'],
+            help='Embedding model to use (fast/balanced/accurate/multilingual)')
         
         # Search command
         search_parser = subparsers.add_parser('search', 
@@ -499,6 +507,8 @@ Environment Variables:
             cmd_args.append('--verbose')
         if hasattr(args, 'name') and args.name:
             cmd_args.extend(['--name', args.name])
+        if hasattr(args, 'model') and args.model:
+            cmd_args.extend(['--model', args.model])
         return self.exec_via_daemon('index', cmd_args)
     
     def cmd_search(self, args: argparse.Namespace) -> int:

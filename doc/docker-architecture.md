@@ -36,23 +36,70 @@ mcp-ragex/
 
 ## Image Hierarchy
 
-### Base Images
-- **CPU Base**: `ghcr.io/jbenshetler/mcp-ragex-base:cpu-{version}`
-  - Contains Python environment and CPU-only PyTorch
-  - Used for lightweight CPU deployments
-  
-- **CUDA Base**: `ghcr.io/jbenshetler/mcp-ragex-base:cuda-{version}`
-  - Based on NVIDIA CUDA runtime
-  - Contains CUDA-enabled PyTorch and GPU libraries
+### Layered Architecture (3-Layer System)
 
-### Application Images
-- **CPU Application**: `ghcr.io/jbenshetler/mcp-ragex:{version}-cpu`
+RAGex uses a three-layer Docker architecture for optimal build performance and security:
+
+```
+System Base → ML Base → Application Image
+     ↓           ↓          ↓
+System deps → PyTorch → App code
+   (~50MB)   (~1.2GB)   (~50MB)
+```
+
+#### Layer 1: System Base Images
+- **CPU System Base**: Built from `docker/base/Dockerfile.system`
+  - Python 3.10 + system dependencies (ripgrep, git)
+  - Non-root user setup and data directories
+  - Environment variables for ML frameworks
+
+#### Layer 2: ML Base Images  
+- **CPU ML Base**: Built from `docker/cpu/Dockerfile.ml`
+  - PyTorch CPU-only + ML dependencies
+  - **Pre-bundled fast embedding model** (~90MB)
+  - Tree-sitter parsers and other ML tools
+  
+- **CUDA ML Base**: Built from `docker/cuda/Dockerfile.ml`
+  - PyTorch with CUDA support + GPU libraries
+  - **Pre-bundled fast embedding model** (~90MB)
+  - NVIDIA runtime dependencies
+
+#### Layer 3: Application Images
+- **CPU Application**: `ghcr.io/jbenshetler/mcp-ragex:cpu-{version}`
+  - Built from `docker/cpu/Dockerfile`
   - Multi-stage build for optimized size
   - Includes application code and dependencies
+  - Inherits all ML capabilities from base layers
   
-- **CUDA Application**: `ghcr.io/jbenshetler/mcp-ragex:{version}-cuda`
+- **CUDA Application**: `ghcr.io/jbenshetler/mcp-ragex:cuda-{version}`
+  - Built from `docker/cuda/Dockerfile`
   - GPU-enabled application image
   - Requires nvidia-docker runtime
+  - Built on CUDA ML base layer
+
+### Security-Enhanced Model Management
+
+#### Default Model Inclusion
+All images include the **fast embedding model** (`all-MiniLM-L6-v2`) by default:
+- ✅ **Immediate functionality** - works without network access
+- ✅ **Air-gap compatible** - no external dependencies at runtime  
+- ✅ **Security by default** - containers can run with `--network none`
+- ✅ **Small overhead** - only 90MB addition to 1.2GB ML layer (7.5% increase)
+
+#### Runtime Model Selection
+Users can specify different models per project:
+```bash
+ragex index . --model fast          # Use pre-bundled model (default)
+ragex index . --model balanced      # Download if network available
+ragex index . --model accurate      # Download if network available
+```
+
+#### Network Security Modes
+Installation supports different security levels:
+```bash
+install.sh --cpu                    # Default: network allowed for model downloads
+install.sh --cpu --no-network       # High security: no network access ever
+```
 
 ## PyTorch Platform Support
 

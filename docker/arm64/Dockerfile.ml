@@ -15,3 +15,6 @@ RUN pip install --no-cache-dir --no-warn-script-location -r requirements/base-ml
 
 # Pre-download tree-sitter language parsers
 RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import tree_sitter_javascript as tsjavascript; import tree_sitter_typescript as tstypescript"
+
+# Pre-download fast embedding model for offline operation
+RUN python -c "from sentence_transformers import SentenceTransformer; print('Downloading fast embedding model for offline operation...'); SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); print('Fast model cached successfully!')"

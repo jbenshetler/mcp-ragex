@@ -359,6 +359,9 @@ class RagexSocketDaemon:
         parser.add_argument('--stats', action='store_true', help='Show statistics')
         parser.add_argument('--verbose', action='store_true', help='Show verbose output')
         parser.add_argument('--name', help='Custom name for the project')
+        parser.add_argument('--model', 
+            choices=['fast', 'balanced', 'accurate', 'multilingual'],
+            help='Embedding model to use (fast/balanced/accurate/multilingual)')
         
         try:
             # Parse known args to handle unexpected flags gracefully
@@ -370,7 +373,8 @@ class RagexSocketDaemon:
                 'quiet': parsed_args.quiet,
                 'stats': parsed_args.stats,
                 'verbose': parsed_args.verbose,
-                'name': parsed_args.name
+                'name': parsed_args.name,
+                'model': parsed_args.model
             }
         except SystemExit:
             # argparse calls sys.exit on error, catch and return defaults
@@ -380,7 +384,8 @@ class RagexSocketDaemon:
                 'quiet': False,
                 'stats': False,
                 'verbose': False,
-                'name': None
+                'name': None,
+                'model': None
             }
 
     async def _handle_index(self, args: list) -> Dict[str, Any]:
@@ -406,7 +411,8 @@ class RagexSocketDaemon:
             stats=parsed_args.get('stats', False),
             verbose=parsed_args.get('verbose', False),
             name=parsed_args.get('name'),
-            path=parsed_args.get('path', '/workspace')
+            path=parsed_args.get('path', '/workspace'),
+            model=parsed_args.get('model')
         )
         
         return result
