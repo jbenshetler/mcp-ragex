@@ -138,6 +138,21 @@ cuda-cicd:     ## Build CUDA image optimized for CI/CD
 		-t $(REGISTRY)/$(IMAGE_NAME):latest-cuda .
 
 ## Version Management
+version-show:    ## Show current version information
+	@echo "📊 Version Information:"
+	@echo "  Current Version: $(CURRENT_VERSION)"
+	@if [ -n "$(VERSION)" ]; then \
+		echo "  Tagged Commit:   $(VERSION) ✅"; \
+	else \
+		echo "  Tagged Commit:   None (use 'make version-patch' or 'make version-minor')"; \
+	fi
+	@echo "  Next Patch:      $(NEXT_PATCH)"
+	@echo "  Next Minor:      $(NEXT_MINOR)"
+	@echo "  Build Version:   $(BUILD_VERSION)"
+	@echo ""
+	@echo "🏷️  Recent Tags:"
+	@git tag --sort=-version:refname | head -5
+
 version-patch:   ## Auto-increment patch version (0.3.0 → 0.3.1)
 	@if [ -n "$(VERSION)" ]; then \
 		echo "❌ Current commit already has version tag: $(VERSION)"; \
@@ -340,4 +355,4 @@ help:          ## Show this help
 	@echo "📋 All Available Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu-amd64 publish-cpu-arm64 publish-cpu publish-cuda install-cpu install-cuda clean clean-arm64-temp help
+.PHONY: version-show version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu-amd64 publish-cpu-arm64 publish-cpu publish-cuda install-cpu install-cuda clean clean-arm64-temp help
