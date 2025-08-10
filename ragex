@@ -40,7 +40,11 @@ class RagexCLI:
         self.user_id = os.getuid()
         self.group_id = os.getgid()
         self.debug = os.environ.get('RAGEX_DEBUG', '').lower() in ('true', '1', 'yes')
-        self.embedding_model = os.environ.get('RAGEX_EMBEDDING_MODEL', 'fast')
+        self.embedding_model = (
+            os.environ.get('RAGEX_EMBEDDING_MODEL') or
+            config.get('default_embedding_model') or
+            'fast'
+        )
         self.config_mode = config.get('mode', 'cpu')
         
         # GPU detection

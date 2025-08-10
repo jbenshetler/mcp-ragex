@@ -4,9 +4,10 @@ set -e
 
 echo "🚀 Installing MCP-RAGex Server..."
 
-# Default to CPU, secure network mode
-MODE="cpu"  # Default
+# Default values
+MODE=""  # Will be auto-detected if not specified
 NETWORK_MODE="none"  # Default to secure (no network)
+MODEL=""  # Will use 'fast' if not specified
 
 # Parse optional flags
 while [[ $# -gt 0 ]]; do
@@ -15,9 +16,43 @@ while [[ $# -gt 0 ]]; do
         --cuda) MODE="cuda"; shift ;;
         --rocm) MODE="rocm"; shift ;;  # Future
         --network) NETWORK_MODE="bridge"; shift ;;  # Enable network access
-        *) echo "❌ Unknown option: $1"; echo "Valid options: --cpu, --cuda, --network"; exit 1 ;;
+        --model) MODEL="$2"; shift 2 ;;  # Model parameter
+        *) echo "❌ Unknown option: $1"; echo "Valid options: --cpu, --cuda, --network, --model <name>"; exit 1 ;;
     esac
 done
+
+# Auto-detect platform if not specified
+if [[ -z "$MODE" ]]; then
+    ARCH=$(uname -m)
+    if [[ "$ARCH" == "x86_64" ]]; then
+        if command -v nvidia-smi &> /dev/null && docker info | grep -q nvidia; then
+            echo "🔍 Auto-detected: CUDA (NVIDIA GPU + Docker support found)"
+            MODE="cuda"
+        else
+            echo "🔍 Auto-detected: AMD64 CPU"
+            MODE="cpu"
+        fi
+    elif [[ "$ARCH" == "aarch64" ]] || [[ "$ARCH" == "arm64" ]]; then
+        echo "🔍 Auto-detected: ARM64 CPU"
+        MODE="cpu"
+    else
+        echo "❌ Unsupported architecture: $ARCH"
+        echo "   Currently supported: AMD64, ARM64"
+        exit 1
+    fi
+fi
+
+# Validate model if specified
+if [[ -n "$MODEL" ]]; then
+    case "$MODEL" in
+        fast|balanced|accurate|multilingual) ;;
+        *) 
+            echo "❌ Invalid model: $MODEL"
+            echo "   Available models: fast, balanced, accurate, multilingual"
+            exit 1
+            ;;
+    esac
+fi
 
 # Check Docker
 if ! command -v docker &> /dev/null; then
@@ -75,7 +110,18 @@ CONFIG_FILE="$CONFIG_DIR/config.json"
 mkdir -p "$CONFIG_DIR"
 
 # Always overwrite config during installation (user's explicit choice)
-cat > "$CONFIG_FILE" <<EOF
+if [[ -n "$MODEL" ]]; then
+    cat > "$CONFIG_FILE" <<EOF
+{
+    "docker_image": "$DOCKER_IMAGE",
+    "mode": "$MODE",
+    "network_mode": "$NETWORK_MODE",
+    "default_embedding_model": "$MODEL",
+    "installed_at": "$(date -Iseconds)"
+}
+EOF
+else
+    cat > "$CONFIG_FILE" <<EOF
 {
     "docker_image": "$DOCKER_IMAGE",
     "mode": "$MODE",
@@ -83,6 +129,7 @@ cat > "$CONFIG_FILE" <<EOF
     "installed_at": "$(date -Iseconds)"
 }
 EOF
+fi
 
 echo "✅ Configuration saved: $CONFIG_FILE (mode: $MODE)"
 
