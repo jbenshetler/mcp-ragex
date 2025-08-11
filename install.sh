@@ -52,6 +52,22 @@ if [[ -n "$MODEL" ]]; then
             exit 1
             ;;
     esac
+    
+    # Check for network access requirement
+    if [[ "$MODEL" != "fast" && "$NETWORK_MODE" == "none" ]]; then
+        echo "❌ Model '$MODEL' requires network access but --network flag not specified!"
+        echo ""
+        echo "💡 The '$MODEL' model needs to be downloaded from HuggingFace at runtime."
+        echo "   Without network access, only the pre-bundled 'fast' model is available."
+        echo ""
+        echo "🔧 Solutions:"
+        echo "   1. Use pre-bundled model:     --model fast"
+        echo "   2. Enable network access:     --network --model $MODEL"
+        echo "   3. Use default (fast model):  (remove --model flag)"
+        echo ""
+        echo "⚠️  Installing with --network enables model downloads but reduces container security."
+        exit 1
+    fi
 fi
 
 # Check Docker
