@@ -497,9 +497,51 @@ class IndexingQueue:
                 # For existing projects, validate model compatibility
                 existing_model = existing_metadata.get('embedding_model', 'fast')
                 if model and model != existing_model:
-                    error_msg = (f"❌ Cannot change embedding model from '{existing_model}' to '{model}'\n"
-                               f"   Existing embeddings are incompatible with new model.\n"
-                               f"   To use '{model}', create a new project or remove existing index with --force.")
+                    # Import here to avoid circular dependency
+                    from .embedding_config import EmbeddingConfig
+                    
+                    try:
+                        existing_config = EmbeddingConfig(preset=existing_model)
+                        new_config = EmbeddingConfig(preset=model)
+                        
+                        # Check dimension compatibility
+                        if existing_config.dimensions != new_config.dimensions:
+                            error_msg = (f"❌ Embedding model mismatch detected!\n"
+                                       f"   \n"
+                                       f"   Current project model: '{existing_model}' ({existing_config.dimensions} dimensions)\n"
+                                       f"   Requested model:       '{model}' ({new_config.dimensions} dimensions)\n"
+                                       f"   \n"
+                                       f"   💡 Embedding models with different dimensions cannot be mixed in the same project.\n"
+                                       f"   This would corrupt your search results and make them meaningless.\n"
+                                       f"   \n"
+                                       f"   🔧 Solutions:\n"
+                                       f"   1. Keep using current model:  ragex index . --model {existing_model}\n"
+                                       f"   2. Force complete rebuild:    ragex index . --model {model} --force\n"
+                                       f"   3. Remove and recreate:      ragex rm \"{project_name}\" && ragex index . --model {model}\n"
+                                       f"   \n"
+                                       f"   ⚠️  Option 2 and 3 will delete all existing embeddings and rebuild from scratch.")
+                        else:
+                            # Same dimensions but different models - still risky
+                            error_msg = (f"❌ Embedding model change detected!\n"
+                                       f"   \n"
+                                       f"   Current project model: '{existing_model}'\n"
+                                       f"   Requested model:       '{model}'\n"
+                                       f"   \n"
+                                       f"   ⚠️  Even with same dimensions ({existing_config.dimensions}d), different models\n"
+                                       f"   produce different embeddings that cannot be meaningfully compared.\n"
+                                       f"   \n"
+                                       f"   🔧 Solutions:\n"
+                                       f"   1. Keep using current model:  ragex index . --model {existing_model}\n"
+                                       f"   2. Force complete rebuild:    ragex index . --model {model} --force\n"
+                                       f"   \n"
+                                       f"   💡 Use --force only if you want to completely rebuild the index.")
+                                       
+                    except Exception as config_error:
+                        # Fallback to basic error if config loading fails
+                        error_msg = (f"❌ Cannot change embedding model from '{existing_model}' to '{model}'\n"
+                                   f"   Configuration error: {config_error}\n"
+                                   f"   Use --force to rebuild with new model.")
+                    
                     if not quiet:
                         logger.error(error_msg)
                     return {
@@ -562,6 +604,32 @@ class IndexingQueue:
             )
             
             if not index_exists or force:
+                # Check for model change confirmation if forcing with different model
+                if force and existing_metadata:
+                    existing_model = existing_metadata.get('embedding_model', 'fast')
+                    if model and model != existing_model:
+                        if not quiet:
+                            # Import here to avoid circular dependency
+                            from .embedding_config import EmbeddingConfig
+                            try:
+                                existing_config = EmbeddingConfig(preset=existing_model)
+                                new_config = EmbeddingConfig(preset=model)
+                                
+                                logger.warning(f"⚠️  WARNING: Changing embedding model with --force")
+                                logger.warning(f"   From: '{existing_model}' ({existing_config.dimensions} dimensions)")
+                                logger.warning(f"   To:   '{model}' ({new_config.dimensions} dimensions)")
+                                logger.warning(f"   ")
+                                logger.warning(f"   This will DELETE all existing embeddings and rebuild from scratch.")
+                                logger.warning(f"   Your search history and cached results will be lost.")
+                                logger.warning(f"   ")
+                                
+                                # In a non-interactive environment, we can't prompt
+                                # So we just log the warning and proceed
+                                logger.warning(f"   Proceeding with forced rebuild...")
+                                
+                            except Exception:
+                                logger.warning(f"⚠️  WARNING: Forcing rebuild with model change from '{existing_model}' to '{model}'")
+                
                 # First time or forced - run full index
                 if not quiet:
                     reason = "forced rebuild" if force else "no existing index"

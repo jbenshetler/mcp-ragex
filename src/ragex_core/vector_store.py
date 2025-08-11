@@ -74,6 +74,47 @@ class CodeVectorStore:
         )
         
         logger.info(f"Collection '{self.collection_name}' ready. Current count: {self.collection.count()}")
+        
+        # Validate embedding dimensions if collection has data
+        self._validate_embedding_dimensions()
+    
+    def _validate_embedding_dimensions(self):
+        """Validate that existing embeddings match current model dimensions"""
+        try:
+            count = self.collection.count()
+            if count == 0:
+                # No existing data, validation not needed
+                return
+                
+            # Get a sample embedding to check dimensions
+            results = self.collection.get(limit=1, include=['embeddings'])
+            if results['embeddings']:
+                existing_dim = len(results['embeddings'][0])
+                expected_dim = self.config.dimensions
+                
+                if existing_dim != expected_dim:
+                    error_msg = (f"❌ CRITICAL: Embedding dimension mismatch detected in ChromaDB!\n"
+                               f"   Collection has embeddings with {existing_dim} dimensions\n"
+                               f"   Current model expects {expected_dim} dimensions\n"
+                               f"   \n"
+                               f"   This indicates a model change without proper reindexing.\n"
+                               f"   The search results will be meaningless and corrupted.\n"
+                               f"   \n"
+                               f"   🔧 Solution: Delete project and reindex:\n"
+                               f"     ragex rm <project-name>\n"
+                               f"     ragex index . --model <desired-model>")
+                    
+                    logger.error(error_msg)
+                    raise ValueError(f"Embedding dimension mismatch: collection={existing_dim}d, model={expected_dim}d")
+                else:
+                    logger.debug(f"✅ Embedding dimensions validated: {existing_dim}d")
+        except Exception as e:
+            if "dimension mismatch" in str(e).lower():
+                # Re-raise dimension errors
+                raise
+            else:
+                # Log other validation errors but don't fail
+                logger.warning(f"Could not validate embedding dimensions: {e}")
     
     def _prepare_batch_data(self, symbols: List[Dict], start_idx: int = 0) -> tuple:
         """Prepare a batch of symbols for ChromaDB storage
