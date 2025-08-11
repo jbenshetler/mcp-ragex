@@ -69,13 +69,13 @@ fi
 
 # Show what we're installing and set image tag
 if [[ "$MODE" == "cuda" ]]; then
-    echo "🚀 Installing CUDA version (~8GB download)..."
+    echo "🚀 Installing CUDA version (~13GB download)..."
     IMAGE_TAG="cuda-latest"
 elif [[ "$MODE" == "rocm" ]]; then
-    echo "🚀 Installing ROCm version (~8GB download)..."
+    echo "🚀 Installing ROCm version..."
     IMAGE_TAG="rocm-latest"
 else
-    echo "🚀 Installing CPU version (~2GB download)..."
+    echo "🚀 Installing CPU version (~3GB download)..."
     IMAGE_TAG="cpu-latest"
 fi
 
@@ -169,8 +169,10 @@ echo ""
 echo "Quick start:"
 echo "  1. cd your-project"
 echo "  2. ragex index .                    # Index current project"
-echo "  3. ragex info                       # Show project info"
-echo "  4. ragex ls                         # List all your projects"
+echo "  3. ragex search \"your query\"        # Search your code semantically"
+echo "  4. ragex search \"function.*test\" --regex  # Search with regex patterns"
+echo "  5. ragex info                       # Show project info"
+echo "  6. ragex ls                         # List all your projects"
 echo ""
 echo "💡 Configuration:"
 echo "  ragex configure                     # Show current config"
