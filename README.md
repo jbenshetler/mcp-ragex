@@ -1,24 +1,63 @@
-# RAGex MCP Server
+# RAGex - AI-Powered Code Search for Claude
 
-A secure, intelligent **MCP (Model Context Protocol) server** for **Claude** and AI assistants, providing semantic code search using **RAG**, **tree-sitter**, and **ripgrep**. Search code using natural language or regex patterns.
+> **Stop creating duplicate code.** Give Claude semantic search superpowers to find and reuse existing patterns in your codebase.
 
-## What is RAGex?
+[![Install](https://img.shields.io/badge/Install-One%20Line-blue)](#-quick-start) [![Docker](https://img.shields.io/badge/Docker-Ready-green)](https://github.com/jbenshetler/mcp-ragex/pkgs/container/mcp-ragex) [![MCP](https://img.shields.io/badge/Claude-MCP%20Compatible-purple)](https://modelcontextprotocol.io/)
 
-RAGex is an **MCP server** that enhances **Claude Code** and other AI coding assistants with advanced code search capabilities. It combines:
-- **RAG (Retrieval-Augmented Generation)** for semantic code search
-- **Tree-sitter** for language-aware symbol search  
-- **Ripgrep** for blazing-fast regex search
+<details open>
+<summary><strong>TL;DR - Quick Installation & Setup</strong></summary>
 
-## Why RAGex?
+**Install:**
+```bash
+curl -sSL https://get.ragex.dev | bash -s -- --network --model balanced
+```
 
-Unlike simple grep-based tools, RAGex understands code semantically:
+**Setup:**
+```bash
+cd your-project
+ragex start                    # Index your codebase (1-5 minutes)
+ragex register claude | sh     # Connect to Claude Code
+```
 
-| Feature | grep/ripgrep | RAGex |
-|---------|-------------|---------|
-| Find "auth functions" | ❌ | ✅ Semantic search |
-| Find `validateUser()` | ✅ | ✅ Symbol-aware search |
-| Cross-language patterns | ❌ | ✅ Coming soon |
-| Natural language queries | ❌ | ✅ "functions that handle errors" |
+**Test:**
+```bash
+ragex search "auth functions"     # Semantic search
+ragex search "async def" --regex   # Pattern search
+```
+
+**What you get:** Claude Code can now semantically understand your entire codebase, find existing patterns, and reuse code instead of duplicating it. Works with both semantic search ("find authentication logic") and fast regex patterns ("async def.*test").
+
+</details>
+
+## Table of Contents
+
+- [🚨 The Problem](#-the-problem)
+- [✨ The Solution](#-the-solution)  
+- [🚀 Quick Start](#-quick-start)
+- [📹 Video Demos](#-video-demos)
+- [🎯 What You Get](#-what-you-get)
+- [📖 Complete Examples](#-complete-examples)
+- [🔧 CLAUDE.md Setup](#-claudemd-setup)
+- [📋 Installation Details](#-installation-details)
+- [🚀 Advanced Usage](#-advanced-usage)
+- [⚡ Performance & Architecture](#-performance--architecture)
+- [🌟 Why RAGex?](#-why-ragex)
+- [🤝 Contributing & Support](#-contributing--support)
+
+## 🚨 The Problem
+
+Claude Code can't find existing code in your project, leading to:
+- ❌ **Duplicate functions** - "I'll create a new authentication system..." (when one exists)
+- ❌ **Missed patterns** - Ignores your coding conventions and best practices
+- ❌ **Inefficient workflow** - You resort to manual grep/search to guide Claude
+
+## ✨ The Solution
+
+RAGex gives Claude **semantic understanding** of your entire codebase:
+- 🔍 **Semantic search** - "Find auth functions" → discovers `UserValidator`, `loginHandler`, `AuthMiddleware`
+- ⚡ **Lightning fast** - Sub-second search across thousands of files using ripgrep + vector embeddings
+- 🧠 **Context aware** - Understands code relationships, not just text matching
+- 🛡️ **Secure & private** - Runs locally in Docker, no code leaves your machine
 
 ## Features
 
@@ -31,7 +70,7 @@ Unlike simple grep-based tools, RAGex understands code semantically:
 - **Fast code search** using ripgrep with regex support
 - **Security-first design** with input validation and path restrictions
 - **File type filtering** supporting 30+ programming languages
-- **Enhanced file exclusions** with multi-level .mcpignore support and comprehensive defaults
+- **Enhanced file exclusions** with multi-level .gitignore support and comprehensive defaults
 - **Configurable limits** to prevent resource exhaustion
 - **JSON-RPC interface** following MCP standards
 
@@ -41,300 +80,506 @@ Unlike simple grep-based tools, RAGex understands code semantically:
 - **Intelligent fallback** when primary search mode fails
 - **Teaching system** that guides Claude Code to optimal search usage
 
-## Quick Start
+## 🚀 Quick Start
 
-### 🐳 Docker Installation (Recommended)
-
-The fastest and most reliable way to get started is with Docker:
+### One-Line Install
 
 ```bash
-# Option 1: Use the installation script (easiest)
-curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/mcp-ragex/main/install.sh | bash
-
-# Option 2: Manual setup
-git clone https://github.com/YOUR_USERNAME/mcp-ragex.git
-cd mcp-ragex
-docker build -t ragex/mcp-server .
-./install.sh  # This installs the 'ragex' command to ~/.local/bin
+curl -sSL https://get.ragex.dev | bash
+# Alternative: curl -sSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/main/install.sh | bash
 ```
 
-**What gets installed:**
-- Docker image: `ragex/mcp-server:latest` (6.2GB)
-- CLI wrapper: `~/.local/bin/ragex` (handles Docker communication)
-- User volume: `ragex_user_${UID}` (stores your project indexes)
+**What happens:**
+- ✅ Auto-detects your platform (AMD64/ARM64/CUDA)
+- ✅ Pulls optimized Docker image (~2-3GB)
+- ✅ Installs `ragex` CLI to `~/.local/bin`
+- ✅ Creates isolated user data volume
 
-**Post-installation:**
+<details>
+<summary>📋 Installation Options & Details</summary>
+
+### Installation with Options
 ```bash
-# Add to PATH if needed
-export PATH="$PATH:$HOME/.local/bin"
+# Enable network access + better model (recommended)
+curl -sSL https://get.ragex.dev | bash -s -- --network --model balanced
 
-# Verify installation
-ragex info
-which ragex  # Should show: /home/USERNAME/.local/bin/ragex
+# Force CPU version (smaller download)
+curl -sSL https://get.ragex.dev | bash -s -- --cpu --network
+
+# Force CUDA (NVIDIA GPU)
+curl -sSL https://get.ragex.dev | bash -s -- --cuda --model accurate
 ```
 
-### 🔧 Manual Installation
+### Platform Auto-Detection
+| Platform | Auto-Selected | Image Size |
+|----------|---------------|------------|
+| **AMD64 + NVIDIA GPU** | CUDA | ~13GB |
+| **AMD64 (no GPU)** | CPU | ~3GB |
+| **ARM64 (Apple Silicon)** | CPU | ~2GB |
 
-For development or custom setups:
+### Security Modes
+- **Default (Secure)**: No network access, only pre-bundled models
+- **Network Enabled**: Can download additional models (`--network` flag)
 
-#### Prerequisites
-1. **Install Claude Code**
-[![Install with Claude Code](https://img.shields.io/badge/Install-Claude_Code-blue)](https://claude.ai)
+### Embedding Models
+| Model | Size | Quality | Speed | Use Case |
+|-------|------|---------|-------|---------|
+| **fast** | 90MB | Good | Fastest | Default, quick setup |
+| **balanced** | 435MB | Better | Fast | Recommended for most users |
+| **accurate** | 1.3GB | Best | Slower | Large codebases |
+| **multilingual** | 435MB | Good | Fast | Multi-language projects |
 
-2. **Install ripgrep:**
-    ```bash
-    # macOS
-    brew install ripgrep
-
-    # Ubuntu/Debian
-    sudo apt-get install ripgrep
-
-    # Windows
-    choco install ripgrep
-    ```
-3. **Install Python dependencies:**
-    ```bash
-    # Using uv (recommended)
-    uv pip install -r requirements.txt
-
-    # Or using pip
-    pip install -r requirements.txt
-    ```
-
-## Usage with Docker
-
-### 🚀 Quick Setup
-
-After installation, each project gets its own isolated data:
-
+### Manual Installation
+If you prefer to inspect the script first:
 ```bash
-# Navigate to your first project
-cd /path/to/project1
-ragex index .                    # Creates project-specific index
-ragex info                       # Shows project details
-
-# Navigate to your second project  
-cd /path/to/project2
-ragex index . --preset balanced  # Different embedding model
-ragex info                       # Shows different project ID
-
-# Register with Claude Code (one-time setup)
-# The 'ragex' command was installed to ~/.local/bin by install.sh
-claude mcp add ragex $(which ragex) --scope project
-
-# List all your projects
-ragex ls
+curl -sSL https://get.ragex.dev -o install.sh
+cat install.sh  # Review the script
+bash install.sh --network --model balanced
 ```
 
-### 🔍 Available Commands
+</details>
 
+### Your First Project
 ```bash
-# Project Management
-ragex info                       # Show current project info
-ragex ls                         # List all user projects
-ragex ls -l                      # List with details (model, indexed status)
-ragex ls -a                      # List all projects (including admin)
-ragex ls "api*"                  # List projects matching pattern
-ragex rm PROJECT_ID              # Remove specific project
-
-# Indexing
-ragex index .                    # Index current project (fast model)
-ragex index . --preset balanced  # Index with balanced model
-ragex index . --preset accurate  # Index with accurate model
-
-# Searching
-ragex search "auth functions"    # Search current project
-ragex serve                      # Start MCP server (for Claude)
-
-# Development
-ragex bash                       # Get shell for debugging
+cd your-project
+ragex start                    # Index codebase (1-5 minutes)
+ragex register claude | sh     # Connect to Claude Code
 ```
 
-#### Project Listing (`ragex ls`)
+### Test It Works
+```bash
+# Test semantic search
+ragex search "auth functions"     # Finds authentication code
+ragex search "error handling"     # Finds error handling patterns
+ragex search "database queries"   # Finds DB-related code
 
-The `ls` command shows your indexed projects:
+# Test regex search  
+ragex search "async def" --regex   # Find async functions
+ragex search "TODO|FIXME" --regex  # Find code comments
+```
 
-**Flags:**
-- `-l, --long`: Show detailed information including embedding model and index status
-- `-a, --all`: Show all projects including admin projects (normally hidden)
-- Pattern argument: Filter projects by name (supports wildcards like `api*`)
+## 📹 Video Demos
 
-**Admin Projects:**
-Projects with the name `.ragex_admin` are special system projects created when ragex runs without a mounted workspace (e.g., during certain admin operations). These projects:
-- Are hidden by default (use `-a` to see them)
-- Have minimal disk usage (no actual code is indexed)
-- Can be safely ignored or removed with `ragex rm`
+<!-- Asciinema/term-svg capture placeholders - coming soon -->
 
-### 🏗️ Project Isolation
+### 🚀 Installation Demo
+[![Installation Demo](https://img.shields.io/badge/Video-Coming%20Soon-blue)](https://github.com/jbenshetler/mcp-ragex)
+*One-line installation with platform auto-detection*
 
-Each project gets its own isolated data:
+### ⚙️ Setup & Indexing
+[![Setup Demo](https://img.shields.io/badge/Video-Coming%20Soon-blue)](https://github.com/jbenshetler/mcp-ragex)
+*Project indexing, semantic search examples, and CLI usage*
+
+### 💻 CLI Usage Examples  
+[![CLI Demo](https://img.shields.io/badge/Video-Coming%20Soon-blue)](https://github.com/jbenshetler/mcp-ragex)
+*Semantic search, regex patterns, project management commands*
+
+### 🤖 Claude Code Integration
+[![Claude Integration](https://img.shields.io/badge/Video-Coming%20Soon-blue)](https://github.com/jbenshetler/mcp-ragex)
+*Real development workflow: using RAGex within Claude Code sessions*
+
+> **Note**: Video demonstrations will be added soon using asciinema/term-svg captures showing real-world usage scenarios.
+
+## 🎯 What You Get
+
+### Before RAGex
+```
+You: "Add user authentication to this Express app"
+Claude: "I'll create a comprehensive authentication system..."
+        [Creates 200 lines of new auth code]
+        [Duplicates existing middleware patterns]
+        [Ignores your error handling conventions]
+```
+
+### After RAGex
+```
+You: "Add user authentication to this Express app"
+Claude: "I found your existing auth middleware at middleware/auth.js:15
+         and your user model at models/User.js:8. Let me extend these
+         patterns to add the authentication you need..."
+        [Reuses existing patterns]
+        [Follows your conventions]
+        [Builds on your architecture]
+```
+
+### Semantic Search Magic
+
+| Your Query | RAGex Finds | Why It's Smart |
+|------------|-------------|----------------|
+| `"auth functions"` | `validateToken()`, `loginUser()`, `AuthMiddleware` | Understands authentication concepts |
+| `"database queries"` | `getUserById()`, `saveToRedis()`, `queryBuilder` | Recognizes data access patterns |
+| `"error handling"` | `try/catch blocks`, `errorMiddleware`, `logError()` | Groups error-related code |
+| `"file upload"` | `multer config`, `uploadToS3()`, `validateFile()` | Connects upload-related logic |
+
+## 📖 Complete Examples
+
+### Project Isolation
+Each project gets its own semantic index:
 
 ```bash
-# Example: Two different projects
+# Work project with accurate model
 cd ~/work/api-server
-ragex index . --preset accurate  # Large model for work project
-# → Creates: ragex_1000_a1b2c3d4ef56789 
+ragex start --model accurate
+# → Creates: ragex_1000_a1b2c3d4ef567890
 
-cd ~/personal/blog  
-ragex index . --preset fast      # Fast model for personal project  
+# Personal project with fast model  
+cd ~/personal/blog
+ragex start --model fast
 # → Creates: ragex_1000_f9e8d7c6b5a43210
 
 ragex ls -l
-# PROJECT NAME          PROJECT ID                      MODEL       INDEXED   PATH
-# --------------------------------------------------------------------------------
-# api-server            ragex_1000_a1b2c3d4ef56789     accurate    yes       ~/work/api-server
-# blog                  ragex_1000_f9e8d7c6b5a43210     fast        yes       ~/personal/blog
+# PROJECT          ID                         MODEL     INDEXED   PATH
+# api-server       ragex_1000_a1b2c3d4ef567890 accurate  yes      ~/work/api-server
+# blog             ragex_1000_f9e8d7c6b5a43210 fast      yes      ~/personal/blog
 ```
 
-### 🐳 Docker Compose (Development)
-
-For active development, use Docker Compose:
+### Advanced Search Patterns
 
 ```bash
-# Start development environment
-docker compose up -d
+# Semantic search (natural language)
+ragex search "functions that validate user input"
+ragex search "code that handles file uploads"
+ragex search "database connection error handling"
+ragex search "JWT token verification logic"
 
-# Watch logs
-docker compose logs -f
+# Regex search (exact patterns)
+ragex search "async def.*test" --regex    # Async test functions
+ragex search "app\.get\(.*api" --regex      # Express API routes
+ragex search "interface.*Props" --regex    # TypeScript interfaces
 
-# Build semantic index
-docker compose exec ragex python scripts/build_semantic_index.py /workspace --stats
-
-# Stop when done
-docker compose down
+# Search with limits and JSON output
+ragex search "auth" --limit 10 --json     # Top 10 results as JSON
 ```
 
-### 📦 Persistent Data
+### Project Management
 
-Your data is organized for multi-project use:
-
-#### User-Level Storage
-- **Volume**: `ragex_user_1000` (where 1000 is your user ID)
-- **Models**: `/data/models/` (shared across all your projects)
-- **Projects**: `/data/projects/` (individual project indexes)
-
-#### Project-Level Storage
-```
-/data/
-├── models/                    # Shared embedding models (400MB-1.3GB)
-└── projects/
-    ├── ragex_1000_a1b2c3d4/   # Project 1 data
-    │   ├── chroma_db/         # Vector database
-    │   └── project_info.json  # Project metadata
-    └── ragex_1000_f9e8d7c6/   # Project 2 data
-        ├── chroma_db/
-        └── project_info.json
-```
-
-#### Volume Management
 ```bash
-# List your projects
-ragex list-projects
+# List and inspect projects
+ragex ls                         # Show all your projects
+ragex ls -l                      # Detailed view with models/status
+ragex ls "api-*"                 # Filter projects by pattern
+ragex info                       # Current project details
 
-# Clean up specific project
-ragex clean-project ragex_1000_a1b2c3d4
+# Clean up old projects
+ragex rm "old-project-*"         # Remove projects matching pattern
+ragex rm ragex_1000_abc123       # Remove by specific ID
 
-# Check volume usage
+# Configuration
+ragex configure                  # Show current config
+ragex configure --cpu            # Switch to CPU mode
+ragex configure --cuda           # Switch to CUDA mode
+```
+
+## 🔧 CLAUDE.md Setup
+
+Add this to your project's `CLAUDE.md` file to optimize Claude Code's search behavior:
+
+```markdown
+# Code Search Guidelines
+
+**IMPORTANT: This project has RAGex MCP enabled for intelligent code search.**
+
+## Search Strategy (Priority Order)
+
+1. **FIRST: Use RAGex MCP tools** - Semantic understanding of your codebase
+   - `search_code()` with semantic mode for concepts: "auth functions", "error handling"
+   - `search_code()` with regex mode for patterns: "async def.*test", "TODO|FIXME"
+   - `search_code_simple()` for quick searches with auto-detection
+
+2. **FALLBACK: Use built-in search tools** - Only if RAGex fails or is unavailable
+   - `Grep` for text patterns
+   - `Glob` for file discovery
+
+## RAGex Search Modes
+
+RAGex automatically detects the best search mode:
+
+- **Semantic Mode**: Natural language queries
+  - `"functions that handle user authentication"`
+  - `"error handling for database connections"`
+  - `"code that validates JWT tokens"`
+
+- **Regex Mode**: Pattern matching (use `--regex` or detected automatically)
+  - `"async def.*test"` → finds async test functions
+  - `"app\.get\(.*api"` → finds Express API routes
+  - `"interface.*Props"` → finds TypeScript interfaces
+
+- **Symbol Mode**: Exact names (detected automatically)
+  - `"UserService"` → finds UserService class
+  - `"validateInput"` → finds validateInput function
+
+## Effective Query Examples
+
+```bash
+# Semantic search (recommended)
+search_code("user authentication and session management")
+search_code("database connection error handling")
+search_code("file upload processing logic")
+search_code("JWT token validation functions")
+
+# Regex patterns for exact matching
+search_code("async def.*test", mode="regex")
+search_code("TODO|FIXME", mode="regex")
+search_code("interface.*Props", mode="regex")
+
+# Simple interface (auto-detects everything)
+search_code_simple("auth middleware")
+search_code_simple("error handlers")
+```
+
+## When RAGex Finds Existing Code
+
+1. **ANALYZE** the patterns before writing new code
+2. **EXTEND** existing functions rather than duplicating logic
+3. **FOLLOW** established architecture and naming conventions
+4. **REUSE** utility functions, middleware, and helpers
+5. **UNDERSTAND** the codebase structure and relationships
+
+## Search Tips
+
+- Be specific with domain terms: "JWT", "middleware", "validation", "serialization"
+- Use natural language for concepts, patterns for exact matches
+- RAGex understands code relationships, not just text matching
+- Results include file paths and line numbers for easy navigation
+- Try different phrasings if first search doesn't find what you need
+
+## Benefits
+
+- **Faster development**: Reuse existing patterns instead of recreating
+- **Consistent architecture**: Follow established project conventions
+- **Better code discovery**: Find forgotten utilities and helpers
+- **Reduced duplication**: Stop reinventing the wheel
+```
+
+**Why this helps:**
+- Prioritizes RAGex MCP tools over built-in search
+- Provides concrete examples for different search modes
+- Guides Claude toward code reuse and architectural consistency
+- Sets clear expectations for search capabilities and workflow
+
+## 📋 Installation Details
+
+<details>
+<summary>Click to expand full installation guide from doc/installation-guide.md</summary>
+
+### Quick Start (One-Line Installation)
+
+#### Basic Installation (Auto-Detection)
+```bash
+curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash
+```
+
+This will:
+- Auto-detect your platform (AMD64, ARM64, or CUDA)
+- Install with secure defaults (no network access for containers)
+- Use the pre-bundled fast embedding model
+
+#### Installation with Options
+```bash
+# Install with network access enabled and balanced model as default
+curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash -s -- --network --model balanced
+
+# Force CPU version (smaller image) with network access
+curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash -s -- --cpu --network --model accurate
+
+# Force CUDA version (requires NVIDIA GPU)
+curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash -s -- --cuda --model balanced
+```
+
+### Installation Parameters
+
+#### Platform Selection
+- **Auto-detection** (default): Automatically detects platform and CUDA support
+- `--cpu`: Force CPU-only version (works on AMD64 and ARM64)
+- `--cuda`: Force CUDA version (AMD64 only, requires NVIDIA GPU + nvidia-docker)
+
+#### Network Configuration
+- **No flag** (default): Secure mode - containers run without network access
+- `--network`: Enable network access for containers (allows downloading additional models)
+
+#### Default Embedding Model
+- **No flag** (default): Uses 'fast' model (pre-bundled in all images)
+- `--model <name>`: Sets default model for new projects
+  - Valid options: `fast`, `balanced`, `accurate`, `multilingual`
+
+### Docker Image Sizes
+
+| Platform | Image Size | Use Case |
+|----------|------------|----------|
+| **AMD64 CPU** | ~3.2 GiB | General use, smaller download |
+| **ARM64 CPU** | ~2.2 GiB | Apple Silicon Macs, ARM servers |
+| **CUDA** | ~13.1 GiB | NVIDIA GPU acceleration |
+
+### Embedding Models
+
+| Model | Size | Speed | Quality | Use Case |
+|-------|------|-------|---------|----------|
+| **fast** | ~90 MB | Fastest | Good | Quick prototyping, smaller codebases |
+| **balanced** | ~435 MB | Moderate | Better | Production use, balanced performance |
+| **accurate** | ~1.3 GB | Slower | Best | Large codebases, maximum quality |
+| **multilingual** | ~435 MB | Moderate | Good | Multi-language projects |
+
+### Security Modes
+
+#### Secure Mode (Default)
+```bash
+curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash
+```
+- Containers run with `--network none`
+- No external network access from containers
+- Only pre-bundled fast model available
+- Suitable for air-gapped environments
+
+#### Network-Enabled Mode
+```bash
+curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash -s -- --network
+```
+- Containers can access external networks
+- Can download additional embedding models on demand
+- Required for using balanced, accurate, or multilingual models
+
+### Post-Installation
+
+#### Verify Installation
+```bash
+ragex --help
+ragex info
+```
+
+#### Quick Start
+```bash
+cd your-project
+ragex index .          # Index current directory
+ragex search "query"   # Search your code
+```
+
+#### Configuration
+```bash
+ragex configure        # Show current configuration
+ragex ls              # List indexed projects
+```
+
+### Troubleshooting
+
+#### Docker Not Found
+```
+❌ Docker not found. Please install Docker first.
+```
+**Solution**: Install Docker from https://docs.docker.com/get-docker/
+
+#### Docker Daemon Not Running
+```
+❌ Docker daemon not running. Please start Docker.
+```
+**Solution**: Start Docker Desktop or run `sudo systemctl start docker`
+
+#### Unsupported Architecture
+```
+❌ Unsupported architecture: s390x
+```
+**Solution**: RAGex currently supports AMD64 and ARM64 only
+
+### Integration with Claude Code
+
+After installation, register RAGex with Claude Code:
+
+```bash
+# Get the registration command
+ragex register claude
+
+# Run the output command (example):
+claude mcp add ragex ~/.local/bin/ragex-mcp --scope project
+```
+
+This enables RAGex as an MCP server for Claude Code, providing intelligent code search capabilities directly in your Claude conversations.
+
+</details>
+
+## 🚀 Advanced Usage
+
+### Multiple Projects
+```bash
+# Work on different projects simultaneously
+cd ~/work/api-server && ragex start --model accurate
+cd ~/personal/blog && ragex start --model fast 
+cd ~/opensource/cli-tool && ragex start --model balanced
+
+# Switch between projects automatically
+ragex ls                        # See all projects
+cd ~/work/api-server           # RAGex automatically uses api-server index
+ragex search "authentication"   # Searches only api-server code
+```
+
+### Environment Variables
+```bash
+# Customize behavior
+export RAGEX_EMBEDDING_MODEL=balanced    # Default model for new projects
+export RAGEX_LOG_LEVEL=DEBUG             # Enable debug logging
+export RAGEX_DOCKER_IMAGE=custom:tag     # Use custom Docker image
+
+# Log rotation settings
+export RAGEX_LOG_MAX_SIZE=100m           # Max log file size
+export RAGEX_LOG_MAX_FILES=5             # Number of rotated logs to keep
+```
+
+### Development & Debugging
+```bash
+# View logs
+ragex log                       # Current project logs
+ragex log -f                    # Follow logs in real-time
+ragex log --tail 50            # Last 50 lines
+
+# Status and info
+ragex status                    # Check daemon status
+ragex info                      # Project details
+ragex configure                 # Current configuration
+
+# Development mode
+ragex bash                      # Get shell inside container
+RAGEX_DEBUG=1 ragex start      # Enable debug output
+```
+
+### Data Management
+```bash
+# Your data is isolated by user ID
 docker volume ls | grep ragex_user_$(id -u)
 
-# Remove all your data (nuclear option)
-docker volume rm ragex_user_$(id -u)
+# Project data structure:
+# /data/models/                   # Shared embedding models (90MB-1.3GB)
+# /data/projects/ragex_1000_*/    # Individual project indexes
+#   ├── chroma_db/               # Vector database  
+#   └── project_info.json        # Project metadata
+
+# Backup a project
+ragex export my-project backup.tar.gz
+
+# Check disk usage
+ragex ls -l                     # Shows index sizes
+
+# Clean up old projects
+ragex rm "test-*"               # Remove test projects
+ragex rm ragex_1000_old123      # Remove specific project
 ```
 
-## Manual Installation
-
-For development or when Docker isn't available:
-
-### Setup Semantic Search (Optional)
-
-To enable semantic search capabilities:
-
-1. **Build the semantic index:**
-   ```bash
-   # Use default fast model (~80MB)
-   uv run scripts/build_semantic_index.py . --stats
-   
-   # Or choose a different preset
-   uv run scripts/build_semantic_index.py . --preset balanced --stats  # ~420MB model
-   uv run scripts/build_semantic_index.py . --preset accurate --stats  # ~1.3GB model
-   ```
-   
-   This will:
-   - Automatically install required dependencies (sentence-transformers, chromadb, etc.)
-   - Download the sentence-transformer model (size varies by preset)
-   - Index all Python/JS/TS files in the current directory
-   - Create a ChromaDB vector database in `./chroma_db`
-
-2. **Check index status:**
-   ```bash
-   uv run scripts/check_index.py
-   ```
-
-### Install MCP Server (One-time setup)
-
-Install the MCP server with all dependencies in an isolated environment:
-
+### Uninstall
 ```bash
-cd /path/to/mcp-ragex
-./scripts/install_mcp_server.sh
-```
+# Complete removal (WARNING: Deletes all indexed data)
+# Stop all ragex containers
+docker ps -a -f "name=ragex_" -q | xargs -r docker stop
+docker ps -a -f "name=ragex_" -q | xargs -r docker rm
 
-This creates a dedicated virtual environment (`.mcp_venv`) with all required dependencies, ensuring the MCP server works consistently across all projects.
+# Remove images and volumes
+docker images "*ragex*" -q | xargs -r docker rmi
+docker volume ls -f "name=ragex_user_" -q | xargs -r docker volume rm
 
-### Register MCP Server
+# Remove binaries and config
+rm -rf ~/.config/ragex ~/.local/bin/ragex ~/.local/bin/ragex-mcp
 
-After installation, register the MCP server from your project directory:
-
-```bash
-cd /path/to/your/project
-
-# Option 1: Use the flexible wrapper (recommended)
-claude mcp add ragex /path/to/mcp-ragex/mcp_ragex.sh --scope project
-
-# Option 2: Use the isolated environment directly
-claude mcp add ragex /path/to/mcp-ragex/mcp_server_isolated.sh --scope project
-```
-
-**Important**: After registering, restart Claude Code completely for the changes to take effect.
-
-#### Verify Semantic Search
-
-After registration and restart, verify semantic search is working:
-1. Check `/tmp/mcp_ragex.log` for "Semantic search ENABLED" message
-2. Test with: `search_code(query="your search terms", mode="semantic")`
-
-#### Alternative Registration (Legacy)
-```bash
-# Uses current project's Python environment (may have missing dependencies)
-claude mcp add ragex /path/to/mcp-ragex/mcp_ragex_pwd.sh --scope project
-```
-
-#### Unregister MCP Server
-```bash
+# Unregister from Claude Code
 claude mcp remove ragex --scope project
 ```
 
-### Running the Server
-
-```bash
-# Using uv (recommended)
-uv run src/server.py
-
-# Or using the wrapper script
-./mcp_ragex.sh
-```
-
-### Testing
-
-```bash
-# Run test suite
-uv run tests/test_server.py
-
-# Run with pytest (if installed)
-pytest tests/
-```
-
-## Docker Architecture
+## ⚡ Performance & Architecture
 
 ### 🔌 MCP Communication Through Docker
 
@@ -716,449 +961,211 @@ ragex configure
 - Use `ragex log` to view logs (automatic log rotation is handled transparently)
 - Old log files are automatically deleted when limits are exceeded
 
-### What Gets Logged
+### Performance Metrics
 
-**At INFO level:**
-- Project detection and initialization
-- Search mode detection (semantic/regex)
-- Search query execution
-- Number of results found
-- Index progress and file counts
+| Operation | Speed | Notes |
+|-----------|-------|-------|
+| **Indexing** | ~100 symbols/sec | Intel i9-7900X, varies by project size |
+| **Semantic Search** | <100ms | 1000+ symbols, cached embeddings |
+| **Regex Search** | <50ms | Powered by ripgrep, sub-second for large codebases |
+| **Project Switching** | Instant | Automatic workspace detection |
 
-**At DEBUG level adds:**
-- Individual file processing
-- Embedding generation details
-- ChromaDB query internals
-- Similarity scores for each result
-- Pattern matcher decisions
+### Real-World Timing
+- **Small projects** (1k-10k LOC): 70 seconds initial indexing
+- **Medium projects** (10k-100k LOC): 130 seconds initial indexing  
+- **Large projects** (100k+ LOC): 5+ minutes initial indexing
+- **Subsequent searches**: Sub-second response times
 
-**At TRACE level adds:**
-- File ignore decisions for every file checked
-- Detailed file system operations
-- Internal component state transitions
-- Very verbose debugging information
+### Docker Resource Usage
 
-## Security Features
+| Component | Memory | CPU | Storage |
+|-----------|--------|-----|----------|
+| **Base container** | ~100MB | Low | ~3-13GB (varies by image) |
+| **During indexing** | ~500MB peak | High | Temporary spike |
+| **During search** | ~300MB | Low | Persistent |
+| **ChromaDB index** | ~50MB | N/A | ~1MB per 1000 symbols |
 
-1. **Pattern validation**: Regex patterns are validated and length-limited
-2. **Path restriction**: Searches are confined to project directory
-3. **Resource limits**: Maximum results and timeout protection
-4. **Input sanitization**: All inputs are validated before execution
-5. **No shell injection**: Direct subprocess execution without shell
+### Security & Privacy
 
-## Architecture
+🔒 **Enterprise-Ready Security:**
+- ✅ **Air-gapped mode** - No network access required (secure default)
+- ✅ **Local processing** - Code never leaves your machine
+- ✅ **Input validation** - All queries sanitized and validated
+- ✅ **Path restrictions** - Searches confined to project directories
+- ✅ **Resource limits** - Protection against resource exhaustion
+- ✅ **No shell execution** - Direct subprocess calls only
 
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Claude Code   │────▶│   MCP Server     │────▶│ Search Engines  │
-│                 │     │                  │     │                 │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-                                │                         │
-                                ▼                         ▼
-                        ┌──────────────────┐     ┌─────────────────┐
-                        │ Auto-Detection   │     │ • Ripgrep       │
-                        │ & Mode Selection │     │ • Tree-sitter   │
-                        └──────────────────┘     │ • ChromaDB      │
-                                │                │ • Embeddings    │
-                                ▼                └─────────────────┘
-                        ┌──────────────────┐
-                        │ Query Enhancement│
-                        │ & Fallback Logic │
-                        └──────────────────┘
-                                │
-                                ▼
-                        ┌──────────────────┐
-                        │ Security &       │
-                        │ Validation       │
-                        └──────────────────┘
-```
+### Architecture Overview
 
-### Search Mode Flow
-
-1. **Query Analysis**: Auto-detect search intent (regex, symbol, semantic)
-2. **Query Enhancement**: Expand abbreviations, add context
-3. **Primary Search**: Execute using detected/specified mode
-4. **Fallback Logic**: Try alternative modes if no results
-5. **Result Formatting**: Return navigation-friendly results with metadata
-6. **Guidance**: Provide suggestions for better queries when needed
-
-## Supported File Types
-
-1. All file types are supported for regex search. 
-
-1. These file types are supported for symbol and semantic search:
-  `py`, `js`, `jsx`, `ts`, `tsx`, `cpp`, `c`, `html`, `css`
-
-## File Exclusions
-
-The server provides an enhanced ignore system with comprehensive defaults and multi-level support:
-
-### Default Exclusions
-MCP-RAGex includes comprehensive default exclusions for:
-- **Python**: `.venv/**`, `__pycache__/**`, `*.pyc`, `.eggs/**`, `.tox/**`, etc.
-- **JavaScript/TypeScript**: `node_modules/**`, `*.tsbuildinfo`, `.npm/**`, etc.
-- **Build artifacts**: `build/**`, `dist/**`, `*.o`, `*.so`, `*.exe`, etc.
-- **IDEs**: `.vscode/**`, `.idea/**`, `*.swp`, etc.
-- **OS files**: `.DS_Store`, `Thumbs.db`, `._*`, etc.
-- **Media/Archives**: `*.jpg`, `*.mp4`, `*.zip`, etc.
-
-### Initialize .mcpignore
-When starting a new project, MCP-RAGex can create a `.mcpignore` file with all defaults visible:
-
-```bash
-# Create comprehensive .mcpignore with categorized patterns
-ragex init
-
-# Create minimal .mcpignore (essential patterns only)
-ragex init --minimal
-
-# Add custom patterns
-ragex init --add "*.custom" --add "data/**"
-
-# Force overwrite existing file
-ragex init --force
+```mermaid
+graph TD
+    A[Claude Code] -->|MCP Protocol| B[RAGex Server]
+    B --> C[Query Router]
+    C -->|Semantic Queries| D[Vector Search]
+    C -->|Regex Patterns| E[Ripgrep Search]
+    C -->|Symbol Names| F[Tree-sitter Search]
+    
+    D --> G[ChromaDB]
+    D --> H[Sentence Transformers]
+    E --> I[ripgrep]
+    F --> J[Tree-sitter AST]
+    
+    K[Docker Container] --> L[Project Isolation]
+    L --> M[User Volume]
+    M --> N[Project 1 Index]
+    M --> O[Project 2 Index]
+    M --> P[Shared Models]
 ```
 
-**Note**: If no `.mcpignore` exists, the system uses built-in defaults and shows a warning suggesting to run `ragex init`. Set `RAGEX_IGNOREFILE_WARNING=false` to disable this warning.
+**Key Components:**
+- 🧠 **Vector Search**: Semantic understanding via sentence-transformers + ChromaDB
+- ⚡ **Regex Search**: Lightning-fast pattern matching with ripgrep
+- 🌳 **AST Parsing**: Code structure analysis with Tree-sitter
+- 🐳 **Docker Isolation**: Secure, reproducible environment per user
+- 📁 **Project Separation**: SHA256-based unique project identification
 
-### Custom Exclusions (.mcpignore)
-Create or edit `.mcpignore` files using gitignore syntax:
+### Search Intelligence
 
+```mermaid
+flowchart LR
+    A[User Query] --> B{Query Analysis}
+    B -->|"auth login"| C[Semantic Mode]
+    B -->|"async def.*"| D[Regex Mode] 
+    B -->|"handleSubmit"| E[Symbol Mode]
+    
+    C --> F[Vector Similarity]
+    D --> G[Pattern Matching]
+    E --> H[AST Analysis]
+    
+    F --> I{Results Found?}
+    G --> I
+    H --> I
+    
+    I -->|Yes| J[Return Results]
+    I -->|No| K[Try Fallback Mode]
+    K --> J
+```
+
+**Smart Features:**
+1. 🎯 **Auto-detection** - Analyzes query patterns to choose optimal search mode
+2. 🔄 **Intelligent fallback** - Tries alternative modes if primary search fails
+3. 📊 **Result ranking** - Semantic relevance scoring for better matches
+4. 💡 **Query enhancement** - Expands abbreviations and adds context
+5. 🎓 **Learning system** - Guides Claude Code to optimal usage patterns
+
+### Supported Languages
+
+| Feature | Supported Languages |
+|---------|--------------------|
+| **Regex Search** | All file types (universal) |
+| **Semantic Search** | Python, JavaScript, TypeScript, JSX, TSX, C/C++, HTML, CSS |
+| **Symbol Extraction** | Python, JavaScript, TypeScript (Tree-sitter AST parsing) |
+| **Planned Support** | Go, Rust, Java, C#, PHP, Ruby |
+
+### File Type Detection
+- **Automatic**: Based on file extensions
+- **Configurable**: Via `.gitignore` patterns
+- **Smart Exclusions**: Skips binaries, generated files, dependencies
+
+### Smart File Exclusions
+
+**🎯 Comprehensive Defaults** (automatically applied):
 ```gitignore
-# Example .mcpignore
-test_output/
-*.tmp
-docs/**/*.generated.md
-!important.log  # Negation pattern (include this file)
+# Dependencies
+node_modules/, .venv/, __pycache__/, vendor/
 
-# Project-specific patterns
-data/raw/**
-models/**
-*.pkl
+# Build artifacts  
+build/, dist/, target/, .next/, .nuxt/
+
+# IDE files
+.vscode/, .idea/, *.swp, .DS_Store
+
+# Logs and temp
+*.log, .tmp/, .cache/
+
+# Media files
+*.jpg, *.png, *.mp4, *.zip, *.pdf
 ```
 
-### Multi-Level Support
-You can create `.mcpignore` files in subdirectories for more specific control:
+**⚙️ Customizable per Project**:
+- Uses standard `.gitignore` syntax
+- Multi-level support (project/directory/subdirectory)
+- Respects existing `.gitignore` files
+- `ragex init` creates comprehensive `.gitignore` template
 
-```
-project/
-├── .mcpignore          # Root patterns
-├── src/
-│   └── .mcpignore      # Additional patterns for src/
-└── tests/
-    └── .mcpignore      # Override parent rules for tests/
-```
+## 🌟 Why RAGex?
 
-Deeper `.mcpignore` files override parent rules, allowing fine-grained control.
+### The RAGex Advantage
 
-### Disabling Default Patterns
-For minimal setups, you can disable all default patterns programmatically:
+| Traditional Tools | RAGex |
+|------------------|--------|
+| 😫 Text-only search | 🧠 **Semantic understanding** |
+| 📝 Manual copy-paste workflow | 🔄 **Intelligent code reuse** |
+| 🐌 Grep through everything | ⚡ **Vector-powered speed** |
+| 🔍 Find exact matches only | 🎯 **Conceptual similarity** |
+| 😰 "Did I check all files?" | ✅ **Comprehensive indexing** |
+| 🚫 Works against Claude | 🤝 **Enhances Claude's abilities** |
 
-```python
-# When using the Python API directly
-manager = IgnoreManager("/path", use_defaults=False)
-```
+### Success Stories
 
-**Notes:**
-- Uses standard gitignore syntax
-- Invalid patterns are warned about but don't break the server
-- Patterns are matched relative to the `.mcpignore` file location
-- See `examples/.mcpignore.template` for a comprehensive example
+**Before RAGex:**
+> "Claude, add authentication to this Express app"
+> → Creates duplicate middleware (200+ lines)
+> → Ignores existing user models  
+> → Breaks established patterns
 
-### Search-time Exclusions
-Override or add exclusions for specific searches:
+**After RAGex:**
+> "Claude, add authentication to this Express app"
+> → Finds existing `auth.middleware.js:15`
+> → Extends current `User` model  
+> → Follows project conventions
+> → 90% less code, 100% more consistency
 
-```json
-{
-  "tool": "search_code",
-  "arguments": {
-    "pattern": "TODO",
-    "exclude_patterns": ["tests/**", "*.spec.js"],
-    "respect_gitignore": true  // default: true
-  }
-}
-```
+### Enterprise Benefits
+- 📈 **Faster development** - Reuse > Rewrite
+- 🎯 **Consistent patterns** - Claude follows your architecture
+- 🔍 **Better code discovery** - Find forgotten utilities and helpers
+- 🧹 **Reduced duplication** - Stop reinventing the wheel
+- 📚 **Knowledge preservation** - Your codebase becomes searchable documentation
 
-### Exclusion Priority
-1. Default exclusions (always applied)
-2. `.gitignore` files (if `respect_gitignore: true`)
-3. `.mcpignore` patterns (if file exists)
-4. API `exclude_patterns` (if provided)
+## 🤝 Contributing & Support
 
-## Performance Considerations
+### Getting Help
+- 📖 **Documentation**: [Full docs](https://github.com/jbenshetler/mcp-ragex/tree/main/doc)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/jbenshetler/mcp-ragex/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/jbenshetler/mcp-ragex/discussions)
+- 📧 **Support**: [support@ragex.dev](mailto:support@ragex.dev)
 
-### Search Performance
-- **Regex searches**: Sub-second response using ripgrep
-- **Symbol searches**: Fast Tree-sitter parsing with caching
-- **Semantic searches**: ~50-100ms for 1000+ symbols
-- **Timeout protection**: 30-second limit for all searches
-- **Result limits**: Maximum 200 matches to prevent overload
-
-### Resource Usage
-
-#### Docker Resource Requirements
-- **Memory**: 8GB RAM recommended (4GB minimum)
-- **CPU**: 2+ cores recommended for indexing
-- **Storage**: 
-  - Base image: ~6.2GB
-  - Data volume: ~1MB per 1000 symbols indexed
-  - Model cache: 80MB-1.3GB depending on preset
-- **GPU**: Optional, accelerates semantic search (requires nvidia-docker)
-
-#### Memory Usage by Component
-- **Base container**: ~100MB baseline
-- **During indexing**: ~500MB peak
-- **During semantic search**: ~300MB
-- **ChromaDB**: ~50MB for typical projects
-- **PyTorch models**: 80MB-1.3GB (cached in volume)
-
-### Docker Optimization Features
-- **Multi-stage builds**: Minimal runtime dependencies
-- **Volume caching**: Models persist between container restarts
-- **Resource limits**: Configurable memory/CPU limits in production
-- **Efficient layers**: Optimized Docker layer caching
-- **Non-root execution**: Security-first container design
-
-### Production Scaling
+### Development
 ```bash
-# Resource-limited production deployment
-docker compose -f docker-compose.prod.yml up -d
-
-# Monitor resource usage
-docker stats ragex_mcp_server
-
-# Scale for multiple projects (if needed)
-docker compose -f docker-compose.prod.yml up --scale ragex=3
-```
-
-## Semantic Search Details
-
-### Model Information
-- **Model**: `sentence-transformers/all-mpnet-base-v2`
-- **Dimensions**: 768-dimensional embeddings
-- **Quality**: Best general-purpose model for semantic similarity
-- **Speed**: ~36 symbols/second indexing, <100ms search
-
-### Index Statistics
-For a typical project (77 symbols):
-- **Indexing time**: 2.1 seconds
-- **Functions**: 70 indexed
-- **Classes**: 7 indexed  
-- **Index size**: 32.5 MB
-- **Languages**: Python, JavaScript, TypeScript supported
-
-### Indexing Strategy
-- **Pre-indexing**: Build index before starting MCP server
-- **Incremental updates**: Update individual files as needed
-- **Metadata tracking**: Track file changes and index freshness
-- **Progress visibility**: Show indexing progress and timing
-
-## Teaching System
-
-The MCP server actively teaches Claude Code how to use search effectively:
-
-### Capability Discovery
-- **Auto-detection examples**: Shows what query patterns trigger each mode
-- **Mode recommendations**: Suggests best mode for different use cases
-- **Fallback explanations**: Explains why fallbacks occurred
-
-### Query Guidance
-- **Enhancement suggestions**: How to improve queries for better results
-- **Alternative approaches**: Different ways to search for the same concept
-- **Pattern examples**: Common regex and semantic query patterns
-
-### Learning Features
-- **Rich tool descriptions**: Detailed documentation in tool schemas
-- **Response metadata**: Information about search mode selection
-- **Failure guidance**: Helpful suggestions when searches fail
-
-## Configuration
-
-### Embedding Model Configuration
-
-The semantic search system supports multiple embedding models with different trade-offs:
-
-#### Model Presets
-
-| Preset | Model | Dimensions | Size | Use Case |
-|--------|-------|------------|------|----------|
-| `fast` (default) | all-MiniLM-L6-v2 | 384 | ~80MB | Quick prototyping, smaller codebases |
-| `balanced` | all-mpnet-base-v2 | 768 | ~420MB | Good balance of speed and quality |
-| `accurate` | all-roberta-large-v1 | 1024 | ~1.3GB | Best quality, larger codebases |
-
-#### Configuration Methods
-
-1. **Command-line preset:**
-   ```bash
-   uv run scripts/build_semantic_index.py . --preset balanced
-   ```
-
-2. **Environment variable:**
-   ```bash
-   # Use a preset
-   export RAGEX_EMBEDDING_MODEL=balanced
-   
-   # Or specify a custom model
-   export RAGEX_EMBEDDING_MODEL=sentence-transformers/codebert-base
-   ```
-
-3. **Other environment variables:**
-   ```bash
-   # ChromaDB settings
-   export RAGEX_CHROMA_PERSIST_DIR=/custom/path/to/db
-   export RAGEX_CHROMA_COLLECTION=my_project_embeddings
-   ```
-
-### File Exclusion (.mcpignore)
-
-The enhanced ignore system now provides comprehensive defaults and multi-level support:
-
-```bash
-# Initialize .mcpignore with visible defaults
-ragex init
-
-# The system will use built-in defaults if no .mcpignore exists
-# and show a warning (disable with RAGEX_IGNOREFILE_WARNING=false)
-```
-
-Example `.mcpignore` for additional project-specific exclusions:
-
-```gitignore
-# Dependencies (already in defaults, shown for clarity)
-node_modules/
-venv/
-.venv/
-
-# Build outputs (already in defaults)
-dist/
-build/
-*.min.js
-
-# Large files
-*.csv
-*.json
-data/
-
-# Test files (optional)
-*_test.py
-*.test.js
-```
-
-The system automatically excludes common directories like `.git`, `__pycache__`, etc.
-
-## Deployment & Operations
-
-### 🚀 Production Deployment
-
-#### Option 1: Docker Compose (Recommended)
-```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/mcp-ragex.git
+# Get the code
+git clone https://github.com/jbenshetler/mcp-ragex.git
 cd mcp-ragex
 
-# Deploy with resource limits
-docker compose -f docker-compose.prod.yml up -d
+# Local development setup
+make install-cpu && ragex start
 
-# Verify deployment
-docker compose -f docker-compose.prod.yml ps
+# Run tests
+uv run tests/test_server.py
+pytest tests/
+
+# Build documentation
+make docs
 ```
 
-#### Option 2: Kubernetes
-```yaml
-# Example Kubernetes deployment (k8s/deployment.yaml)
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ragex-mcp-server
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: ragex-mcp-server
-  template:
-    metadata:
-      labels:
-        app: ragex-mcp-server
-    spec:
-      containers:
-      - name: ragex
-        image: ragex/mcp-server:latest
-        resources:
-          requests:
-            memory: "1Gi"
-            cpu: "500m"
-          limits:
-            memory: "4Gi"
-            cpu: "2"
-        volumeMounts:
-        - name: ragex-data
-          mountPath: /data
-      volumes:
-      - name: ragex-data
-        persistentVolumeClaim:
-          claimName: ragex-data-pvc
-```
+### Roadmap
+- 🚀 **Multi-language support** - Go, Rust, Java, C#
+- 🔍 **Hybrid search** - Combine semantic + keyword results
+- 📱 **IDE extensions** - VS Code, JetBrains, Vim
+- 🌐 **Cloud deployment** - Kubernetes, AWS, GCP
+- 🧠 **Custom embeddings** - Fine-tune models for your domain
 
-### 📊 Monitoring & Logging
+---
 
-#### Health Checks
-```bash
-# Check container health
-docker compose exec ragex python -c "import src.server; print('Server OK')"
+**⭐ Star us on GitHub** | **🐳 [Docker Hub](https://hub.docker.com/r/ragex/mcp-server)** | **📦 [GitHub Packages](https://github.com/jbenshetler/mcp-ragex/pkgs/container/mcp-ragex)**
 
-# Test MCP protocol
-echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}' | \
-  docker compose exec -T ragex python -m src.server
-```
+*Made with ❤️ for developers who believe in smart code reuse*
 
-#### Log Management
-```bash
-# View real-time logs
-docker compose logs -f ragex
 
-# Export logs for analysis
-docker compose logs ragex > ragex-logs.txt
 
-# Container metrics
-docker stats ragex_mcp_server
-```
 
-#### Volume Management
-```bash
-# Backup semantic index
-docker run --rm -v ragex-data:/data -v $(pwd):/backup \
-  alpine tar czf /backup/ragex-backup.tar.gz -C /data .
-
-# Restore from backup
-docker run --rm -v ragex-data:/data -v $(pwd):/backup \
-  alpine tar xzf /backup/ragex-backup.tar.gz -C /data
-
-# Reset data (forces model re-download)
-docker volume rm ragex-data
-```
-
-## Future Enhancements
-
-### Planned Features
-- [ ] **CodeBERT integration**: Upgrade to code-specific embeddings
-- [ ] **Incremental indexing**: Automatic index updates on file changes
-- [ ] **Cross-language search**: Find similar patterns across languages
-- [ ] **Search history**: Remember and optimize frequent queries
-- [ ] **Custom embeddings**: Train project-specific models
-
-### Docker & Infrastructure
-- [ ] **Multi-architecture builds**: ARM64 support for Apple Silicon
-- [ ] **Distroless images**: Even smaller container images
-- [ ] **GPU acceleration**: CUDA-enabled containers for faster indexing
-- [ ] **Kubernetes operators**: Automated deployment and scaling
-- [ ] **Health endpoints**: HTTP health checks for orchestration
-
-### Performance Improvements
-- [ ] **Hybrid search**: Combine keyword and semantic results
-- [ ] **Query optimization**: Learn from usage patterns
-- [ ] **Caching strategies**: Cache frequent semantic searches
-- [ ] **Distributed indexing**: Scale to very large codebases
-
-## License
-
-MIT
