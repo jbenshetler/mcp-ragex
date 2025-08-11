@@ -558,7 +558,7 @@ class IndexingQueue:
             chroma_persist_dir = get_chroma_db_path(project_data_dir)
             indexer = CodeIndexer(
                 persist_directory=str(chroma_persist_dir),
-                model_name=embedding_model
+                config=embedding_model  # Use config parameter for proper preset resolution
             )
             
             if not index_exists or force:
