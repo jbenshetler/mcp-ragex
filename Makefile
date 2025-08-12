@@ -184,9 +184,10 @@ check-version:   ## Verify clean state and version exists
 		exit 1; \
 	fi
 	@git diff --exit-code || (echo "❌ Working tree has uncommitted changes"; exit 1)
-	@if docker manifest inspect $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu >/dev/null 2>&1; then \
+	@if [ "$(FORCE)" != "true" ] && docker manifest inspect $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu >/dev/null 2>&1; then \
 		echo "❌ Version $(VERSION) already exists in registry!"; \
 		echo "   Use 'make version-patch' to create new version"; \
+		echo "   Or use 'make publish-all FORCE=true' to force republish"; \
 		exit 1; \
 	fi
 	@echo "✅ Version $(VERSION) is ready to publish"
