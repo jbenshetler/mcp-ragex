@@ -17,4 +17,11 @@ RUN pip install --no-cache-dir --no-warn-script-location -r requirements/base-ml
 RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import tree_sitter_javascript as tsjavascript; import tree_sitter_typescript as tstypescript"
 
 # Pre-download fast embedding model for offline operation
+# Switch to root to create directory, then back to ragex
+USER root
+RUN mkdir -p /opt/models && chown ragex:ragex /opt/models
+USER ragex
+# Set cache directories to use build-time location
+ENV HF_HOME=/opt/models
+ENV SENTENCE_TRANSFORMERS_HOME=/opt/models
 RUN python -c "from sentence_transformers import SentenceTransformer; print('Downloading fast embedding model for offline operation...'); SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); print('Fast model cached successfully!')"

@@ -69,13 +69,10 @@ fi
 
 # Show what we're installing and set image tag
 if [[ "$MODE" == "cuda" ]]; then
-    echo "🚀 Installing CUDA version (~8GB download)..."
+    echo "🚀 Installing CUDA version (~13GiB download)..."
     IMAGE_TAG="cuda-latest"
-elif [[ "$MODE" == "rocm" ]]; then
-    echo "🚀 Installing ROCm version (~8GB download)..."
-    IMAGE_TAG="rocm-latest"
 else
-    echo "🚀 Installing CPU version (~2GB download)..."
+    echo "🚀 Installing CPU version (~3GiB download)..."
     IMAGE_TAG="cpu-latest"
 fi
 

@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger("embedding-manager")
 
 import re
+import subprocess
 from typing import List, Dict, Optional, Union
 logger.info("embedding_manager.py attempting to import np")
 import numpy as np
@@ -22,6 +23,19 @@ try:
     from src.ragex_core.embedding_config import EmbeddingConfig, ModelConfig
 except ImportError:
     from .embedding_config import EmbeddingConfig, ModelConfig
+
+
+def _has_network_access() -> bool:
+    """Check if container has network access by testing connectivity"""
+    try:
+        result = subprocess.run(
+            ['curl', '--connect-timeout', '2', '-s', 'https://httpbin.org/ip'],
+            capture_output=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
 
 
 
@@ -62,7 +76,49 @@ class EmbeddingManager:
         logger.info(f"Loading embedding model: {self.config.model_name}")
         logger.info(f"Model config: dims={self.config.dimensions}, max_seq={self.config.max_seq_length}")
         
-        self.model = SentenceTransformer(self.config.model_name)
+        # Try to load model in offline mode first to avoid network calls
+        has_network = _has_network_access()
+        
+        try:
+            # First attempt: Force offline mode to use cached models
+            import os
+            os.environ['HF_HUB_OFFLINE'] = '1'
+            os.environ['TRANSFORMERS_OFFLINE'] = '1'
+            
+            # Check build-time cache first (/opt/models), then runtime cache (/data/models)
+            cache_locations = ['/opt/models', '/data/models']
+            for cache_dir in cache_locations:
+                if os.path.exists(cache_dir):
+                    os.environ['HF_HOME'] = cache_dir
+                    os.environ['SENTENCE_TRANSFORMERS_HOME'] = cache_dir
+                    logger.info(f"Using model cache: {cache_dir}")
+                    break
+            
+            self.model = SentenceTransformer(self.config.model_name)
+            logger.info("Model loaded from local cache (offline mode)")
+        except Exception as e:
+            # Log at appropriate level based on network availability
+            if has_network:
+                logger.info(f"Model not in local cache, downloading: {self.config.model_name}")
+                try:
+                    # Second attempt: allow network access if available
+                    os.environ.pop('HF_HUB_OFFLINE', None)
+                    os.environ.pop('TRANSFORMERS_OFFLINE', None)
+                    self.model = SentenceTransformer(self.config.model_name)
+                    logger.info("Model downloaded and loaded successfully")
+                except Exception as e2:
+                    logger.error(f"Failed to download model: {e2}")
+                    raise RuntimeError(f"Could not load embedding model {self.config.model_name}. "
+                                     f"Cache error: {e}. Download error: {e2}") from e2
+            else:
+                # No network access - this is an error
+                logger.error(f"Model '{self.config.model_name}' not available in local cache and no network access")
+                error_msg = (f"❌ Model '{self.config.model_name}' requires network access but container has no network access.\n"
+                           f"   \n"
+                           f"   Available options:\n"
+                           f"   1. Use the pre-bundled 'fast' model\n"
+                           f"   2. Enable network access by reinstalling with --network flag")
+                raise RuntimeError(error_msg) from e
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
         
         # Verify dimensions match
