@@ -302,13 +302,48 @@ publish-cuda-base: ## Build and publish CUDA base image
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest .
 
 ## Installation helpers
-install-cpu:   ## Build and install CPU image locally
-	$(MAKE) cpu
-	RAGEX_IMAGE=$(IMAGE_NAME):cpu-dev ./install.sh
+install:       ## Build and install locally with auto-detection (recommended)
+	@echo "🚀 Auto-detecting best build target and installing..."
+	@ARCH=$$(uname -m); \
+	if [[ "$$ARCH" == "x86_64" ]]; then \
+		if command -v nvidia-smi &> /dev/null && docker info | grep -q nvidia; then \
+			echo "🔍 Auto-detected: CUDA capability"; \
+			$(MAKE) install-cuda; \
+		else \
+			echo "🔍 Auto-detected: AMD64 CPU"; \
+			$(MAKE) install-amd64; \
+		fi \
+	elif [[ "$$ARCH" == "aarch64" ]] || [[ "$$ARCH" == "arm64" ]]; then \
+		echo "🔍 Auto-detected: ARM64 CPU"; \
+		$(MAKE) install-arm64; \
+	else \
+		echo "❌ Unsupported architecture: $$ARCH"; \
+		exit 1; \
+	fi
 
-install-cuda:  ## Build and install CUDA image locally
+install-amd64: ## Build and install AMD64 CPU image locally
+	$(MAKE) amd64
+	RAGEX_IMAGE=$(IMAGE_NAME):cpu-amd64-dev ./install.sh --cpu $(INSTALL_FLAGS)
+
+install-arm64: ## Build and install ARM64 CPU image locally
+	$(MAKE) arm64
+	RAGEX_IMAGE=$(IMAGE_NAME):cpu-arm64-dev ./install.sh --cpu $(INSTALL_FLAGS)
+
+install-cpu:   ## Build and install CPU image locally (forces CPU-only, useful for testing)
+	@echo "🔧 Forcing CPU-only installation (ignoring GPU availability)..."
+	@ARCH=$$(uname -m); \
+	if [[ "$$ARCH" == "x86_64" ]]; then \
+		$(MAKE) install-amd64; \
+	elif [[ "$$ARCH" == "aarch64" ]] || [[ "$$ARCH" == "arm64" ]]; then \
+		$(MAKE) install-arm64; \
+	else \
+		echo "❌ Unsupported architecture: $$ARCH"; \
+		exit 1; \
+	fi
+
+install-cuda:  ## Build and install CUDA image locally (forces CUDA)
 	$(MAKE) cuda
-	RAGEX_IMAGE=$(IMAGE_NAME):cuda-dev ./install.sh
+	RAGEX_IMAGE=$(IMAGE_NAME):cuda-dev ./install.sh --cuda $(INSTALL_FLAGS)
 
 ## Registry Management
 registry-stats:  ## Show registry storage usage and recent versions
@@ -379,9 +414,12 @@ help:          ## Show this help
 	@echo "  make list-registry    # List published versions"
 	@echo "  make registry-cleanup # Delete old versions (3+ months)"
 	@echo ""
-	@echo "🛠️  Development:"
-	@echo "  make install-cpu      # Build and install CPU locally"
-	@echo "  make install-cuda     # Build and install CUDA locally"
+	@echo "🛠️  Installation:"
+	@echo "  make install          # Auto-detect and install (recommended)"
+	@echo "  make install-amd64    # Install AMD64 CPU build"
+	@echo "  make install-arm64    # Install ARM64 CPU build"
+	@echo "  make install-cpu      # Force CPU-only (ignore GPU)"
+	@echo "  make install-cuda     # Force CUDA installation"
 	@echo ""
 	@echo "🧹 Maintenance:"
 	@echo "  make clean            # Clean build artifacts"
@@ -392,4 +430,4 @@ help:          ## Show this help
 	@echo "📋 All Available Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: version-show version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu amd64 arm64 cuda publish-cpu-base publish-cuda-base install-cpu install-cuda clean clean-arm64-temp help
+.PHONY: version-show version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu amd64 arm64 cuda publish-cpu-base publish-cuda-base install install-amd64 install-arm64 install-cpu install-cuda clean clean-arm64-temp help

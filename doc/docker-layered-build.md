@@ -693,6 +693,38 @@ make publish-cpu      # Multi-platform CPU
 make publish-cuda     # CUDA GPU
 ```
 
+## Installation System
+
+The build system provides comprehensive installation targets with automatic hardware detection:
+
+### Primary Installation Commands
+
+**`make install`** - Recommended for most users. Auto-detects your system:
+- **AMD64 with CUDA**: Detects NVIDIA GPU → installs CUDA build
+- **AMD64 without CUDA**: Installs optimized AMD64 CPU build  
+- **ARM64**: Installs ARM64 CPU build (Apple Silicon compatible)
+
+**Architecture-Specific Installation**:
+- `make install-amd64` - Explicit AMD64 CPU installation
+- `make install-arm64` - Explicit ARM64 CPU installation
+- `make install-cuda` - Force CUDA installation (requires NVIDIA GPU)
+- `make install-cpu` - Force CPU-only (useful for testing CUDA systems without GPU)
+
+### Advanced Options
+
+Pass additional flags to the installer:
+```bash
+# Network-enabled installation with specific model
+INSTALL_FLAGS="--network --model balanced" make install
+
+# Force CPU with custom model
+INSTALL_FLAGS="--model accurate" make install-cpu
+```
+
+Available installer flags:
+- `--network` - Enable network access for model downloads
+- `--model <name>` - Specify model (fast, balanced, accurate, multilingual)
+
 ## Benefits
 
 1. **Fast Development Cycles**: 2-3 minute application builds
@@ -703,6 +735,7 @@ make publish-cuda     # CUDA GPU
 6. **Backward Compatibility**: Existing `cpu-dev` and `cuda-dev` tags still work
 7. **Dependency Management**: Requirements files for reproducibility
 8. **Production Ready**: Automated CI/CD with manifest lists
+9. **Smart Installation**: Auto-detection with explicit override options
 
 ## File Structure
 
