@@ -21,76 +21,160 @@ The layered build strategy maximizes Docker layer caching while supporting multi
 
 ## Layer Architecture Strategy
 
-### Layer 1: Base System Layer (~500MB, 2-3min)
+### Layer 1: System Base Layer (~1GB, 3-4min)
 
-**File**: `docker/base/Dockerfile.system`
-
-```dockerfile
-FROM python:3.11-slim
-
-# System dependencies shared across all variants
-RUN apt-get update && apt-get install -y \
-    ripgrep \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create user and directories
-RUN useradd -m -s /bin/bash appuser
-WORKDIR /app
-USER appuser
-```
-
-**Purpose**: Shared system dependencies and user setup across all variants.
-
-### Layer 2A: CPU Base Layer (~2.5GiB, 4-5min)
-
+#### CPU System Base
 **File**: `docker/cpu/Dockerfile.base`
 
 ```dockerfile
-ARG TARGETARCH
-FROM ghcr.io/user/mcp-ragex:system-base
+FROM python:3.10
 
-# Copy requirements files
-COPY requirements/ /tmp/requirements/
+# Install minimal required system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ripgrep \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install PyTorch based on architecture using requirements files
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-      pip install --no-cache-dir -r /tmp/requirements/cpu-amd64.txt; \
-    else \
-      pip install --no-cache-dir -r /tmp/requirements/cpu-arm64.txt; \
-    fi
+# Create non-root user
+RUN useradd -m -u 1000 ragex
 
-# Install core ML dependencies
-RUN pip install --no-cache-dir -r /tmp/requirements/base-ml.txt
+WORKDIR /app
+
+# Create data directory
+RUN mkdir -p /data && chown -R ragex:ragex /data
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV RAGEX_DATA_DIR=/data
+ENV HF_HOME=/data/models
+ENV SENTENCE_TRANSFORMERS_HOME=/data/models
+ENV DOCKER_CONTAINER=true
+ENV RAGEX_LOG_LEVEL=INFO
+ENV CUDA_VISIBLE_DEVICES=""
+
+# Switch to non-root user
+USER ragex
 ```
 
-**Purpose**: CPU-optimized PyTorch and ML dependencies with architecture-specific optimization.
-
-### Layer 2B: CUDA Base Layer (~8GiB, 6-8min)
-
+#### CUDA System Base
 **File**: `docker/cuda/Dockerfile.base`
 
 ```dockerfile
-FROM nvidia/cuda:11.8-runtime-ubuntu20.04
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
 
-# Install Python and system deps
+# Install Python and system dependencies
 RUN apt-get update && apt-get install -y \
-    python3.11 python3.11-pip python3.11-dev \
-    ripgrep curl git \
+    python3.10 \
+    python3.10-dev \
+    python3-pip \
+    git \
+    ripgrep \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install CUDA dependencies
-COPY requirements/ /tmp/requirements/
-RUN pip install --no-cache-dir -r /tmp/requirements/cuda.txt
-RUN pip install --no-cache-dir -r /tmp/requirements/base-ml.txt
+# Create symlinks for python
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    ln -sf /usr/bin/python3.10 /usr/bin/python3
 
-RUN useradd -m -s /bin/bash appuser
+# Create non-root user
+RUN useradd -m -u 1000 ragex
+
 WORKDIR /app
-USER appuser
+
+# Create data directory
+RUN mkdir -p /data && chown -R ragex:ragex /data
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV RAGEX_DATA_DIR=/data
+ENV HF_HOME=/data/models
+ENV SENTENCE_TRANSFORMERS_HOME=/data/models
+ENV DOCKER_CONTAINER=true
+ENV RAGEX_LOG_LEVEL=INFO
+
+# Switch to non-root user
+USER ragex
 ```
 
-**Purpose**: CUDA runtime with GPU-accelerated PyTorch and ML dependencies.
+**Purpose**: Platform-specific system dependencies, Python environment, and user setup.
+
+### Layer 2: ML Base Layer (~2-8GiB, 4-6min) - WITH CACHED MODELS
+
+#### CPU ML Layer
+**File**: `docker/cpu/Dockerfile.ml`
+
+```dockerfile
+ARG BASE_IMAGE=scratch
+FROM ${BASE_IMAGE}
+
+# Copy requirements files
+COPY --chown=ragex:ragex requirements/ ./requirements/
+
+# Install PyTorch and ML dependencies based on architecture using requirements files
+ARG TARGETARCH
+RUN set -e; \
+    echo "Building ML layer for architecture: ${TARGETARCH:-unknown}"; \
+    if [ "$TARGETARCH" = "amd64" ] || [ -z "$TARGETARCH" ]; then \
+      echo "Installing AMD64 CPU-only PyTorch and ML deps..."; \
+      pip install --no-cache-dir --no-warn-script-location -r requirements/cpu-amd64.txt; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      echo "Installing ARM64 PyTorch and ML deps..."; \
+      pip install --no-cache-dir --no-warn-script-location -r requirements/cpu-arm64.txt; \
+    else \
+      echo "Unsupported architecture: $TARGETARCH"; \
+      exit 1; \
+    fi
+
+# Install core ML dependencies
+RUN pip install --no-cache-dir --no-warn-script-location -r requirements/base-ml.txt
+
+# Pre-download tree-sitter language parsers
+RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import tree_sitter_javascript as tsjavascript; import tree_sitter_typescript as tstypescript"
+
+# Pre-download fast embedding model for offline operation
+# Switch to root to create directory, then back to ragex
+USER root
+RUN mkdir -p /opt/models && chown ragex:ragex /opt/models
+USER ragex
+# Set cache directories to use build-time location
+ENV HF_HOME=/opt/models
+ENV SENTENCE_TRANSFORMERS_HOME=/opt/models
+RUN python -c "from sentence_transformers import SentenceTransformer; print('Downloading fast embedding model for offline operation...'); SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); print('Fast model cached successfully!')"
+```
+
+#### CUDA ML Layer
+**File**: `docker/cuda/Dockerfile.ml`
+
+```dockerfile
+ARG BASE_IMAGE=scratch
+FROM ${BASE_IMAGE}
+
+# Switch to root to install ML dependencies
+USER root
+
+# Copy requirements files
+COPY --chown=ragex:ragex requirements/ /tmp/requirements/
+
+# Install CUDA PyTorch and ML dependencies
+RUN pip install --no-cache-dir --no-warn-script-location -r /tmp/requirements/cuda.txt
+RUN pip install --no-cache-dir --no-warn-script-location -r /tmp/requirements/base-ml.txt
+
+# Pre-download tree-sitter language parsers
+RUN python -c "import tree_sitter; import tree_sitter_python as tspython; import tree_sitter_javascript as tsjavascript; import tree_sitter_typescript as tstypescript"
+
+# Pre-download fast embedding model for offline operation
+# Create cache directory and set ownership (running as root)
+RUN mkdir -p /opt/models && chown ragex:ragex /opt/models
+# Set cache directories to use build-time location
+ENV HF_HOME=/opt/models
+ENV SENTENCE_TRANSFORMERS_HOME=/opt/models
+RUN python -c "from sentence_transformers import SentenceTransformer; print('Downloading fast embedding model for offline operation...'); SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); print('Fast model cached successfully!')"
+
+# Switch back to non-root user
+USER ragex
+```
+
+**Purpose**: Platform-specific PyTorch + ML dependencies + **pre-cached embedding models for offline operation**.
 
 ### Layer 3: Application Layer (~200MB, 1-2min)
 
@@ -115,6 +199,53 @@ ENTRYPOINT ["/entrypoint.sh"]
 ```
 
 **Purpose**: Application code and lightweight runtime dependencies that change frequently.
+
+## Offline Model Caching Strategy
+
+The ML layer (Layer 2) pre-downloads and caches embedding models during build time, enabling completely offline operation:
+
+### Pre-cached Models
+- **Fast Model**: `sentence-transformers/all-MiniLM-L6-v2` (~90MB)
+- **Cache Location**: `/opt/models` (persistent in image)
+- **Runtime Detection**: Application checks `/opt/models` first, then `/data/models`
+
+### Offline Benefits
+- ✅ **Immediate functionality** - works without network access
+- ✅ **Air-gap compatible** - no external dependencies at runtime  
+- ✅ **Security by default** - containers can run with `--network none`
+- ✅ **Fast model loading** - no download delays during container startup
+
+### Runtime Model Selection
+```bash
+ragex index . --model fast          # Use pre-bundled model (default)
+ragex index . --model balanced      # Download if network available
+ragex index . --model accurate      # Download if network available
+```
+
+### Network Security Modes
+Installation supports different security levels:
+```bash
+install.sh --cpu                    # Default: network allowed for model downloads
+install.sh --cpu --no-network       # High security: no network access ever
+```
+
+### Technical Implementation
+The embedding manager tries offline mode first:
+```python
+# Force offline mode first
+os.environ['HF_HUB_OFFLINE'] = '1'
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
+
+# Check build-time cache first (/opt/models), then runtime cache (/data/models)
+cache_locations = ['/opt/models', '/data/models']
+for cache_dir in cache_locations:
+    if os.path.exists(cache_dir):
+        os.environ['HF_HOME'] = cache_dir
+        os.environ['SENTENCE_TRANSFORMERS_HOME'] = cache_dir
+        break
+
+model = SentenceTransformer(model_name)  # Loads from cache
+```
 
 ## Requirements File Strategy
 
@@ -324,118 +455,69 @@ jobs:
           docker manifest push ghcr.io/${{ github.repository }}:cpu-latest
 ```
 
-## Makefile Integration
+## Build System Integration
 
-**Enhanced Makefile** with layered build support:
+The Makefile implements this layered architecture through several key concepts:
 
-```makefile
-# Variables for layered builds
-REGISTRY := ghcr.io/jbenshetler
-IMAGE_NAME := mcp-ragex
-ARCH ?= amd64
+### Layer Build Dependencies
 
-# Base layer builds (run once, cached for weeks)
-build-base-system:      ## Build system base layer (multi-platform)
-	docker buildx build --platform linux/amd64,linux/arm64 \
-		-f docker/base/Dockerfile.system \
-		-t $(REGISTRY)/$(IMAGE_NAME):system-base \
-		--push .
+Each layer has prerequisites that must be satisfied:
+- **Base Layer**: No dependencies (system packages and Python environment)
+- **ML Layer**: Requires corresponding base layer image to be built
+- **App Layer**: Requires corresponding ML layer image to be built
 
-build-base-cpu:         ## Build CPU base layers (both architectures)
-	docker buildx build --platform linux/amd64 \
-		-f docker/cpu/Dockerfile.base \
-		-t $(REGISTRY)/$(IMAGE_NAME):cpu-base-amd64 \
-		--push .
-	docker buildx build --platform linux/arm64 \
-		-f docker/cpu/Dockerfile.base \
-		-t $(REGISTRY)/$(IMAGE_NAME):cpu-base-arm64 \
-		--push .
+### Development Workflow
 
-build-base-cuda:        ## Build CUDA base layer
-	docker buildx build --platform linux/amd64 \
-		-f docker/cuda/Dockerfile.base \
-		-t $(REGISTRY)/$(IMAGE_NAME):cuda-base \
-		--push .
+The build system supports fast iterative development:
 
-build-all-bases:        ## Build all base layers
-	$(MAKE) build-base-system
-	$(MAKE) build-base-cpu  
-	$(MAKE) build-base-cuda
+**Local Development Builds**: 
+- `make amd64` - Builds complete 3-layer AMD64 CPU stack locally (base → ml → app)
+- `make arm64` - Builds complete 3-layer ARM64 CPU stack locally (base → ml → app)
+- `make cuda` - Builds complete 3-layer CUDA stack locally (base → ml → app)
+- Each layer is cached, so subsequent builds only rebuild changed layers
 
-# Fast application builds (2-3min, frequent)
-cpu:                    ## Build CPU image for development (ARCH=amd64|arm64)
-	docker buildx build \
-		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cpu-base-$(ARCH) \
-		-f docker/app/Dockerfile \
-		-t $(IMAGE_NAME):cpu-dev \
-		-t $(IMAGE_NAME):cpu-$(ARCH)-dev \
-		-t $(IMAGE_NAME):$(ARCH)-dev \
-		--load .
+**Architecture Selection**:
+- AMD64: Explicit `make amd64` target for x86_64 systems
+- ARM64: Explicit `make arm64` target for Apple Silicon compatibility
+- CUDA: AMD64-only (NVIDIA limitation)
+- Legacy: `make cpu` defaults to AMD64 but `make cpu ARCH=arm64` routes to ARM64
 
-cuda:                   ## Build CUDA image for development (AMD64 only)
-	docker buildx build \
-		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cuda-base \
-		--platform linux/amd64 \
-		-f docker/app/Dockerfile \
-		-t $(IMAGE_NAME):cuda-dev \
-		-t $(IMAGE_NAME):cuda-amd64-dev \
-		-t $(IMAGE_NAME):amd64-cuda-dev \
-		--load .
+### Production Publishing Strategy
 
-# Production builds
-publish-cpu:            ## Build and publish CPU images (multi-platform)
-	# AMD64 build with multiple tags
-	docker buildx build \
-		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cpu-base-amd64 \
-		--platform linux/amd64 \
-		-f docker/app/Dockerfile \
-		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-amd64 \
-		--push .
-	# ARM64 build with multiple tags
-	docker buildx build \
-		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cpu-base-arm64 \
-		--platform linux/arm64 \
-		-f docker/app/Dockerfile \
-		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-arm64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-arm64 \
-		--push .
-	# Create multi-platform manifest
-	docker manifest create $(REGISTRY)/$(IMAGE_NAME):latest-cpu \
-		$(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
-		$(REGISTRY)/$(IMAGE_NAME):latest-cpu-arm64
-	docker manifest push $(REGISTRY)/$(IMAGE_NAME):latest-cpu
+Production builds implement proper layer dependency management:
 
-publish-cuda:           ## Build and publish CUDA image
-	docker buildx build \
-		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):cuda-base \
-		--platform linux/amd64 \
-		-f docker/app/Dockerfile \
-		-t $(REGISTRY)/$(IMAGE_NAME):cuda-amd64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-amd64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):cuda-latest \
-		--push .
+**Incremental Publishing**: Each layer is built and published individually:
+1. Base layer published first with version tags
+2. ML layer built using published base layer as dependency
+3. Application layer built using published ML layer as dependency
 
-help:                   ## Show this help
-	@echo "Layered Docker Build System"
-	@echo ""
-	@echo "Base Layers (build once, cache for weeks):"
-	@echo "  make build-base-system    # System dependencies (500MB, 3min)"
-	@echo "  make build-base-cpu       # CPU PyTorch layers (2.5-4GiB, 5-8min)"
-	@echo "  make build-base-cuda      # CUDA PyTorch layer (8GiB, 8min)"
-	@echo "  make build-all-bases      # Build all base layers"
-	@echo ""
-	@echo "Development Builds (fast, 2-3min):"
-	@echo "  make cpu                  # CPU development image (AMD64)"
-	@echo "  make cpu ARCH=arm64       # CPU development image (ARM64)"  
-	@echo "  make cuda                 # CUDA development image (AMD64 only)"
-	@echo ""
-	@echo "Production Builds:"
-	@echo "  make publish-cpu          # Multi-platform CPU images"
-	@echo "  make publish-cuda         # CUDA production image"
-	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-```
+**Version Consistency**: All layers for a release share the same version tag:
+- `$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-base`
+- `$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-ml`  
+- `$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu`
+
+**Cache Management**: 
+- `NO_CACHE=true` parameter disables Docker build cache
+- Individual layer caching maximizes reuse between builds
+- Registry-based layer sharing across different build environments
+
+### Multi-Platform Support
+
+The build system handles platform differences transparently:
+
+**CPU Builds**: Support both AMD64 and ARM64 through multi-platform buildx
+**CUDA Builds**: AMD64-only due to NVIDIA Docker image limitations
+**Layer Sharing**: Base system layers can be shared across architectures where possible
+
+### Build Commands
+
+Core build targets follow the layered architecture:
+- **Base Commands**: `make cpu-base`, `make cuda-base` (build base layers)
+- **ML Commands**: `make cpu-ml`, `make cuda-ml` (build ML layers with models)  
+- **App Commands**: `make amd64`, `make arm64`, `make cuda` (build complete application stacks)
+- **Publishing**: `make publish-cpu`, `make publish-cuda`, `make publish-all`
+
+This integration ensures that the offline model caching, multi-platform support, and efficient build times are maintained across both development and production environments.
 
 ## Docker Tagging Strategy
 
@@ -447,12 +529,12 @@ The build system uses a multi-tag strategy to provide multiple ways to reference
 
 Each development build receives multiple tags:
 
-**CPU AMD64 build** (`make cpu` or `make cpu ARCH=amd64`):
+**AMD64 CPU build** (`make amd64`):
 - `mcp-ragex:cpu-dev` (backward compatible, latest built)
 - `mcp-ragex:cpu-amd64-dev` (architecture-specific)
 - `mcp-ragex:amd64-dev` (short form)
 
-**CPU ARM64 build** (`make cpu ARCH=arm64`):
+**ARM64 CPU build** (`make arm64`):
 - `mcp-ragex:cpu-dev` (backward compatible, latest built)  
 - `mcp-ragex:cpu-arm64-dev` (architecture-specific)
 - `mcp-ragex:arm64-dev` (short form)
@@ -476,8 +558,10 @@ Each development build receives multiple tags:
 
 #### CPU Builds
 ```bash
-make cpu              # CPU AMD64 (default, uses ARCH=amd64)
-make cpu ARCH=arm64   # CPU ARM64 (Apple Silicon)
+make amd64            # AMD64 CPU (explicit)
+make arm64            # ARM64 CPU (Apple Silicon)
+make cpu              # CPU AMD64 (legacy, defaults to amd64)
+make cpu ARCH=arm64   # CPU ARM64 (legacy, routes to arm64)
 ```
 
 #### CUDA Builds
@@ -574,8 +658,8 @@ docker pull ghcr.io/user/mcp-ragex:cpu-base-arm64
 docker pull ghcr.io/user/mcp-ragex:cuda-base
 
 # Fast development builds (2-3 minutes)
-make cpu              # AMD64: Creates cpu-dev, cpu-amd64-dev, amd64-dev tags
-make cpu ARCH=arm64   # ARM64: Creates cpu-dev, cpu-arm64-dev, arm64-dev tags  
+make amd64            # AMD64: Creates cpu-dev, cpu-amd64-dev, amd64-dev tags
+make arm64            # ARM64: Creates cpu-dev, cpu-arm64-dev, arm64-dev tags  
 make cuda             # CUDA: Creates cuda-dev, cuda-amd64-dev, amd64-cuda-dev tags
 
 # Use specific tags to run the right architecture

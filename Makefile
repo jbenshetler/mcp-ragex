@@ -74,12 +74,12 @@ cuda-ml:       ## Build CUDA ML layer - requires cuda-base
 		$(NO_CACHE)
 
 ## Development builds (layered)
-cpu:           ## Build CPU image for local development (ARCH=amd64|arm64) - uses layered builds
+cpu:           ## Build CPU image for local development (defaults to AMD64, use ARCH=arm64 for ARM64) - uses layered builds
 	@if [ "$(ARCH)" = "arm64" ]; then \
 		echo "Routing ARM64 build to dedicated cross-compilation target..."; \
 		$(MAKE) arm64; \
 	else \
-		echo "Building layered CPU image for $(ARCH)..."; \
+		echo "Building layered CPU image for $(ARCH) (default: AMD64)..."; \
 		$(MAKE) cpu-base ARCH=$(ARCH); \
 		$(MAKE) cpu-ml ARCH=$(ARCH); \
 		docker build \
@@ -92,7 +92,20 @@ cpu:           ## Build CPU image for local development (ARCH=amd64|arm64) - use
 			$(NO_CACHE); \
 	fi
 
-arm64:         ## Build ARM64 image for local development (registry-based)
+amd64:         ## Build AMD64 CPU image for local development - uses layered builds
+	@echo "Building layered AMD64 CPU image..."
+	$(MAKE) cpu-base ARCH=amd64
+	$(MAKE) cpu-ml ARCH=amd64
+	docker build \
+		-f docker/app/Dockerfile \
+		--build-arg BASE_IMAGE=$(IMAGE_NAME):cpu-amd64-ml \
+		-t $(IMAGE_NAME):cpu-dev \
+		-t $(IMAGE_NAME):cpu-amd64-dev \
+		-t $(IMAGE_NAME):amd64-dev \
+		. \
+		$(NO_CACHE)
+
+arm64:         ## Build ARM64 CPU image for local development (registry-based)
 	@echo "Building layered ARM64 image via registry..."
 	$(MAKE) arm64-base
 	$(MAKE) arm64-ml
@@ -118,24 +131,6 @@ cuda:          ## Build CUDA image for local development (AMD64 only) - uses lay
 		. \
 		$(NO_CACHE)
 
-## CI/CD builds  
-cpu-cicd:      ## Build CPU image optimized for CI/CD (multi-platform)
-	docker buildx build --platform $(PLATFORMS_CPU) \
-		-f docker/cpu/Dockerfile.conditional \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu \
-		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu .
-
-cpu-multiarch: ## Build CPU image for multiple architectures locally
-	docker buildx build --platform $(PLATFORMS_CPU) \
-		-f docker/cpu/Dockerfile.conditional \
-		-t $(IMAGE_NAME):cpu-multiarch \
-		--load .
-
-cuda-cicd:     ## Build CUDA image optimized for CI/CD
-	docker buildx build --platform $(PLATFORMS_GPU) \
-		-f docker/cuda/Dockerfile \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda \
-		-t $(REGISTRY)/$(IMAGE_NAME):latest-cuda .
 
 ## Version Management
 version-show:    ## Show current version information
@@ -194,23 +189,91 @@ check-version:   ## Verify clean state and version exists
 
 ## Build All Targets
 build-all:       ## Build all platform images locally
-	$(MAKE) cpu
-	$(MAKE) cuda
+	$(MAKE) amd64
 	$(MAKE) arm64
+	$(MAKE) cuda
 
-## Publishing targets
-publish-all: check-version ## Build and publish all images to GHCR with version tags
-	@echo "🚀 Publishing all images for version $(VERSION)..."
-	# CPU multi-platform (amd64 + arm64)
-	docker buildx build --push --platform $(PLATFORMS_CPU) \
-		-f docker/cpu/Dockerfile.conditional \
+## Publishing targets (using 3-layer architecture with cached models)
+# Cache control: Set NO_CACHE=true to disable build cache
+CACHE_FLAG := $(if $(filter true,$(NO_CACHE)),--no-cache,)
+
+publish-cpu: check-version ## Build and publish CPU images (3-layer: base → ml → app) [NO_CACHE=true to disable cache]
+	@echo "🚀 Publishing CPU images for version $(VERSION)..."
+	$(if $(filter true,$(NO_CACHE)),@echo "🚫 Build cache disabled",@echo "📦 Using build cache")
+	# Build and push CPU base image
+	docker build $(CACHE_FLAG) -f docker/cpu/Dockerfile.base \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-base \
+		-t $(REGISTRY)/$(IMAGE_NAME):cpu-base-latest .
+	docker push $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-base
+	docker push $(REGISTRY)/$(IMAGE_NAME):cpu-base-latest
+	# Build and push CPU ML image (with cached models)
+	docker build $(CACHE_FLAG) -f docker/cpu/Dockerfile.ml \
+		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-base \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-ml \
+		-t $(REGISTRY)/$(IMAGE_NAME):cpu-ml-latest .
+	docker push $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-ml
+	docker push $(REGISTRY)/$(IMAGE_NAME):cpu-ml-latest
+	# Build and push CPU application image
+	docker build $(CACHE_FLAG) -f docker/app/Dockerfile \
+		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu-ml \
 		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu \
 		-t $(REGISTRY)/$(IMAGE_NAME):cpu-latest .
-	# CUDA (amd64 only)
-	docker buildx build --push --platform linux/amd64 \
-		-f docker/cuda/Dockerfile \
+	docker push $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cpu
+	docker push $(REGISTRY)/$(IMAGE_NAME):cpu-latest
+	@echo "✅ CPU images published for version $(VERSION)"
+
+publish-cuda: check-version ## Build and publish CUDA images (3-layer: base → ml → app) [NO_CACHE=true to disable cache]
+	@echo "🚀 Publishing CUDA images for version $(VERSION)..."
+	$(if $(filter true,$(NO_CACHE)),@echo "🚫 Build cache disabled",@echo "📦 Using build cache")
+	# Build and push CUDA base image
+	docker build $(CACHE_FLAG) -f docker/cuda/Dockerfile.base \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-base \
+		-t $(REGISTRY)/$(IMAGE_NAME):cuda-base-latest .
+	docker push $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-base
+	docker push $(REGISTRY)/$(IMAGE_NAME):cuda-base-latest
+	# Build and push CUDA ML image (with cached models)
+	docker build $(CACHE_FLAG) -f docker/cuda/Dockerfile.ml \
+		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-base \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-ml \
+		-t $(REGISTRY)/$(IMAGE_NAME):cuda-ml-latest .
+	docker push $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-ml
+	docker push $(REGISTRY)/$(IMAGE_NAME):cuda-ml-latest
+	# Build and push CUDA application image
+	docker build $(CACHE_FLAG) -f docker/app/Dockerfile \
+		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda-ml \
 		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda \
 		-t $(REGISTRY)/$(IMAGE_NAME):cuda-latest .
+	docker push $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-cuda
+	docker push $(REGISTRY)/$(IMAGE_NAME):cuda-latest
+	@echo "✅ CUDA images published for version $(VERSION)"
+
+publish-arm64: check-version ## Build and publish ARM64-only CPU images (3-layer: base → ml → app) [NO_CACHE=true to disable cache]
+	@echo "🚀 Publishing ARM64 CPU images for version $(VERSION)..."
+	$(if $(filter true,$(NO_CACHE)),@echo "🚫 Build cache disabled",@echo "📦 Using build cache")
+	# Build and push ARM64 CPU base image
+	docker buildx build --push --platform linux/arm64 $(CACHE_FLAG) \
+		-f docker/cpu/Dockerfile.base \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-arm64-base \
+		-t $(REGISTRY)/$(IMAGE_NAME):arm64-base-latest .
+	# Build and push ARM64 CPU ML image (with cached models)
+	docker buildx build --push --platform linux/arm64 $(CACHE_FLAG) \
+		-f docker/cpu/Dockerfile.ml \
+		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-arm64-base \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-arm64-ml \
+		-t $(REGISTRY)/$(IMAGE_NAME):arm64-ml-latest .
+	# Build and push ARM64 application image
+	docker buildx build --push --platform linux/arm64 $(CACHE_FLAG) \
+		-f docker/app/Dockerfile \
+		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):$(VERSION)-arm64-ml \
+		-t $(REGISTRY)/$(IMAGE_NAME):$(VERSION)-arm64 \
+		-t $(REGISTRY)/$(IMAGE_NAME):arm64-latest .
+	@echo "✅ ARM64 images published for version $(VERSION)"
+
+publish-all: check-version ## Build and publish all platform images [FORCE=true, NO_CACHE=true]
+	@echo "🚀 Publishing all images for version $(VERSION)..."
+	$(MAKE) publish-cpu FORCE=$(FORCE) NO_CACHE=$(NO_CACHE)
+	$(MAKE) publish-cuda FORCE=$(FORCE) NO_CACHE=$(NO_CACHE)
+	$(MAKE) publish-arm64 FORCE=$(FORCE) NO_CACHE=$(NO_CACHE)
 	@echo "✅ All images published for version $(VERSION)"
 
 release:         ## Complete release workflow (check + build + publish)
@@ -237,34 +300,6 @@ publish-cuda-base: ## Build and publish CUDA base image
 		-f docker/cuda/Dockerfile.base \
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-$(BUILD_VERSION) \
 		-t $(REGISTRY)/$(BASE_IMAGE_NAME):cuda-latest .
-
-publish-cpu-amd64: ## Build and publish CPU image (AMD64 only) - fast for development
-	docker buildx build --push --platform linux/amd64 \
-		-f docker/cpu/Dockerfile.conditional \
-		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(BUILD_VERSION)-cpu-amd64 .
-
-publish-cpu-arm64: ## Build and publish CPU image (ARM64 only) - for Apple Silicon
-	docker buildx build --push --platform linux/arm64 \
-		-f docker/cpu/Dockerfile.conditional \
-		-t $(REGISTRY)/$(IMAGE_NAME):latest-cpu-arm64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(BUILD_VERSION)-cpu-arm64 .
-
-publish-cpu:   ## Build and publish CPU images (multi-platform)
-	$(MAKE) publish-cpu-amd64
-	$(MAKE) publish-cpu-arm64
-	# Create multi-platform manifest
-	docker manifest create $(REGISTRY)/$(IMAGE_NAME):latest-cpu \
-		$(REGISTRY)/$(IMAGE_NAME):latest-cpu-amd64 \
-		$(REGISTRY)/$(IMAGE_NAME):latest-cpu-arm64
-	docker manifest push $(REGISTRY)/$(IMAGE_NAME):latest-cpu
-
-publish-cuda:  ## Build and publish CUDA image (AMD64 only)
-	docker buildx build --push --platform linux/amd64 \
-		-f docker/cuda/Dockerfile \
-		-t $(REGISTRY)/$(IMAGE_NAME):cuda-amd64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):$(BUILD_VERSION)-cuda-amd64 \
-		-t $(REGISTRY)/$(IMAGE_NAME):cuda-latest .
 
 ## Installation helpers
 install-cpu:   ## Build and install CPU image locally
@@ -329,9 +364,10 @@ help:          ## Show this help
 	@echo "  make check-version    # Verify version ready for publishing"
 	@echo ""
 	@echo "🏗️  Building:"
-	@echo "  make cpu              # Build CPU image locally"
+	@echo "  make amd64            # Build AMD64 CPU image locally"
+	@echo "  make arm64            # Build ARM64 CPU image locally"  
 	@echo "  make cuda             # Build CUDA image locally"
-	@echo "  make arm64            # Build ARM64 image locally"
+	@echo "  make cpu              # Build CPU image (defaults to AMD64)"
 	@echo "  make build-all        # Build all platform images"
 	@echo ""
 	@echo "📦 Publishing:"
@@ -356,4 +392,4 @@ help:          ## Show this help
 	@echo "📋 All Available Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: version-show version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu arm64 cuda cpu-cicd cpu-multiarch cuda-cicd publish-cpu-base publish-cuda-base publish-cpu-amd64 publish-cpu-arm64 publish-cpu publish-cuda install-cpu install-cuda clean clean-arm64-temp help
+.PHONY: version-show version-patch version-minor check-version build-all publish-all release registry-stats list-registry registry-cleanup clean-registry cpu-base arm64-base cpu-ml arm64-ml cuda-base cuda-ml cpu amd64 arm64 cuda publish-cpu-base publish-cuda-base install-cpu install-cuda clean clean-arm64-temp help
