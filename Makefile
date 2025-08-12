@@ -305,15 +305,15 @@ publish-cuda-base: ## Build and publish CUDA base image
 install:       ## Build and install locally with auto-detection (recommended)
 	@echo "🚀 Auto-detecting best build target and installing..."
 	@ARCH=$$(uname -m); \
-	if [[ "$$ARCH" == "x86_64" ]]; then \
-		if command -v nvidia-smi &> /dev/null && docker info | grep -q nvidia; then \
+	if [ "$$ARCH" = "x86_64" ]; then \
+		if command -v nvidia-smi >/dev/null 2>&1 && docker info | grep -q nvidia; then \
 			echo "🔍 Auto-detected: CUDA capability"; \
 			$(MAKE) install-cuda; \
 		else \
 			echo "🔍 Auto-detected: AMD64 CPU"; \
 			$(MAKE) install-amd64; \
 		fi \
-	elif [[ "$$ARCH" == "aarch64" ]] || [[ "$$ARCH" == "arm64" ]]; then \
+	elif [ "$$ARCH" = "aarch64" ] || [ "$$ARCH" = "arm64" ]; then \
 		echo "🔍 Auto-detected: ARM64 CPU"; \
 		$(MAKE) install-arm64; \
 	else \
@@ -332,9 +332,9 @@ install-arm64: ## Build and install ARM64 CPU image locally
 install-cpu:   ## Build and install CPU image locally (forces CPU-only, useful for testing)
 	@echo "🔧 Forcing CPU-only installation (ignoring GPU availability)..."
 	@ARCH=$$(uname -m); \
-	if [[ "$$ARCH" == "x86_64" ]]; then \
+	if [ "$$ARCH" = "x86_64" ]; then \
 		$(MAKE) install-amd64; \
-	elif [[ "$$ARCH" == "aarch64" ]] || [[ "$$ARCH" == "arm64" ]]; then \
+	elif [ "$$ARCH" = "aarch64" ] || [ "$$ARCH" = "arm64" ]; then \
 		$(MAKE) install-arm64; \
 	else \
 		echo "❌ Unsupported architecture: $$ARCH"; \
