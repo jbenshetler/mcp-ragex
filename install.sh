@@ -139,16 +139,58 @@ else
     echo "   All embedding models can be downloaded"
 fi
 
-# Copy the smart wrapper scripts
+# Extract and install the smart wrapper scripts from Docker image
 echo "📝 Installing ragex wrappers..."
 
-# Install main Python script as ragex
-cp ragex "${INSTALL_DIR}/ragex"
-chmod +x "${INSTALL_DIR}/ragex"
-
-# Install MCP wrapper
-cp ragex-mcp "${INSTALL_DIR}/ragex-mcp"
-chmod +x "${INSTALL_DIR}/ragex-mcp"
+# Detect if we're running from repo (files exist) or remotely (need to extract from image)
+if [[ -f "ragex" && -f "ragex-mcp" ]]; then
+    echo "  📁 Using wrapper files from repository..."
+    # Install main Python script as ragex
+    cp ragex "${INSTALL_DIR}/ragex"
+    chmod +x "${INSTALL_DIR}/ragex"
+    # Install MCP wrapper
+    cp ragex-mcp "${INSTALL_DIR}/ragex-mcp"
+    chmod +x "${INSTALL_DIR}/ragex-mcp"
+else
+    echo "  📦 Extracting wrapper files from Docker image..."
+    
+    # Create temporary container to extract files
+    TEMP_CONTAINER=$(docker create "$DOCKER_IMAGE")
+    
+    # Extract ragex wrapper from the repository root in the image
+    docker cp "$TEMP_CONTAINER:/ragex" "${INSTALL_DIR}/ragex" 2>/dev/null || {
+        echo "  ⚠️  ragex wrapper not found in image, creating fallback wrapper..."
+        # Create a minimal fallback wrapper that uses the detected image
+        cat > "${INSTALL_DIR}/ragex" << EOF
+#!/bin/bash
+# RAGex Docker wrapper (fallback)
+# This is a simplified wrapper - consider cloning the repository for full functionality
+exec docker run --rm -it \\
+    -v "\$(pwd):/workspace:ro" \\
+    -v "\$HOME/.config/ragex:/home/ragex/.config/ragex" \\
+    -v "ragex_user_\$(id -u):/data" \\
+    --user "\$(id -u):\$(id -g)" \\
+    $DOCKER_IMAGE \\
+    "\$@"
+EOF
+    }
+    chmod +x "${INSTALL_DIR}/ragex"
+    
+    # Extract ragex-mcp wrapper
+    docker cp "$TEMP_CONTAINER:/ragex-mcp" "${INSTALL_DIR}/ragex-mcp" 2>/dev/null || {
+        echo "  ⚠️  ragex-mcp wrapper not found in image, creating fallback wrapper..."
+        # Create simple MCP wrapper
+        cat > "${INSTALL_DIR}/ragex-mcp" << 'EOF'
+#!/bin/sh
+# RAGex MCP wrapper (fallback)
+exec "$(dirname "$0")/ragex" --mcp "$@"
+EOF
+    }
+    chmod +x "${INSTALL_DIR}/ragex-mcp"
+    
+    # Cleanup temporary container
+    docker rm "$TEMP_CONTAINER" >/dev/null
+fi
 
 
 # Check if directory is in PATH

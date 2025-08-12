@@ -11,6 +11,11 @@ COPY --chown=ragex:ragex src/ ./src/
 COPY --chown=ragex:ragex requirements/app.txt /tmp/
 RUN pip install --no-cache-dir --no-warn-script-location -r /tmp/app.txt
 
+# Copy wrapper scripts to root for extraction during installation
+COPY --chown=ragex:ragex ragex /ragex
+COPY --chown=ragex:ragex ragex-mcp /ragex-mcp
+RUN chmod +x /ragex /ragex-mcp
+
 # Copy entrypoint and set permissions
 COPY --chown=ragex:ragex docker/common/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
