@@ -13,7 +13,7 @@ The current test suite focuses on **internal components** rather than **end-to-e
 - `test_tree_sitter*.py` - AST parsing and symbol extraction
 - `test_pattern_matching.py` - Pattern matching logic
 - `test_indexer.py` - Indexing functionality
-- `test_ignore_system.py` - .gitignore file handling
+- `test_ignore_system.py` - .rgignore file handling
 - `test_watchdog*.py` - File watching and incremental updates
 
 **Integration Tests:**

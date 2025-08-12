@@ -1,5 +1,5 @@
 """
-Initialize .gitignore files with sensible defaults
+Initialize .rgignore files with sensible defaults
 """
 
 import os
@@ -14,7 +14,7 @@ def generate_ignore_content(custom_patterns: Optional[List[str]] = None,
                           include_defaults: bool = True,
                           minimal: bool = False) -> str:
     """
-    Generate content for a .gitignore file
+    Generate content for a .rgignore file
     
     Args:
         custom_patterns: Additional patterns to include
@@ -22,7 +22,7 @@ def generate_ignore_content(custom_patterns: Optional[List[str]] = None,
         minimal: Generate minimal file with just essential patterns
         
     Returns:
-        Content for .gitignore file
+        Content for .rgignore file
     """
     lines = []
     
@@ -31,7 +31,7 @@ def generate_ignore_content(custom_patterns: Optional[List[str]] = None,
         f"# {IGNORE_FILENAME} - MCP-RAGex ignore patterns",
         f"# Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "#",
-        "# This file uses gitignore syntax to exclude files from code analysis.",
+        "# This file uses rgignore syntax to exclude files from code analysis.",
         "# Patterns are matched relative to the location of this file.",
         "# Use ! to negate patterns and re-include files.",
         "",
@@ -157,8 +157,8 @@ def generate_ignore_content(custom_patterns: Optional[List[str]] = None,
         "# secrets/**            # Sensitive files",
         "# !important.log        # Exception - don't ignore this",
         "#",
-        "# Multi-level .gitignore:",
-        "# You can create .gitignore files in subdirectories to override parent rules.",
+        "# Multi-level .rgignore:",
+        "# You can create .rgignore files in subdirectories to override parent rules.",
         "# Deeper files take precedence over parent directory rules.",
         "",
     ])
@@ -171,10 +171,10 @@ def init_ignore_file(path: Path,
                     minimal: bool = False,
                     custom_patterns: Optional[List[str]] = None) -> bool:
     """
-    Initialize a .gitignore file at the specified path
+    Initialize a .rgignore file at the specified path
     
     Args:
-        path: Directory where to create .gitignore
+        path: Directory where to create .rgignore
         force: Overwrite existing file
         minimal: Create minimal file instead of comprehensive
         custom_patterns: Additional patterns to include
@@ -202,7 +202,7 @@ def init_ignore_file(path: Path,
 
 def create_init_command():
     """
-    Create a command-line interface for initializing .gitignore files
+    Create a command-line interface for initializing .rgignore files
     
     This would be integrated into the main ragex CLI
     """
@@ -215,17 +215,17 @@ def create_init_command():
         'path',
         nargs='?',
         default='.',
-        help='Directory where to create .gitignore (default: current directory)'
+        help='Directory where to create .rgignore (default: current directory)'
     )
     parser.add_argument(
         '--force', '-f',
         action='store_true',
-        help='Overwrite existing .gitignore file'
+        help='Overwrite existing .rgignore file'
     )
     parser.add_argument(
         '--minimal', '-m',
         action='store_true',
-        help='Create minimal .gitignore with essential patterns only'
+        help='Create minimal .rgignore with essential patterns only'
     )
     parser.add_argument(
         '--add', '-a',
@@ -259,8 +259,8 @@ if __name__ == "__main__":
     if created:
         print(f"Created {ignore_path}")
         if args.minimal:
-            print("Generated minimal .gitignore file")
+            print("Generated minimal .rgignore file")
         else:
-            print("Generated comprehensive .gitignore with default exclusions")
+            print("Generated comprehensive .rgignore with default exclusions")
     else:
         print(f"{ignore_path} already exists. Use --force to overwrite.")

@@ -188,7 +188,7 @@ class ParallelConfigManager:
 1. CodeIndexer.find_code_files()
    ├── Recursively scan directories
    ├── Filter by supported extensions (.py, .js, .ts, etc.)
-   ├── Apply pattern exclusions (.gitignore, .gitignore)
+   ├── Apply pattern exclusions (.rgignore, .rgignore)
    └── Return list of valid file paths
 
 2. File Information Gathering

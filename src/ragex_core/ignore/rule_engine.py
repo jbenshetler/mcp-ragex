@@ -214,7 +214,7 @@ class IgnoreRuleEngine:
         Compile a list of patterns with caching
         
         Args:
-            patterns: List of gitignore-style patterns
+            patterns: List of rgignore-style patterns
             
         Returns:
             Compiled PathSpec or None if no valid patterns

@@ -70,7 +70,7 @@ RAGex gives Claude **semantic understanding** of your entire codebase:
 - **Fast code search** using ripgrep with regex support
 - **Security-first design** with input validation and path restrictions
 - **File type filtering** supporting 30+ programming languages
-- **Enhanced file exclusions** with multi-level .gitignore support and comprehensive defaults
+- **Enhanced file exclusions** with multi-level .rgignore support and comprehensive defaults
 - **Configurable limits** to prevent resource exhaustion
 - **JSON-RPC interface** following MCP standards
 
@@ -1064,13 +1064,13 @@ flowchart LR
 
 ### File Type Detection
 - **Automatic**: Based on file extensions
-- **Configurable**: Via `.gitignore` patterns
+- **Configurable**: Via `.rgignore` patterns
 - **Smart Exclusions**: Skips binaries, generated files, dependencies
 
 ### Smart File Exclusions
 
 **🎯 Comprehensive Defaults** (automatically applied):
-```gitignore
+```rgignore
 # Dependencies
 node_modules/, .venv/, __pycache__/, vendor/
 
@@ -1088,10 +1088,10 @@ build/, dist/, target/, .next/, .nuxt/
 ```
 
 **⚙️ Customizable per Project**:
-- Uses standard `.gitignore` syntax
+- Uses standard `.rgignore` syntax
 - Multi-level support (project/directory/subdirectory)
-- Respects existing `.gitignore` files
-- `ragex init` creates comprehensive `.gitignore` template
+- Respects existing `.rgignore` files
+- `ragex init` creates comprehensive `.rgignore` template
 
 ## 🌟 Why RAGex?
 

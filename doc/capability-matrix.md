@@ -20,7 +20,7 @@
 | **MCP Server** | Official MCP Python SDK | LLM tool integration with 4 tools | `src/server.py` (1266 lines) |
 | **Code Indexer** | Tree-sitter + embeddings | Symbol extraction & vectorization | `src/indexer.py` (430 lines) |
 | **Vector Store** | ChromaDB with HNSW | Semantic similarity search | `src/ragex_core/vector_store.py` |
-| **Pattern Matching** | Multi-level .gitignore system | File exclusion/inclusion with hot reload | `src/ragex_core/ignore/*.py` (9 files) |
+| **Pattern Matching** | Multi-level .rgignore system | File exclusion/inclusion with hot reload | `src/ragex_core/ignore/*.py` (9 files) |
 | **Container Runtime** | Docker with project isolation | Secure execution environment | `docker/` (3 base images) |
 
 ## 🐳 **Docker & Deployment**
@@ -44,7 +44,7 @@
 | **Logging** | Centralized with custom TRACE level | `RAGEX_LOG_LEVEL` (TRACE/DEBUG/INFO/WARN) | `src/utils/logging_setup.py` |
 | **Embeddings** | 3 presets + custom models | `RAGEX_EMBEDDING_MODEL` (fast/balanced/accurate) | `src/ragex_core/embedding_config.py` |
 | **Projects** | SHA256-based isolation (Developer-only) | `RAGEX_PROJECT_NAME`, `RAGEX_DATA_DIR` | `docker/common/entrypoint.sh` |
-| **Ignore Files** | Multi-level .gitignore (Developer-only) | `RAGEX_IGNOREFILE_WARNING`, `RAGEX_ENABLE_WATCHDOG` | `src/ragex_core/ignore/manager.py` |
+| **Ignore Files** | Multi-level .rgignore (Developer-only) | `RAGEX_IGNOREFILE_WARNING`, `RAGEX_ENABLE_WATCHDOG` | `src/ragex_core/ignore/manager.py` |
 | **MCP Mode** | Path translation (Developer-only) | `RAGEX_MCP_WORKSPACE` | `src/server.py:239-277` |
 
 ### **Embedding Model Presets**
@@ -152,7 +152,7 @@ ragex_1000_a1b2c3d4e5f6g7h8  # User 1000, unique workspace hash
 
 | **Feature** | **Status** | **Implementation** | **Configuration** |
 |-------------|------------|-------------------|------------------|
-| **Hot Reloading** | ✅ Available | Watchdog monitoring of .gitignore files | `RAGEX_ENABLE_WATCHDOG=true` |
+| **Hot Reloading** | ✅ Available | Watchdog monitoring of .rgignore files | `RAGEX_ENABLE_WATCHDOG=true` |
 | **Feature Reranking** | ✅ Active | LLM-based result improvement for fast, high-quality matches | `src/ragex_core/reranker.py` |
 | **Path Translation** | ✅ Complete | Container/host path mapping | Automatic in MCP mode |
 | **Incremental Indexing** | ✅ Available | Checksum-based file tracking | Automatic change detection |

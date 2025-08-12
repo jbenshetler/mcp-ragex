@@ -2,7 +2,7 @@
 Ignore file processing module for MCP-RAGex
 
 This module provides a flexible, multi-level ignore file system that supports:
-- Multiple .gitignore files at different directory levels
+- Multiple .rgignore files at different directory levels
 - Hot reloading via external change notifications
 - Central filename configuration for easy migration
 - Performance optimizations with caching

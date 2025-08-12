@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Watchdog monitor for .gitignore files
+Watchdog monitor for .rgignore files
 
 This module provides file system monitoring capabilities for the enhanced
-ignore system, enabling hot reloading when .gitignore files change.
+ignore system, enabling hot reloading when .rgignore files change.
 """
 
 import logging
@@ -29,7 +29,7 @@ logger = logging.getLogger("watchdog-monitor")
 
 class IgnoreFileHandler(FileSystemEventHandler):
     """
-    Watches for changes to .gitignore files and notifies the IgnoreManager
+    Watches for changes to .rgignore files and notifies the IgnoreManager
     """
     
     def __init__(self, ignore_manager: IgnoreManager, 
@@ -73,7 +73,7 @@ class IgnoreFileHandler(FileSystemEventHandler):
         return True
         
     def on_created(self, event: FileSystemEvent):
-        """Handle creation of new .gitignore files"""
+        """Handle creation of new .rgignore files"""
         if self._should_process_event(event):
             logger.info(f"Detected new {self.ignore_filename}: {event.src_path}")
             self.ignore_manager.notify_file_changed(event.src_path)
@@ -82,7 +82,7 @@ class IgnoreFileHandler(FileSystemEventHandler):
                 self.on_change_callback(event.src_path)
                 
     def on_modified(self, event: FileSystemEvent):
-        """Handle modification of .gitignore files"""
+        """Handle modification of .rgignore files"""
         if self._should_process_event(event):
             logger.info(f"Detected change to {self.ignore_filename}: {event.src_path}")
             self.ignore_manager.notify_file_changed(event.src_path)
@@ -91,7 +91,7 @@ class IgnoreFileHandler(FileSystemEventHandler):
                 self.on_change_callback(event.src_path)
                 
     def on_deleted(self, event: FileSystemEvent):
-        """Handle deletion of .gitignore files"""
+        """Handle deletion of .rgignore files"""
         if self._should_process_event(event):
             logger.info(f"Detected deletion of {self.ignore_filename}: {event.src_path}")
             self.ignore_manager.notify_file_changed(event.src_path)
@@ -100,7 +100,7 @@ class IgnoreFileHandler(FileSystemEventHandler):
                 self.on_change_callback(event.src_path)
                 
     def on_moved(self, event: FileSystemEvent):
-        """Handle moving of .gitignore files"""
+        """Handle moving of .rgignore files"""
         if hasattr(event, 'dest_path'):
             # Check both source and destination
             src_is_ignore = Path(event.src_path).name == self.ignore_filename

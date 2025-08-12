@@ -61,7 +61,7 @@ class EnhancedPatternMatcher(PatternMatcher):
         
     def set_working_directory(self, working_directory: str):
         """
-        Set the working directory for .gitignore file lookup
+        Set the working directory for .rgignore file lookup
         
         Args:
             working_directory: Path to the working directory
@@ -108,11 +108,11 @@ class EnhancedPatternMatcher(PatternMatcher):
         return args
         
     def get_validation_report(self) -> Optional[Dict[str, Any]]:
-        """Get detailed validation report from .gitignore parsing"""
+        """Get detailed validation report from .rgignore parsing"""
         # Get validation for all ignore files
         all_reports = self._ignore_manager.validate_all()
         
-        # Find the root .gitignore file
+        # Find the root .rgignore file
         root_ignore = self.working_directory / self._ignore_manager.ignore_filename
         
         if root_ignore in all_reports:
@@ -131,9 +131,9 @@ class EnhancedPatternMatcher(PatternMatcher):
             
         return None
         
-    def validate_gitignore(self, verbose: bool = False) -> Dict[str, Any]:
+    def validate_rgignore(self, verbose: bool = False) -> Dict[str, Any]:
         """
-        Validate .gitignore file and return detailed report
+        Validate .rgignore file and return detailed report
         
         Args:
             verbose: Include detailed pattern analysis
@@ -145,20 +145,20 @@ class EnhancedPatternMatcher(PatternMatcher):
         all_reports = self._ignore_manager.validate_all()
         
         # Build combined report
-        gitignore_path = self.working_directory / self._ignore_manager.ignore_filename
+        rgignore_path = self.working_directory / self._ignore_manager.ignore_filename
         
-        if gitignore_path not in all_reports:
+        if rgignore_path not in all_reports:
             return {
                 "exists": False,
-                "path": str(gitignore_path),
+                "path": str(rgignore_path),
                 "error": "File not found"
             }
             
-        info = all_reports[gitignore_path]
+        info = all_reports[rgignore_path]
         
         report = {
             "exists": True,
-            "path": str(gitignore_path),
+            "path": str(rgignore_path),
             "valid_patterns": [
                 {"line": i+1, "pattern": p}
                 for i, p in enumerate(info.valid_patterns)
