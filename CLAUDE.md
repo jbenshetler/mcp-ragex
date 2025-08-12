@@ -23,7 +23,7 @@ The daemon automatically watches for file changes and re-indexes them:
 - Changes are detected immediately when you save files
 - After 60 seconds of no changes, modified files are re-indexed
 - Only changed files are processed (incremental updates)
-- File watching respects `.mcpignore` patterns
+- File watching respects `.gitignore` patterns
 - No manual re-indexing needed - search results stay up-to-date
 
 ## Architecture

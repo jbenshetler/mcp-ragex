@@ -28,7 +28,7 @@ class InitHandler:
             
             return {
                 'success': True,
-                'stdout': '✅ .mcpignore file created\n',
+                'stdout': '✅ .gitignore file created\n',
                 'stderr': '',
                 'returncode': 0
             }

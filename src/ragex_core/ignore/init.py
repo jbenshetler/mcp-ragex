@@ -1,5 +1,5 @@
 """
-Initialize .mcpignore files with sensible defaults
+Initialize .gitignore files with sensible defaults
 """
 
 import os
@@ -14,7 +14,7 @@ def generate_ignore_content(custom_patterns: Optional[List[str]] = None,
                           include_defaults: bool = True,
                           minimal: bool = False) -> str:
     """
-    Generate content for a .mcpignore file
+    Generate content for a .gitignore file
     
     Args:
         custom_patterns: Additional patterns to include
@@ -22,7 +22,7 @@ def generate_ignore_content(custom_patterns: Optional[List[str]] = None,
         minimal: Generate minimal file with just essential patterns
         
     Returns:
-        Content for .mcpignore file
+        Content for .gitignore file
     """
     lines = []
     
@@ -157,8 +157,8 @@ def generate_ignore_content(custom_patterns: Optional[List[str]] = None,
         "# secrets/**            # Sensitive files",
         "# !important.log        # Exception - don't ignore this",
         "#",
-        "# Multi-level .mcpignore:",
-        "# You can create .mcpignore files in subdirectories to override parent rules.",
+        "# Multi-level .gitignore:",
+        "# You can create .gitignore files in subdirectories to override parent rules.",
         "# Deeper files take precedence over parent directory rules.",
         "",
     ])
@@ -171,10 +171,10 @@ def init_ignore_file(path: Path,
                     minimal: bool = False,
                     custom_patterns: Optional[List[str]] = None) -> bool:
     """
-    Initialize a .mcpignore file at the specified path
+    Initialize a .gitignore file at the specified path
     
     Args:
-        path: Directory where to create .mcpignore
+        path: Directory where to create .gitignore
         force: Overwrite existing file
         minimal: Create minimal file instead of comprehensive
         custom_patterns: Additional patterns to include
@@ -202,7 +202,7 @@ def init_ignore_file(path: Path,
 
 def create_init_command():
     """
-    Create a command-line interface for initializing .mcpignore files
+    Create a command-line interface for initializing .gitignore files
     
     This would be integrated into the main ragex CLI
     """
@@ -215,17 +215,17 @@ def create_init_command():
         'path',
         nargs='?',
         default='.',
-        help='Directory where to create .mcpignore (default: current directory)'
+        help='Directory where to create .gitignore (default: current directory)'
     )
     parser.add_argument(
         '--force', '-f',
         action='store_true',
-        help='Overwrite existing .mcpignore file'
+        help='Overwrite existing .gitignore file'
     )
     parser.add_argument(
         '--minimal', '-m',
         action='store_true',
-        help='Create minimal .mcpignore with essential patterns only'
+        help='Create minimal .gitignore with essential patterns only'
     )
     parser.add_argument(
         '--add', '-a',
@@ -259,8 +259,8 @@ if __name__ == "__main__":
     if created:
         print(f"Created {ignore_path}")
         if args.minimal:
-            print("Generated minimal .mcpignore file")
+            print("Generated minimal .gitignore file")
         else:
-            print("Generated comprehensive .mcpignore with default exclusions")
+            print("Generated comprehensive .gitignore with default exclusions")
     else:
         print(f"{ignore_path} already exists. Use --force to overwrite.")

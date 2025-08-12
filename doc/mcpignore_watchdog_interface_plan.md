@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the plan to enhance the current `.mcpignore` processing to support multi-level ignore files and prepare for integration with Python's `watchdog` library. The system will support hot reloading through external notification, with the filename centrally defined for easy future migration to `.ragexignore`.
+This document outlines the plan to enhance the current `.gitignore` processing to support multi-level ignore files and prepare for integration with Python's `watchdog` library. The system will support hot reloading through external notification, with the filename centrally defined for easy future migration to `.ragexignore`.
 
 ## Current State Analysis
 
@@ -10,16 +10,16 @@ This document outlines the plan to enhance the current `.mcpignore` processing t
 - **Location**: `src/pattern_matcher.py`
 - **Class**: `PatternMatcher`
 - **Features**:
-  - Reads single `.mcpignore` file from working directory
+  - Reads single `.gitignore` file from working directory
   - Uses `pathspec` library for gitignore-style pattern matching
   - Provides validation and error reporting
   - Integrates with ripgrep for search exclusions
   - Has default exclusions (`.venv`, `__pycache__`, etc.)
 
 ### Limitations
-1. Only reads from single `.mcpignore` file in working directory
-2. No support for nested `.mcpignore` files in subdirectories
-3. No hot reloading when `.mcpignore` files change
+1. Only reads from single `.gitignore` file in working directory
+2. No support for nested `.gitignore` files in subdirectories
+3. No hot reloading when `.gitignore` files change
 4. Not designed for integration with file watchers
 5. No caching of compiled patterns for performance
 
@@ -68,22 +68,22 @@ This document outlines the plan to enhance the current `.mcpignore` processing t
 
 ### Key Features
 
-#### 1. Multi-Level .mcpignore Support
+#### 1. Multi-Level .gitignore Support
 
 ```python
 # Example directory structure:
 project/
-├── .mcpignore          # Root ignore file
+├── .gitignore          # Root ignore file
 ├── src/
-│   ├── .mcpignore      # Overrides for src/
+│   ├── .gitignore      # Overrides for src/
 │   └── tests/
-│       └── .mcpignore  # Overrides for src/tests/
+│       └── .gitignore  # Overrides for src/tests/
 └── docs/
-    └── .mcpignore      # Overrides for docs/
+    └── .gitignore      # Overrides for docs/
 ```
 
 **Rule Precedence**:
-1. Most specific (deepest) `.mcpignore` file takes precedence
+1. Most specific (deepest) `.gitignore` file takes precedence
 2. Parent rules apply unless overridden by child
 3. Negation patterns (`!pattern`) can re-include files
 4. Global defaults apply to all levels
@@ -92,7 +92,7 @@ project/
 
 ```python
 # In ignore/constants.py or similar
-IGNORE_FILENAME = ".mcpignore"  # Single source of truth
+IGNORE_FILENAME = ".gitignore"  # Single source of truth
 
 # Future migration is a one-line change:
 # IGNORE_FILENAME = ".ragexignore"
@@ -102,7 +102,7 @@ IGNORE_FILENAME = ".mcpignore"  # Single source of truth
 
 ```python
 # External watchdog or monitoring system calls:
-ignore_manager.notify_file_changed("/path/to/.mcpignore")
+ignore_manager.notify_file_changed("/path/to/.gitignore")
 
 # System handles:
 # - Reloading affected files
@@ -266,7 +266,7 @@ if not ignore_manager.should_ignore("/path/to/project/src/main.py"):
     process_file()
 
 # Handle external change notification
-ignore_manager.notify_file_changed("/path/to/project/.mcpignore")
+ignore_manager.notify_file_changed("/path/to/project/.gitignore")
 
 # Get the configured ignore filename
 print(f"Using ignore file: {ignore_manager.ignore_filename}")
@@ -345,7 +345,7 @@ for changed_file in changed_ignore_files:
 ```python
 # Change is centralized in one place:
 # In ignore/constants.py:
-IGNORE_FILENAME = ".ragexignore"  # Changed from ".mcpignore"
+IGNORE_FILENAME = ".ragexignore"  # Changed from ".gitignore"
 
 # All code automatically uses new filename
 # No other changes needed!
@@ -393,7 +393,7 @@ if ignore_manager.should_ignore(file_path):
 
 ```python
 def test_multi_level_precedence():
-    """Test that deeper .mcpignore files override parent rules"""
+    """Test that deeper .gitignore files override parent rules"""
     
 def test_hot_reload_debouncing():
     """Test that rapid changes are debounced properly"""
@@ -425,11 +425,11 @@ def test_cache_invalidation():
 1. **Path Traversal**: Validate all paths stay within root
 2. **Pattern Validation**: Prevent malicious patterns
 3. **Resource Limits**: Cap number of patterns per file
-4. **File Size Limits**: Limit .mcpignore file sizes
+4. **File Size Limits**: Limit .gitignore file sizes
 
 ## Future Enhancements
 
-1. **Global .mcpignore**: Support for user-level ignore files
+1. **Global .gitignore**: Support for user-level ignore files
 2. **Pattern Templates**: Named pattern groups for reuse
 3. **Performance Profiling**: Built-in profiling tools
 4. **IDE Integration**: Plugins for VS Code, PyCharm

@@ -83,7 +83,7 @@ This document provides a comprehensive reference for all environment variables u
 
 | Variable | Default | Description | Effect |
 |----------|---------|-------------|--------|
-| `RAGEX_IGNOREFILE_WARNING` | `true` | Show warning when no .mcpignore exists | User guidance |
+| `RAGEX_IGNOREFILE_WARNING` | `true` | Show warning when no .gitignore exists | User guidance |
 
 ## Docker and Container Settings
 

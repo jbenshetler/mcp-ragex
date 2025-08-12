@@ -195,7 +195,7 @@ if WATCHDOG_AVAILABLE and os.environ.get("RAGEX_ENABLE_WATCHDOG", "false").lower
             # The ignore manager will automatically reload
             
         watchdog_monitor.start(on_change_callback=on_ignore_change)
-        logger.info("Watchdog monitoring enabled for .mcpignore files")
+        logger.info("Watchdog monitoring enabled for .gitignore files")
         
         # Register cleanup
         def cleanup_watchdog():
@@ -723,7 +723,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_watchdog_status",
-            description="Get the status of the watchdog file monitor for .mcpignore hot reloading",
+            description="Get the status of the watchdog file monitor for .gitignore hot reloading",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -935,7 +935,7 @@ async def handle_watchdog_status() -> List[types.TextContent]:
     
     # Check if monitor is running
     if watchdog_monitor and watchdog_monitor.is_running():
-        status_lines.append("✅ **Watchdog active**: Monitoring for .mcpignore changes")
+        status_lines.append("✅ **Watchdog active**: Monitoring for .gitignore changes")
         status_lines.append(f"   Debounce period: {watchdog_monitor.debounce_seconds}s")
         
         # Get watched paths
@@ -946,7 +946,7 @@ async def handle_watchdog_status() -> List[types.TextContent]:
             
         # Get ignore files being monitored
         ignore_files = pattern_matcher._ignore_manager.get_ignore_files()
-        status_lines.append(f"\n📄 **Active .mcpignore files** ({len(ignore_files)}):")
+        status_lines.append(f"\n📄 **Active .gitignore files** ({len(ignore_files)}):")
         for file in ignore_files:
             status_lines.append(f"   - {file}")
             

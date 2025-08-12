@@ -29,7 +29,7 @@ class PatternMatcher:
     Handles gitignore-style pattern matching for file exclusions
     
     This class now uses the enhanced ignore system internally while maintaining
-    backward compatibility. All the new features (multi-level .mcpignore files,
+    backward compatibility. All the new features (multi-level .gitignore files,
     comprehensive defaults, hot reloading) are available through this class.
     """
     
@@ -116,8 +116,8 @@ class PatternMatcher:
         # Get patterns that apply at the working directory level
         patterns = self._ignore_manager.get_patterns_for_path(self.working_directory)
         
-        # Also populate validation report if we have a root .mcpignore
-        self._read_mcpignore()
+        # Also populate validation report if we have a root .gitignore
+        self._read_gitignore()
         
         return patterns
     
@@ -130,19 +130,19 @@ class PatternMatcher:
         """
         return self._get_all_patterns()
     
-    def _read_mcpignore(self) -> List[str]:
+    def _read_gitignore(self) -> List[str]:
         """
-        Read and validate patterns from .mcpignore file
+        Read and validate patterns from .gitignore file
         
         This method is kept for backward compatibility. The enhanced system
-        handles all .mcpignore reading internally with multi-level support.
+        handles all .gitignore reading internally with multi-level support.
         """
         # Get validation report from the enhanced system
         all_reports = self._ignore_manager.validate_all()
-        mcpignore_path = self.working_directory / IGNORE_FILENAME
+        gitignore_path = self.working_directory / IGNORE_FILENAME
         
-        if mcpignore_path in all_reports:
-            info = all_reports[mcpignore_path]
+        if gitignore_path in all_reports:
+            info = all_reports[gitignore_path]
             
             # Convert to old validation report format
             self._validation_report = {
@@ -174,7 +174,7 @@ class PatternMatcher:
     
     def set_working_directory(self, working_directory: str):
         """
-        Set the working directory for .mcpignore file lookup
+        Set the working directory for .gitignore file lookup
         
         Args:
             working_directory: Path to the working directory
@@ -228,12 +228,12 @@ class PatternMatcher:
         return args
     
     def get_validation_report(self) -> Optional[Dict[str, Any]]:
-        """Get detailed validation report from .mcpignore parsing"""
+        """Get detailed validation report from .gitignore parsing"""
         return self._validation_report
     
-    def validate_mcpignore(self, verbose: bool = False) -> Dict[str, Any]:
+    def validate_gitignore(self, verbose: bool = False) -> Dict[str, Any]:
         """
-        Validate .mcpignore file and return detailed report
+        Validate .gitignore file and return detailed report
         
         Args:
             verbose: Include detailed pattern analysis
@@ -244,22 +244,22 @@ class PatternMatcher:
         # Get all validation reports from the enhanced system
         all_reports = self._ignore_manager.validate_all()
         
-        # Get the root .mcpignore report
-        mcpignore_path = self.working_directory / IGNORE_FILENAME
+        # Get the root .gitignore report
+        gitignore_path = self.working_directory / IGNORE_FILENAME
         
-        if mcpignore_path not in all_reports:
+        if gitignore_path not in all_reports:
             return {
                 "exists": False,
-                "path": str(mcpignore_path),
+                "path": str(gitignore_path),
                 "error": "File not found"
             }
         
-        info = all_reports[mcpignore_path]
+        info = all_reports[gitignore_path]
         
         # Build report in the old format for backward compatibility
         report = {
             "exists": True,
-            "path": str(mcpignore_path),
+            "path": str(gitignore_path),
             "valid_patterns": [
                 {"line": i+1, "pattern": p}
                 for i, p in enumerate(info.valid_patterns)

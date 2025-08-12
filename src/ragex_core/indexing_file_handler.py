@@ -62,7 +62,7 @@ class IndexingFileHandler(FileSystemEventHandler):
         
         # Check ignore rules
         if self.ignore_manager.should_ignore(str(path)):
-            logger.debug(f"Ignoring change to: {path} (matched .mcpignore pattern)")
+            logger.debug(f"Ignoring change to: {path} (matched .gitignore pattern)")
             return False
         
         return True
