@@ -67,11 +67,11 @@
 | **Admin CLI** | Python module | Project management | List projects, cleanup, daemon status |
 
 ### **MCP Tool Schema**
-
+This is a sample of the schema, not how it is actually implemented. 
 ```json
 {
   "search_mode": ["auto", "semantic", "regex"],  // NO symbol mode
-  "file_types": ["py", "js", "ts", "java", "cpp", "go", "rust", ...],
+  "file_types": ["py", "js", "ts", "java", "cpp", "go", "rust"],
   "similarity_threshold": "0.0-1.0",
   "limit": "1-200"
 }

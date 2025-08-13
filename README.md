@@ -2,8 +2,6 @@
 
 > **Stop creating duplicate code.** Give Claude semantic search superpowers to find and reuse existing patterns in your codebase.
 
-[![Install](https://img.shields.io/badge/Install-One%20Line-blue)](#-quick-start) [![Docker](https://img.shields.io/badge/Docker-Ready-green)](https://github.com/jbenshetler/mcp-ragex/pkgs/container/mcp-ragex) [![MCP](https://img.shields.io/badge/Claude-MCP%20Compatible-purple)](https://modelcontextprotocol.io/)
-
 <details open>
 <summary><strong>TL;DR - Quick Installation & Setup</strong></summary>
 
