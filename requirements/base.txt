@@ -21,6 +21,9 @@ tree-sitter-python>=0.23.0
 tree-sitter-javascript>=0.23.0
 tree-sitter-typescript>=0.23.0
 
+# System monitoring for parallel processing optimization
+psutil>=5.8.0
+
 # Semantic search dependencies (non-PyTorch)
 chromadb>=0.4.0
 tqdm>=4.65.0
