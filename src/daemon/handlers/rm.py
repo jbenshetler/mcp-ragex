@@ -32,6 +32,31 @@ class RmHandler:
                     'returncode': 1
                 }
             
+            # Check for list-only flag (used by host for daemon cleanup)
+            if args[0] == '--list-only':
+                pattern = args[1] if len(args) > 1 else None
+                if not pattern:
+                    return {
+                        'success': False,
+                        'stdout': '',
+                        'stderr': 'Error: Pattern required for --list-only\n',
+                        'returncode': 1
+                    }
+                
+                matched_projects = self._find_matching_projects(pattern)
+                # For --list-only, output JSON to stdout for host parsing
+                import json
+                response_data = {
+                    'success': True,
+                    'projects': matched_projects
+                }
+                return {
+                    'success': True,
+                    'stdout': json.dumps(response_data) + '\n',
+                    'stderr': '',
+                    'returncode': 0 if matched_projects else 2
+                }
+            
             pattern = args[0]
             
             # Find matching projects
@@ -53,6 +78,9 @@ class RmHandler:
             for project_name, project_id, project_path in matched_projects:
                 project_dir = self.data_dir / project_id
                 if project_dir.exists():
+                    # Stop watchdog for this project path before removing
+                    self._stop_watchdog_for_project(project_path)
+                    
                     shutil.rmtree(project_dir)
                     output_lines.append(f"🗑️  Removed: {project_name} ({project_id})")
                     removed_count += 1

@@ -260,6 +260,53 @@ class RagexCLI:
         print("✅ Daemon stopped")
         return True
     
+    def get_daemon_container_name_for_project_id(self, project_id: str) -> str:
+        """Get daemon container name for any project ID"""
+        return f"ragex_daemon_{project_id}"
+    
+    def is_daemon_running_for_project(self, project_id: str) -> bool:
+        """Check if daemon is running for specific project ID"""
+        container_name = self.get_daemon_container_name_for_project_id(project_id)
+        result = subprocess.run(
+            ['docker', 'ps', '-q', '-f', f'name={container_name}'],
+            capture_output=True,
+            text=True
+        )
+        return bool(result.stdout.strip())
+    
+    def stop_daemon_for_project(self, project_id: str) -> bool:
+        """Stop daemon container for specific project"""
+        container_name = self.get_daemon_container_name_for_project_id(project_id)
+        if not self.is_daemon_running_for_project(project_id):
+            return True  # Already stopped
+        
+        try:
+            print(f"🛑 Stopping daemon for project {project_id}...")
+            
+            # Stop the container
+            stop_result = subprocess.run(['docker', 'stop', container_name], 
+                                       capture_output=True, text=True, timeout=30)
+            if stop_result.returncode != 0:
+                print(f"⚠️  Warning: Failed to stop daemon {container_name}: {stop_result.stderr.strip()}")
+                return False
+            
+            # Remove the container
+            rm_result = subprocess.run(['docker', 'rm', container_name], 
+                                     capture_output=True, text=True)
+            if rm_result.returncode != 0:
+                self.debug_print(f"Warning: Failed to remove daemon container {container_name}: {rm_result.stderr.strip()}")
+                # This is not critical - container is stopped
+            
+            return True
+            
+        except subprocess.TimeoutExpired:
+            print(f"⚠️  Warning: Timeout stopping daemon {container_name}")
+            return False
+        except Exception as e:
+            print(f"⚠️  Warning: Error stopping daemon {container_name}: {e}")
+            self.debug_print(f"stop_daemon_for_project error: {e}")
+            return False
+    
     def show_daemon_logs(self, tail: Optional[int] = None):
         """Show daemon container logs"""
         cmd = ['docker', 'logs', self.daemon_container_name]
@@ -594,8 +641,96 @@ Environment Variables:
         return self._run_admin_command('ls', cmd_args)
     
     def cmd_rm(self, args: argparse.Namespace) -> int:
-        """Handle rm command"""
-        return self._run_admin_command('rm', [args.glob])
+        """Handle rm command with daemon cleanup"""
+        try:
+            # Step 1: Get list of projects to remove using admin container
+            matched_projects = self._get_matching_projects(args.glob)
+            if matched_projects is None:
+                return 1  # Error occurred
+            
+            if not matched_projects:
+                print("No projects found matching pattern")
+                return 2
+            
+            # Step 2: Stop daemon containers for matched projects
+            stopped_daemons = []
+            for project_name, project_id, project_path in matched_projects:
+                # Check if daemon was running before stopping
+                was_running = self.is_daemon_running_for_project(project_id)
+                
+                # Stop daemon (idempotent - safe to call even if not running)
+                self.stop_daemon_for_project(project_id)
+                
+                # Track which daemons were actually stopped
+                if was_running:
+                    stopped_daemons.append(project_id)
+            
+            # Step 3: Remove project data using admin container
+            data_removal_result = self._run_admin_command('rm', [args.glob])
+            
+            # Step 4: Report results
+            if data_removal_result == 0:
+                stopped_count = len(stopped_daemons)
+                total_count = len(matched_projects)
+                if stopped_count > 0:
+                    print(f"✅ Removed {total_count} project(s) and stopped {stopped_count} daemon(s)")
+                else:
+                    print(f"✅ Removed {total_count} project(s) (no daemons were running)")
+            
+            return data_removal_result
+            
+        except Exception as e:
+            print(f"❌ Error during rm command: {e}")
+            self.debug_print(f"rm error details: {e}")
+            return 1
+    
+    def _get_matching_projects(self, pattern: str) -> List[tuple]:
+        """Get list of matching projects from admin container"""
+        try:
+            # Call admin container with --list-only flag to get project list
+            docker_cmd = [
+                'docker', 'run', '--rm',
+                '-u', f'{self.user_id}:{self.group_id}',
+                '-v', f'{self.user_volume}:/data',
+                '-e', 'PROJECT_NAME=admin',
+                '-e', f'HOST_HOME={Path.home()}',
+                '-e', f'HOST_USER={os.environ.get("USER", "unknown")}',
+                '-e', f'WORKSPACE_PATH={self.workspace_path}',
+                self.docker_image,
+                'rm', '--list-only', pattern
+            ]
+            
+            self.debug_print(f"Getting project list: {' '.join(docker_cmd)}")
+            result = subprocess.run(docker_cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                if result.returncode == 2:
+                    # No matches found
+                    return []
+                else:
+                    # Real error
+                    print(f"❌ Error getting project list: {result.stderr.strip()}")
+                    return None
+            
+            # Parse JSON response from RmHandler
+            import json
+            try:
+                response = json.loads(result.stdout)
+                if response.get('success'):
+                    return response.get('projects', [])
+                else:
+                    print(f"❌ Error from admin container: {response.get('stderr', 'Unknown error')}")
+                    return None
+            except json.JSONDecodeError as e:
+                print(f"❌ Invalid response from admin container: {e}")
+                self.debug_print(f"Admin container stdout: {result.stdout}")
+                self.debug_print(f"Admin container stderr: {result.stderr}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error getting project list: {e}")
+            self.debug_print(f"_get_matching_projects error: {e}")
+            return None
     
     def cmd_register(self, args: argparse.Namespace) -> int:
         """Handle register command"""
