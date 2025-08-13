@@ -85,13 +85,12 @@ RAGex gives Claude **semantic understanding** of your entire codebase:
 ### One-Line Install
 
 ```bash
-curl -sSL https://get.ragex.dev | bash
-# Alternative: curl -sSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/main/install.sh | bash
 ```
 
 **What happens:**
 - ✅ Auto-detects your platform (AMD64/ARM64/CUDA)
-- ✅ Pulls optimized Docker image (~2-3GB)
+- ✅ Pulls optimized Docker image (~3GiB/2GiB/13GB)
 - ✅ Installs `ragex` CLI to `~/.local/bin`
 - ✅ Creates isolated user data volume
 
@@ -101,16 +100,17 @@ curl -sSL https://get.ragex.dev | bash
 ### Installation with Options
 ```bash
 # Enable network access + better model (recommended)
-curl -sSL https://get.ragex.dev | bash -s -- --network --model balanced
+curl -sSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/main/install.sh | bash -s -- --network --model balanced
 
 # Force CPU version (smaller download)
-curl -sSL https://get.ragex.dev | bash -s -- --cpu --network
+curl -sSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/main/install.sh | bash -s -- --cpu --network
 
 # Force CUDA (NVIDIA GPU)
-curl -sSL https://get.ragex.dev | bash -s -- --cuda --model accurate
+curl -sSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/main/install.sh | bash -s -- --cuda --model accurate
 ```
 
 ### Platform Auto-Detection
+The CUDA model image is substantially (8X) faster at indexing, with no performance difference for queries. 
 | Platform | Auto-Selected | Image Size |
 |----------|---------------|------------|
 | **AMD64 + NVIDIA GPU** | CUDA | ~13GB |
@@ -122,10 +122,11 @@ curl -sSL https://get.ragex.dev | bash -s -- --cuda --model accurate
 - **Network Enabled**: Can download additional models (`--network` flag)
 
 ### Embedding Models
+The **fast** model is generally good enough for Python and JavaScript because code is first parsed with `tree-sitter`. 
 | Model | Size | Quality | Speed | Use Case |
 |-------|------|---------|-------|---------|
-| **fast** | 90MB | Good | Fastest | Default, quick setup |
-| **balanced** | 435MB | Better | Fast | Recommended for most users |
+| **fast** | 90MB | Good | Fastest | Default, Recommended for most users |
+| **balanced** | 435MB | Better | Fast | Improvement for more complex code bases |
 | **accurate** | 1.3GB | Best | Slower | Large codebases |
 | **multilingual** | 435MB | Good | Fast | Multi-language projects |
 
@@ -163,11 +164,11 @@ ragex search "TODO|FIXME" --regex  # Find code comments
 <!-- Asciinema/term-svg capture placeholders - coming soon -->
 
 ### 🚀 Installation Demo
-[![Installation Demo](https://img.shields.io/badge/Video-Coming%20Soon-blue)](https://github.com/jbenshetler/mcp-ragex)
+[![Installation Demo](https://github.com/jbenshetler/mcp-ragex/cast/install.svg)]
 *One-line installation with platform auto-detection*
 
 ### ⚙️ Setup & Indexing
-[![Setup Demo](https://img.shields.io/badge/Video-Coming%20Soon-blue)](https://github.com/jbenshetler/mcp-ragex)
+[![Setup Demo](https://github.com/jbenshetler/mcp-ragex/cast/claude.svg)]
 *Project indexing, semantic search examples, and CLI usage*
 
 ### 💻 CLI Usage Examples  
@@ -1064,13 +1065,13 @@ flowchart LR
 
 ### File Type Detection
 - **Automatic**: Based on file extensions
-- **Configurable**: Via `.rgignore` patterns
+- **Configurable**: Via `.gitignore` patterns
 - **Smart Exclusions**: Skips binaries, generated files, dependencies
 
 ### Smart File Exclusions
 
 **🎯 Comprehensive Defaults** (automatically applied):
-```rgignore
+```gitignore
 # Dependencies
 node_modules/, .venv/, __pycache__/, vendor/
 
@@ -1088,10 +1089,10 @@ build/, dist/, target/, .next/, .nuxt/
 ```
 
 **⚙️ Customizable per Project**:
-- Uses standard `.rgignore` syntax
+- Uses standard `.gitignore` syntax
 - Multi-level support (project/directory/subdirectory)
-- Respects existing `.rgignore` files
-- `ragex init` creates comprehensive `.rgignore` template
+- Respects existing `.gitignore` files
+- `ragex init` creates comprehensive `.gitignore` template
 
 ## 🌟 Why RAGex?
 
