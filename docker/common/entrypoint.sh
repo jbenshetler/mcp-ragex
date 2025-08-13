@@ -73,7 +73,7 @@ case "$1" in
         shift
         # Pass the workspace directory and ensure correct persist dir
         export RAGEX_INDEX_PATH="/workspace"
-        # .mcpignore warnings are suppressed by default in Dockerfile
+        # ignore file warnings are suppressed by default in Dockerfile
         # Pass user ID for project detection
         export DOCKER_USER_ID="${DOCKER_USER_ID}"
         
@@ -88,7 +88,7 @@ case "$1" in
         setup_project_data "$@"
         shift
         export RAGEX_CHROMA_PERSIST_DIR="${RAGEX_PROJECT_DATA_DIR}/chroma_db"
-        # .mcpignore warnings are suppressed by default in Dockerfile
+        # ignore file warnings are suppressed by default in Dockerfile
         # Disable logging setup override
         export RAGEX_DISABLE_LOGGING_SETUP=true
         exec python ragex_search.py --index-dir "${RAGEX_PROJECT_DATA_DIR}" "$@"
@@ -151,7 +151,7 @@ except Exception as e:
         setup_project_data "$@"
         shift
         export RAGEX_CHROMA_PERSIST_DIR="${RAGEX_PROJECT_DATA_DIR}/chroma_db"
-        # .mcpignore warnings are suppressed by default in Dockerfile
+        # ignore file warnings are suppressed by default in Dockerfile
         # Disable logging setup override
         export RAGEX_DISABLE_LOGGING_SETUP=true
         exec python ragex_search.py --index-dir "${RAGEX_PROJECT_DATA_DIR}" "$@"
