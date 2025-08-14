@@ -162,16 +162,19 @@ ragex search "TODO|FIXME" --regex  # Find code comments
 <!-- Asciinema/term-svg capture placeholders - coming soon -->
 
 
-
+<!--
 ### 🚀 Installation Demo
 ![Installation Demo](https://github.com/jbenshetler/mcp-ragex/blob/main/cast/install.svg)
 *One-line installation with platform auto-detection*
+-->
+
 
 ### ⚙️ Setup & Indexing
 ![Setup Demo](https://github.com/jbenshetler/mcp-ragex/blob/main/cast/claude.svg)
 *Project indexing, semantic search examples, and CLI usage*
 
 <!--
+
 ### 💻 CLI Usage Examples  
 [![CLI Demo](https://img.shields.io/badge/Video-Coming%20Soon-blue)](https://github.com/jbenshetler/mcp-ragex)
 *Semantic search, regex patterns, project management commands*
