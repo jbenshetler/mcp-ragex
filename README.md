@@ -169,9 +169,11 @@ ragex search "TODO|FIXME" --regex  # Find code comments
 -->
 
 
+<!--
 ### ⚙️ Setup & Indexing
 ![Setup Demo](https://github.com/jbenshetler/mcp-ragex/blob/main/cast/claude.svg)
 *Project indexing, semantic search examples, and CLI usage*
+-->
 
 <!--
 
