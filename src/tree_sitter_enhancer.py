@@ -405,31 +405,13 @@ class TreeSitterEnhancer:
             else:
                 logger.error(f"Unexpected capture format: {type(capture)}, value: {capture}")
                 continue
+            # TODO: Temporarily skip class indexing to prevent massive code blocks
+            # This avoids indexing entire class definitions (can be 1000+ lines)
+            # Individual methods within classes are still indexed separately
+            # TODO: Future - implement class header-only indexing
             if capture_name == "class":
-                class_name_node = None
-                for cap in captures:
-                    if isinstance(cap, tuple) and len(cap) == 2:
-                        n, name = cap
-                        if name == "class.name" and n.parent == node:
-                            class_name_node = n
-                            break
-                if class_name_node:
-                    class_name = self._extract_text(class_name_node, source)
-                    current_class = class_name
-                    docstring = self._extract_docstring(node, source, "python")
-                    
-                    symbols.append(Symbol(
-                        name=class_name,
-                        type="class",
-                        file=host_path,
-                        line=class_name_node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                        column=class_name_node.start_point[1],
-                        docstring=docstring,
-                        code=self._extract_text(node, source),
-                        start_byte=node.start_byte,
-                        end_byte=node.end_byte,
-                    ))
+                logger.debug(f"Skipping class symbol indexing for token optimization")
+                continue
             
             elif capture_name == "function" or capture_name == "method.name":
                 is_method = capture_name == "method.name"
@@ -651,27 +633,35 @@ class TreeSitterEnhancer:
             else:
                 logger.error(f"Unexpected capture format in JS/TS: {type(capture)}, value: {capture}")
                 continue
+            # TODO: Temporarily skip class indexing to prevent massive code blocks
+            # This avoids indexing entire class definitions (can be 1000+ lines)
+            # Individual methods within classes are still indexed separately
+            # TODO: Future - implement class header-only indexing
             if capture_name == "class":
-                class_name_node = None
-                for cap in captures:
-                    if isinstance(cap, tuple) and len(cap) == 2:
-                        n, name = cap
-                        if name == "class.name" and n.parent == node:
-                            class_name_node = n
-                            break
-                if class_name_node:
-                    class_name = self._extract_text(class_name_node, source)
-                    symbols.append(Symbol(
-                        name=class_name,
-                        type="class",
-                        file=host_path,
-                        line=class_name_node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                        column=class_name_node.start_point[1],
-                        code=self._extract_text(node, source),
-                        start_byte=node.start_byte,
-                        end_byte=node.end_byte,
-                    ))
+                logger.debug(f"Skipping class symbol indexing for token optimization")
+                continue
+                
+                # TODO: Future class header indexing implementation reference:
+                # class_name_node = None
+                # for cap in captures:
+                #     if isinstance(cap, tuple) and len(cap) == 2:
+                #         n, name = cap
+                #         if name == "class.name" and n.parent == node:
+                #             class_name_node = n
+                #             break
+                # if class_name_node:
+                #     class_name = self._extract_text(class_name_node, source)
+                #     symbols.append(Symbol(
+                #         name=class_name,
+                #         type="class",
+                #         file=host_path,
+                #         line=class_name_node.start_point[0] + 1,
+                #         end_line=node.end_point[0] + 1,  # TODO: Should be header end, not full class end
+                #         column=class_name_node.start_point[1],
+                #         code=self._extract_text(node, source),  # TODO: Should be header only, not full class
+                #         start_byte=node.start_byte,
+                #         end_byte=node.end_byte,  # TODO: Should be header end, not full class end
+                #     ))
             
             elif capture_name == "interface" and lang in ["typescript", "tsx"]:
                 interface_name_node = None

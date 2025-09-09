@@ -61,6 +61,7 @@ try:
     from src.ragex_core.path_mapping import host_to_container_path
     from src.ragex_core.semantic_searcher import SemanticSearcher
     from src.ragex_core.regex_searcher import RegexSearcher
+    from src.ragex_core.result_formatters import format_search_results_optimized
     from src.utils import configure_logging, get_logger
     from src.watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
     
@@ -81,6 +82,7 @@ except ImportError as e:
         from .ragex_core.path_mapping import host_to_container_path
         from .ragex_core.semantic_searcher import SemanticSearcher
         from .ragex_core.regex_searcher import RegexSearcher
+        from .ragex_core.result_formatters import format_search_results_optimized
         from .utils import configure_logging, get_logger
         try:
             from .watchdog_monitor import WatchdogMonitor, WATCHDOG_AVAILABLE
@@ -695,6 +697,12 @@ async def handle_list_tools() -> list[types.Tool]:
                         "description": "Output format: 'navigation' for human-friendly file grouping (default), 'raw' for simple file:line format",
                         "default": "navigation"
                     },
+                    "detail_level": {
+                        "type": "string",
+                        "enum": ["minimal", "compact", "rich"],
+                        "description": "Output detail level: 'minimal' (~2K tokens, CLI-like), 'compact' (~5K tokens, balanced), 'rich' (~15K tokens, full context)",
+                        "default": "minimal"
+                    },
                 },
                 "required": ["query"],
             },
@@ -716,6 +724,12 @@ async def handle_list_tools() -> list[types.Tool]:
                     "query": {
                         "type": "string",
                         "description": "Your search query in any format",
+                    },
+                    "detail_level": {
+                        "type": "string",
+                        "enum": ["minimal", "compact", "rich"],
+                        "description": "Output detail level: 'minimal' (~2K tokens, CLI-like), 'compact' (~5K tokens, balanced), 'rich' (~15K tokens, full context)",
+                        "default": "minimal"
                     },
                 },
                 "required": ["query"],
@@ -764,7 +778,8 @@ async def handle_call_tool(
                 case_sensitive=arguments.get('case_sensitive', False),
                 include_symbols=arguments.get('include_symbols', False),
                 similarity_threshold=arguments.get('similarity_threshold', 0.25),
-                format=arguments.get('format', 'navigation')
+                format=arguments.get('format', 'navigation'),
+                detail_level=arguments.get('detail_level', 'minimal')
             )
         elif 'pattern' in arguments:
             # Old search - convert pattern to query and use intelligent search
@@ -799,7 +814,12 @@ async def handle_call_tool(
         query = arguments.get('query')
         if not query:
             raise ValueError("Missing query argument")
-        return await handle_intelligent_search(query, paths=[workspace_dir], mode="auto")
+        return await handle_intelligent_search(
+            query, 
+            paths=[workspace_dir], 
+            mode="auto", 
+            detail_level=arguments.get('detail_level', 'minimal')
+        )
     
     elif name == "get_watchdog_status":
         return await handle_watchdog_status()
@@ -822,6 +842,7 @@ async def handle_intelligent_search(
     include_symbols: bool = False,  # For compatibility with Claude Code
     similarity_threshold: float = 0.25,
     format: str = "navigation",
+    detail_level: str = "minimal",  # NEW: Control response size
     **kwargs  # Catch any other unexpected parameters
 ) -> List[types.TextContent]:
     """
@@ -907,10 +928,9 @@ async def handle_intelligent_search(
     success = result.get("success", False)
     logger.info(f"✅ MCP SEARCH COMPLETED: {detected_mode} search for '{query}' → {total_matches} matches (success={success})")
     
-    # Return JSON result for MCP clients
-    # This allows the client to access fields like 'total_matches' directly
-    import json
-    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    # Format result using appropriate detail level for token efficiency
+    formatted_text = format_search_results_optimized(result, detail_level=detail_level, max_tokens=20000)
+    return [types.TextContent(type="text", text=formatted_text)]
 
 
 async def handle_watchdog_status() -> List[types.TextContent]:

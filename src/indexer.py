@@ -79,6 +79,9 @@ class CodeIndexer:
             self.config._persist_directory = persist_directory
         
         # Initialize components with shared config
+        # Initialize pattern_matcher first as it's needed by tree_sitter
+        self.pattern_matcher = PatternMatcher()
+        
         try:
             # Try to import parallel extractor first
             try:
@@ -105,9 +108,9 @@ class CodeIndexer:
             logger.warning(f"Tree-sitter enhancer disabled due to: {e}")
             self.tree_sitter = None
             self._use_parallel = False
+        
         self.embedder = EmbeddingManager(config=self.config)
         self.vector_store = CodeVectorStore(config=self.config)
-        self.pattern_matcher = PatternMatcher()
         
         # Supported file extensions
         self.supported_extensions = {
