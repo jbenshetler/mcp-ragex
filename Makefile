@@ -14,6 +14,9 @@ PLATFORMS_GPU := linux/amd64
 # Architecture support - defaults to amd64
 ARCH ?= amd64
 
+# Cache control: Set NO_CACHE=true to disable build cache
+CACHE_FLAG := $(if $(filter true,$(NO_CACHE)),--no-cache,)
+
 # Dependency checking helper
 check-base-exists = @docker image inspect $(1) >/dev/null 2>&1 || \
 	(echo "❌ Required base image missing: $(1)"; \
@@ -23,55 +26,49 @@ check-base-exists = @docker image inspect $(1) >/dev/null 2>&1 || \
 
 ## Base image builds (layered architecture)
 cpu-base:      ## Build CPU system base image (ARCH=amd64|arm64)
-	docker build \
+	docker build $(CACHE_FLAG) \
 		-f docker/cpu/Dockerfile.base \
 		-t $(IMAGE_NAME):cpu-base \
 		-t $(IMAGE_NAME):cpu-$(ARCH)-base \
-		. \
-		$(NO_CACHE)
+		.
 
 arm64-base:    ## Build ARM64 system base image and push to GHCR
-	docker buildx build --platform linux/arm64 \
+	docker buildx build $(CACHE_FLAG) --platform linux/arm64 \
 		-f docker/arm64/Dockerfile.base \
 		-t $(REGISTRY)/$(IMAGE_NAME):arm64-base-temp \
-		--push . \
-		$(NO_CACHE)
+		--push .
 
 cpu-ml:        ## Build CPU ML layer (ARCH=amd64|arm64) - requires cpu-base
 	$(call check-base-exists,$(IMAGE_NAME):cpu-$(ARCH)-base,cpu-base)
-	docker build \
+	docker build $(CACHE_FLAG) \
 		-f docker/cpu/Dockerfile.ml \
 		--build-arg BASE_IMAGE=$(IMAGE_NAME):cpu-$(ARCH)-base \
 		-t $(IMAGE_NAME):cpu-ml \
 		-t $(IMAGE_NAME):cpu-$(ARCH)-ml \
-		. \
-		$(NO_CACHE)
+		.
 
 arm64-ml:      ## Build ARM64 ML layer (pull base from GHCR, push ML to GHCR)
-	docker buildx build --platform linux/arm64 \
+	docker buildx build $(CACHE_FLAG) --platform linux/arm64 \
 		-f docker/arm64/Dockerfile.ml \
 		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):arm64-base-temp \
 		-t $(REGISTRY)/$(IMAGE_NAME):arm64-ml-temp \
-		--push . \
-		$(NO_CACHE)
+		--push .
 
 cuda-base:     ## Build CUDA system base image
-	docker buildx build --platform linux/amd64 \
+	docker buildx build $(CACHE_FLAG) --platform linux/amd64 \
 		-f docker/cuda/Dockerfile.base \
 		-t $(IMAGE_NAME):cuda-base \
 		-t $(IMAGE_NAME):cuda-amd64-base \
-		--load . \
-		$(NO_CACHE)
+		--load .
 
 cuda-ml:       ## Build CUDA ML layer - requires cuda-base
 	$(call check-base-exists,$(IMAGE_NAME):cuda-base,cuda-base)
-	docker build \
+	docker build $(CACHE_FLAG) \
 		-f docker/cuda/Dockerfile.ml \
 		--build-arg BASE_IMAGE=$(IMAGE_NAME):cuda-base \
 		-t $(IMAGE_NAME):cuda-ml \
 		-t $(IMAGE_NAME):cuda-amd64-ml \
-		. \
-		$(NO_CACHE)
+		.
 
 ## Development builds (layered)
 cpu:           ## Build CPU image for local development (defaults to AMD64, use ARCH=arm64 for ARM64) - uses layered builds
@@ -82,54 +79,50 @@ cpu:           ## Build CPU image for local development (defaults to AMD64, use 
 		echo "Building layered CPU image for $(ARCH) (default: AMD64)..."; \
 		$(MAKE) cpu-base ARCH=$(ARCH); \
 		$(MAKE) cpu-ml ARCH=$(ARCH); \
-		docker build \
+		docker build $(CACHE_FLAG) \
 			-f docker/app/Dockerfile \
 			--build-arg BASE_IMAGE=$(IMAGE_NAME):cpu-$(ARCH)-ml \
 			-t $(IMAGE_NAME):cpu-dev \
 			-t $(IMAGE_NAME):cpu-$(ARCH)-dev \
 			-t $(IMAGE_NAME):$(ARCH)-dev \
-			. \
-			$(NO_CACHE); \
+			.; \
 	fi
 
 amd64:         ## Build AMD64 CPU image for local development - uses layered builds
 	@echo "Building layered AMD64 CPU image..."
 	$(MAKE) cpu-base ARCH=amd64
 	$(MAKE) cpu-ml ARCH=amd64
-	docker build \
+	docker build $(CACHE_FLAG) \
 		-f docker/app/Dockerfile \
 		--build-arg BASE_IMAGE=$(IMAGE_NAME):cpu-amd64-ml \
 		-t $(IMAGE_NAME):cpu-dev \
 		-t $(IMAGE_NAME):cpu-amd64-dev \
 		-t $(IMAGE_NAME):amd64-dev \
-		. \
-		$(NO_CACHE)
+		.
 
 arm64:         ## Build ARM64 CPU image for local development (registry-based)
 	@echo "Building layered ARM64 image via registry..."
 	$(MAKE) arm64-base
 	$(MAKE) arm64-ml
-	docker buildx build --platform linux/arm64 \
+	docker buildx build $(CACHE_FLAG) --platform linux/arm64 \
 		-f docker/app/Dockerfile \
 		--build-arg BASE_IMAGE=$(REGISTRY)/$(IMAGE_NAME):arm64-ml-temp \
 		-t $(IMAGE_NAME):cpu-dev \
 		-t $(IMAGE_NAME):cpu-arm64-dev \
 		-t $(IMAGE_NAME):arm64-dev \
-		--output type=docker . \
-		$(NO_CACHE)
+		--output type=docker .
 
 cuda:          ## Build CUDA image for local development (AMD64 only) - uses layered builds
 	@echo "Building layered CUDA image for AMD64..."
 	$(MAKE) cuda-base
 	$(MAKE) cuda-ml
-	docker build \
+	docker build $(CACHE_FLAG) \
 		-f docker/app/Dockerfile \
 		--build-arg BASE_IMAGE=$(IMAGE_NAME):cuda-ml \
 		-t $(IMAGE_NAME):cuda-dev \
 		-t $(IMAGE_NAME):cuda-amd64-dev \
 		-t $(IMAGE_NAME):amd64-cuda-dev \
-		. \
-		$(NO_CACHE)
+		.
 
 
 ## Version Management
@@ -194,8 +187,6 @@ build-all:       ## Build all platform images locally
 	$(MAKE) cuda
 
 ## Publishing targets (using 3-layer architecture with cached models)
-# Cache control: Set NO_CACHE=true to disable build cache
-CACHE_FLAG := $(if $(filter true,$(NO_CACHE)),--no-cache,)
 
 publish-cpu: check-version ## Build and publish CPU images (3-layer: base → ml → app) [NO_CACHE=true to disable cache]
 	@echo "🚀 Publishing CPU images for version $(VERSION)..."
