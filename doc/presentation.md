@@ -3,6 +3,24 @@ by Jeff Benshetler
 
 2025-09-10
 
+## Table of Contents
+- [`ragex` : Semantic Search for Code with a an MCP Interface](#ragex--semantic-search-for-code-with-a-an-mcp-interface)
+  - [Table of Contents](#table-of-contents)
+  - [Introduction](#introduction)
+  - [Requirements](#requirements)
+  - [Design Decisions](#design-decisions)
+    - [MCP Server](#mcp-server)
+    - [Regex Search with ripgrep](#regex-search-with-ripgrep)
+    - [Semantic Search with SentenceTransformer](#semantic-search-with-sentencetransformer)
+    - [Parse Languages Using Tree Sitter](#parse-languages-using-tree-sitter)
+    - [Local first](#local-first)
+    - [Containerize Application](#containerize-application)
+      - [Security](#security)
+        - [File Access](#file-access)
+        - [Network Access](#network-access)
+  - [Improvements](#improvements)
+  - [References](#references)
+
 ## Introduction
 In January of 2025, along with many others, I began using coding agents. Most of my time was spent in Claude Code. This was started as a learning experience, a way to become familiar with and evaluate a new tool. Rather than apply this in a vacuum, I started work on a personal project.
 
@@ -11,19 +29,14 @@ I learn best by application. I want to more easily locate files from my hard dri
 While I was pleased with the help Claude Code provided, I was stymied by the dreaded `Compacting Conversation`, delayed by the slow `Seaching` tools calls, and frustrated by how often it would recreate existing functionality. When Claude Code added support for in April, 2025, I decided to do something about this. 
 
 ## Requirements
+As a developer using LLM coding agents, I want to spend less time waiting for the coding agent to search my code, and for the search results to be more relevant.
+
 1. Speed regular expression searches
 1. Support semantic searches
 1. Callable by MCP
 
 ## Design Decisions
-1. MCP server implemented using PyPi's `mcp` package.
-1. Regular expression searches implemented using `ripgrep`.
-1. Analyze language files using tree sitter.
-1. Local first LLM for privacy and cost control. 
-1. Use generic embedding rather than source code specific embedding for performance.
-1. Use ChromaDB to store vectors for simplicity. 
-1. Containerize application for easy installation and security. 
-1. Need different modes to balance 
+
 
 ### MCP Server
 Initially creating an MCP server using the `mcp[cli]` package to expose `ripgrep` was surprisingly easy, using the `stdio` model. This later became more complicated, as it is necessary to trap logs and status updates from various libraries and tools in use to avoid confusing the client. The auto-discovery of the server's capabilities and parameters by the client works well.
@@ -31,11 +44,18 @@ Initially creating an MCP server using the `mcp[cli]` package to expose `ripgrep
 [Creating the server](../src/server.py#241)
 
 
-### Regex searching
+### Regex Search with ripgrep
 Claude Code's default is to use regular expressions to search. At the time I created this tool, Claude used `grep`, which is single threaded and slow compared to the parallel `ripgrep`.
 
-### Semantic Search
-Semantic searching requires finding the files, chunking them, creating vector embeddings, storing the vector embeddings in a database that faciliates 
+### Semantic Search with SentenceTransformer
+SentenceTransformer was selected because of its speed and support in the Python ecosystem. While a code-trained model like [CodeBERT](https://arxiv.org/abs/2002.08155) is the natural approach, it is approximately 10X slower during indexing than the SentenceTransformer models. Because of the chunking done with tree sitter, in practice simpler models work well, at least for languages like Python and JavaScript. Additional challenges with CodeBERT include:
+
+1. SentenceTransformer outputs fixed-sized embeddings optimized for semantic similarity tasks like mean pooling or CLS token extraction vs. CodeBERT requiring additional processing. 
+1. The API between the two is different. 
+1. SentenceTransformer has built-in batch processing optimization while BERT models require custom batching implementation. 
+
+<details>
+    <summary>Sample semantic search for 'Symbol creation with signature docstring code fields'</summary>
 
 ```
 ragex - search_code_simple (MCP)(query: "Symbol creation with signature docstring code fields")
@@ -52,14 +72,17 @@ ragex - search_code_simple (MCP)(query: "Symbol creation with signature docstrin
      /home/jeff/clients/mcp-ragex/src/ragex_core/result_formatters.py::[function] (0.313) format_results
    
 ```
+</details>
 
-### Parse languages using tree sitter
+
+
+### Parse Languages Using Tree Sitter
 A tree sitter approach gets most of the languages nuances right without requiring the complexity of a full parser. For many languages, a full parser requires an impractical amount of configuration for search paths, compiler options, etc., to be practical. Tree sitters are available for the languages of my immediate interest: Python, C++, JavaScript/TypeScript.
 
 [Tree Sitter](../src/tree_sitter_enhancer.py)
 
 
-The tree sitter provides natural chunking, with the most salient chunk being function name and associated signature. So when generating embeddings for functions and classes, the system creates rich context that includes:
+The tree sitter provides natural chunking, with the most salient chunk being function name and associated signature.  So when generating embeddings for functions and classes, the system creates rich context that includes:
 
   1. Basic metadata: Type, name, language, file
   1. Signature: Function/method signature
@@ -78,32 +101,45 @@ The tree sitter provides natural chunking, with the most salient chunk being fun
 [Embedding Manager](../src/ragex_core/embedding_manager.py)
  * `_create_default_context` L329-330
 
+Variables are specifically not indexed because they often require a broader, ill-defined context to get semantic meaning. 
+
 ### Local first
 Since this project targets not the general public but developers using coding agents, the assumption is that they have either a GPU or a sufficiently powerful CPU to compute the embeddings locally. This preserves the code privacy. 
 
 [Embedding Manager](../src/ragex_core/embedding_manager.py)
  * `embed_code_symbols` L427
 
-### Containerize application
+### Containerize Application
 Source files are mounted inside the container and the reported path needs to be relative to the host. There is path translation that has to happen. 
 1. Security
 1. Installation Ease
 1. Isolation
 
+#### Security
+##### File Access
+The application is limited to accessing to host files using volume mounts, limited to:
+  1. Indexed directory → /workspace (read-only)
+    - This is where your project files are mounted when you run `ragex` commands
+    - Read-only access prevents accidental modification
+  2. User config directory (`$HOME/.config/ragex`) → `/home/ragex/.config/ragex`
+    - Stores RAGex configuration files
+    - Only mounted in the fallback wrapper [install.sh:170](../install.sh)
+  3. User data volume (ragex_user_<user_id>) → `/data`
+    - Docker named volume for persistent data (ChromaDB indexes, models, etc.)
+    - Isolated per user ID for security
+  4. Host home directory path (as environment variable HOST_HOME)
+    - Path information only, not mounted as volume
+    - Used for path mapping between container and host
 
-### Semantic searching
-In my usage, Claude regularly re-creates existing functionality in non-trivial code, likely due to not only a limited context window but also context rot. Beyond the searching being slow, the coding agent's review is slow and consumes a large number of tokens, compounding the forgetting problem. 
-## Challenges
-### TokensYou 
-### Security
-Users righfully have security concerns. 
-#### Model
+##### Network Access
+ Additionally, the container does not have network access at all enforced by Docker unless the `--network` flag is passed during installation. [install.sh:18](../install.sh). The default model is included as part of the Docker image. If the user requests additional models, they need to provide network access used during runtime to download the model. Because the model is stored in the persistent volume mount, that mount must exist before the model is downloaded.  
+
 
 ## Improvements
 1. Layered Docker images for faster builds.
 1. Progress bars while indexing.
 1. Support for remote embedding computation with batching. 
-1. 
+1. Download non-default model during installation, to avoid the need for network access during runtime.  
 
 ## References
 1. "Context Rot: How Increasing Input Tokens Impacts LLM Performance" by Kelly Hong, Anton Troynikov, and Jeff Huber, https://research.trychroma.com/context-rot
