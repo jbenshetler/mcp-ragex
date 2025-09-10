@@ -6,7 +6,9 @@ by Jeff Benshetler
 ## Table of Contents
 - [`ragex` : Semantic Search for Code with a an MCP Interface](#ragex--semantic-search-for-code-with-a-an-mcp-interface)
   - [Table of Contents](#table-of-contents)
-  - [Introduction](#introduction)
+  - [Summary](#summary)
+    - [Technical Challenge:](#technical-challenge)
+    - [Introduction](#introduction)
   - [Requirements](#requirements)
   - [Design Decisions](#design-decisions)
     - [MCP Server](#mcp-server)
@@ -14,6 +16,7 @@ by Jeff Benshetler
     - [Semantic Search with SentenceTransformer](#semantic-search-with-sentencetransformer)
       - [Model Selection](#model-selection)
       - [Similarity Search](#similarity-search)
+      - [Context Induced Bias](#context-induced-bias)
       - [Re-ranking](#re-ranking)
     - [Parse Languages Using Tree Sitter](#parse-languages-using-tree-sitter)
     - [Code Indexing](#code-indexing)
@@ -26,15 +29,32 @@ by Jeff Benshetler
       - [Installation Ease](#installation-ease)
     - [Administration](#administration)
       - [Index Catalog](#index-catalog)
+  - [Why](#why)
+    - [Prefer Tree Sitter to a Language Server Protocol Server](#prefer-tree-sitter-to-a-language-server-protocol-server)
   - [Improvements](#improvements)
   - [References](#references)
 
-## Introduction
+## Summary
+Every developer using AI coding agents faces:
+1. Slow searches (although Claude Code has recently added support for `ripgrep`).
+1. Failed searches due to imprecise regular expressions, leading to duplicate code. 
+
+This project adds semantic search, improving recall and reducing search time from tens of seconds to 0.3 seconds. 
+
+### Technical Challenge:
+
+LLMs don't understand code structure, only token sequences. This work combines tree-sitter AST parsing with semantic embeddings producing faster, more accurate search results. 
+
+<details>
+<summary>Introduction</summary>
+
+### Introduction
 In January of 2025, along with many others, I began using coding agents. Most of my time was spent in Claude Code. This was started as a learning experience, a way to become familiar with and evaluate a new tool. Rather than apply this in a vacuum, I started work on a personal project.
 
 I learn best by application. I want to more easily locate files from my hard drive and am not satisfied with existing commercial or open source solutions. So, for a couple of years I had been off-and-on playing with ElasticSearch. However, I had only been able to create a partially working solution that was later sabotaged by a licensing change. To do this, I pivoted to OpenSearch used Claude Code to help with the configuration. Over time, this grew into a much larger project due to external interest. 
 
 While I was pleased with the help Claude Code provided, I was stymied by the dreaded `Compacting Conversation`, delayed by the slow `Seaching` tools calls, and frustrated by how often it would recreate existing functionality. When Claude Code added support for in April, 2025, I decided to do something about this. 
+</details>
 
 ## Requirements
 As a developer using LLM coding agents, I want to spend less time waiting for the coding agent to search my code, and for the search results to be more relevant.
@@ -88,6 +108,21 @@ We are using Approximate Nearest Neighbor (ANN) with the cosine similarity metri
 [Initial Search vectory_store.py:208](../src/ragex_core/vector_store.py)
 [Cosine Distance to Similarity Conversion cli/search.py:132](../src/cli/search.py)
 
+#### Context Induced Bias
+The following is passed to the encoder when computing embeddings:
+
+1. Type & Name: "Type: function", "Name: my_function"
+2. Language: "Language: python"
+3. File Context: "File: /path/to/file.py"
+4. Signature: "Signature: my_function(arg1, arg2)"
+5. Documentation: "Documentation: [docstring text]"
+6. Parent: "Parent: MyClass" (if function is a method)
+7. Keywords: Extracted from code (def, return, etc.)
+8. Function Calls: Functions called within the code
+9. Code Snippet: First 5 lines of actual code
+
+This creates richer context for functions and classes than imports, environment variables, etc. leading to a bias such that the functions and classes take up a larger portion of the embedding space. This is intentional, as functions and classes are the primary building blocks we want from the coding assistant. 
+
 
 #### Re-ranking
 
@@ -121,7 +156,7 @@ ragex - search_code_simple (MCP)(query: "Symbol creation with signature docstrin
 
 
 ### Parse Languages Using Tree Sitter
-A tree sitter approach gets most of the languages nuances right without requiring the complexity of a full parser. For many languages, a full parser requires an impractical amount of configuration for search paths, compiler options, etc.. Tree sitters are available for the languages of my immediate interest: Python, C++, JavaScript/TypeScript.
+A tree sitter approach, i.e, using a fast, incremental parser, gets most of the languages nuances right without requiring the complexity of a full parser. For many languages, a full parser requires an impractical amount of configuration for search paths, compiler options, etc.. Tree sitters are available for the languages of my immediate interest: Python, C++, JavaScript/TypeScript.
 
 [Tree Sitter](../src/tree_sitter_enhancer.py)
 
@@ -148,7 +183,7 @@ The tree sitter provides natural chunking, with the most salient chunk being fun
 Variables are specifically not indexed because they often require a broader, ill-defined context to get semantic meaning. 
 
 ### Code Indexing
-An index is necessary for semantic search to work. The only way to start the per-directory container is using `ragex start`, which builds or intelligently rebuilds the index before launching the container.
+An index is necessary for semantic search to work. The only way to start the per-directory container is using `ragex start`, which builds or intelligently rebuilds the index before launching the container. As a fallback there is a periodic rescan with rate limiter. Files are reindexed only if their modification time stamp changes and their checksum is different. This is a two-stage process, because computing the checksum is significantly slower than checking `mtime` but significantly faster than re-indexing. 
 
 <details>
 <summary>Initial and Watcher Driven Code Indexing DIagram</summary>
@@ -242,6 +277,11 @@ mcp-ragex-example     ragex_1000_de615df33aa15e6f     fast        yes       2606
 nancyknows-web        ragex_1000_787f160eb1a1840a     fast        yes       11759     72.3M         /home/jeff/clients/nancyknows/nancyknows-web
 ```
 </details>
+
+## Why 
+### Prefer Tree Sitter to a Language Server Protocol Server
+The tree sitter is fast, incremental, and local operating on a single file that operates on syntax only. An LSP operates on an entire project, requiring substantial configuration. The LSP provides semantics and types although it is slower. Speed and configuration are the main reasons to prefer a tree sitter for this application. 
+
 
 
 
