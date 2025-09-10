@@ -57,6 +57,22 @@ Claude Code's default is to use regular expressions to search. At the time I cre
 
 ### Semantic Search with SentenceTransformer
 
+<details>
+<summary>Query Flow Diagram</summary>
+
+  Key Flow Points:
+
+  1. MCP Entry: Claude Code → ragex-mcp wrapper → ragex CLI with --mcp flag
+  2. Container Management: Per-directory daemon containers with workspace mounts
+  3. Query Encoding: SentenceTransformer creates embeddings from enriched symbol contexts
+  4. Vector Search: ChromaDB HNSW with cosine similarity
+  5. Reranking: Multi-signal feature scoring with symbol type weights
+  6. Response Formatting: Token-limited output optimized for different detail levels
+  7. Return Path: JSON-RPC back through socket → docker exec → wrapper → MCP client
+
+![Query Flow](query-flow.png)
+</details>
+
 #### Model Selection
 SentenceTransformer was selected because of its speed and support in the Python ecosystem. While a code-trained model like [CodeBERT](https://arxiv.org/abs/2002.08155) is the natural approach, it is approximately 10X slower during indexing than the SentenceTransformer models. Because of the chunking done with tree sitter, in practice simpler models work well, at least for languages like Python and JavaScript. Additional challenges with CodeBERT include:
 
@@ -133,6 +149,13 @@ Variables are specifically not indexed because they often require a broader, ill
 
 ### Code Indexing
 An index is necessary for semantic search to work. The only way to start the per-directory container is using `ragex start`, which builds or intelligently rebuilds the index before launching the container.
+
+<details>
+<summary>Initial and Watcher Driven Code Indexing DIagram</summary>
+
+![Indexing Sequence Diagram](indexing-sequence.png)
+</details>
+
 
 [ragex](../ragex)
  * `cmd_start()` L619

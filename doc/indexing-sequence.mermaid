@@ -1,0 +1,65 @@
+sequenceDiagram
+      participant User as User
+      participant CLI as ragex CLI
+      participant Daemon as Daemon Container
+      participant Indexer as CodeIndexer
+      participant ParallelExt as ParallelSymbolExtractor
+      participant Workers as Worker Processes
+      participant Embedder as EmbeddingManager
+      participant VectorStore as ChromaDB
+      participant Watcher as FileWatcher
+      participant Queue as UpdateQueue
+
+      Note over User,Queue: Initial Parallel Indexing (ragex index .)
+
+      User->>CLI: ragex index .
+      CLI->>Daemon: Start daemon if not running
+      CLI->>Daemon: docker exec index /workspace
+
+      Daemon->>Indexer: index_codebase(paths, force=False)
+      Indexer->>Indexer: find_code_files() - scan directories
+      Note right of Indexer: Respects .rgignore patterns
+
+      Indexer->>VectorStore: get_statistics() - check existing index
+      alt Index exists and not forced
+          VectorStore-->>Indexer: {total_symbols: N, status: existing}
+          Indexer-->>Daemon: Skip indexing
+      else Index empty or forced
+          VectorStore-->>Indexer: {total_symbols: 0}
+
+          Indexer->>ParallelExt: extract_symbols_parallel(file_paths)
+          Note right of ParallelExt: RAGEX_USE_PARALLEL=true
+
+          ParallelExt->>ParallelExt: Split files into batches
+
+          par Process Batch 1
+              ParallelExt->>Workers: Worker 1 processes files 1-10
+              Workers->>Workers: TreeSitter parse + symbol extraction
+              Workers-->>ParallelExt: SymbolResult(symbols, success=True)
+          and Process Batch 2
+              ParallelExt->>Workers: Worker 2 processes files 11-20
+              Workers->>Workers: TreeSitter parse + symbol extraction
+              Workers-->>ParallelExt: SymbolResult(symbols, success=True)
+          and Process Batch N
+              ParallelExt->>Workers: Worker N processes files N*10+
+              Workers->>Workers: TreeSitter parse + symbol extraction
+              Workers-->>ParallelExt: SymbolResult(symbols, success=True)
+          end
+
+          ParallelExt-->>Indexer: List[SymbolResult] - all extracted symbols
+
+          Indexer->>Indexer: Add file checksums to symbols
+          Note right of Indexer: calculate_file_checksum() for each file
+
+          Indexer->>Embedder: embed_code_symbols(all_symbols, batch_size=32)
+          Embedder->>Embedder: create_code_context() for each symbol
+          Note right of Embedder: Type-specific context creation
+          Embedder->>Embedder: SentenceTransformer.encode(contexts, batch_size=32)
+          Embedder-->>Indexer: np.ndarray embeddings
+
+          Indexer->>VectorStore: add_symbols(symbols, embeddings)
+          VectorStore->>VectorStore: ChromaDB batch insert (max 5000/batch)
+          VectorStore-->>Indexer: {added: N, total: M}
+
+          Indexer-->>Daemon: {status: complete, symbols_indexed: N}
+      end
