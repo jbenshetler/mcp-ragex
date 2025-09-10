@@ -186,6 +186,9 @@ class SearchClient:
                 if symbol_type == 'comment':
                     # For comments, use the actual comment text from 'code' field
                     line_content = match.get('code', '') or symbol_name
+                    # Remove redundant "Comment: " prefix if present
+                    if line_content.startswith('Comment: '):
+                        line_content = line_content[9:]
                 else:
                     line_content = signature if signature else symbol_name
                     
@@ -222,8 +225,6 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
     else:
         mode = "semantic"
     
-    if not json_output:
-        print(f"# Searching for '{args.query}' using {mode} mode", file=sys.stderr)
     
     # Perform search
     matches = []
@@ -281,6 +282,9 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
             if match.get('type') == 'comment':
                 # For comments, use the actual comment text from 'code' field
                 display_content = match.get('code', '') or match.get('name', '')
+                # For JSON output, remove redundant "Comment: " prefix if present
+                if display_content.startswith('Comment: '):
+                    display_content = display_content[9:]
             else:
                 # For other symbols, use signature if available, otherwise name
                 signature = match.get('signature', '')
@@ -306,7 +310,6 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
             print(f"# No matches found", file=sys.stderr)
             return 0
         
-        print(f"# Found {len(matches)} matches", file=sys.stderr)
         
         # Format and print results
         try:
