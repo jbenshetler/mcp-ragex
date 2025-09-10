@@ -200,6 +200,8 @@ An index is necessary for semantic search to work. The only way to start the per
 
 Calling `ragex start` from within a directory that already has an index will start that ancestor directory's container rather than create a new one. 
 
+[src/socket_daemon.py L503](../src/socket_daemon.py)
+
 
 
 ### Local first
@@ -291,7 +293,6 @@ The tree sitter is fast, incremental, and local operating on a single file that 
 1. Support for remote embedding computation. 
 1. Download non-default model during installation, to avoid the need for network access during runtime.  
 1. Improve test coverage.
-1. 
 
 ## References
 1. "Context Rot: How Increasing Input Tokens Impacts LLM Performance" by Kelly Hong, Anton Troynikov, and Jeff Huber, https://research.trychroma.com/context-rot
