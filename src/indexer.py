@@ -201,7 +201,8 @@ class CodeIndexer:
                     'signature': symbol.signature,
                     'docstring': symbol.docstring,
                     'language': language,
-                    'code': symbol.code if hasattr(symbol, 'code') else ''
+                    'code': symbol.code if hasattr(symbol, 'code') else '',
+                    'methods': symbol.methods if hasattr(symbol, 'methods') else None
                 }
                 
                 # Get code content if we have position info

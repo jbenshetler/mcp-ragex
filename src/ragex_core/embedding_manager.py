@@ -158,8 +158,10 @@ class EmbeddingManager:
             return self._create_comment_context(symbol)
         elif symbol_type == 'module_doc':
             return self._create_module_doc_context(symbol)
+        elif symbol_type == 'class':
+            return self._create_class_context(symbol)
         else:
-            # Default handling for functions, classes, methods
+            # Default handling for functions, methods
             return self._create_default_context(symbol)
     
     def _create_import_context(self, symbol: Dict) -> str:
@@ -298,6 +300,51 @@ class EmbeddingManager:
         # Include a portion of the docstring
         doc_preview = docstring[:300] + "..." if len(docstring) > 300 else docstring
         parts.append(f"Documentation:\n{doc_preview}")
+        
+        return '\n'.join(parts)
+    
+    def _create_class_context(self, symbol: Dict) -> str:
+        """Create context for class symbols"""
+        parts = []
+        
+        # Basic metadata
+        parts.append(f"Type: class")
+        parts.append(f"Name: {symbol.get('name', 'unknown')}")
+        parts.append(f"Language: {symbol.get('language', 'unknown')}")
+        
+        # File context
+        if symbol.get("file"):
+            parts.append(f"File: {symbol['file']}")
+        
+        # Class signature (with inheritance)
+        if symbol.get("signature"):
+            parts.append(f"Declaration: {symbol['signature']}")
+        
+        # Documentation
+        if symbol.get("docstring"):
+            parts.append(f"Documentation: {symbol['docstring']}")
+        
+        # Method names (key for searchability)
+        if symbol.get("methods"):
+            methods = symbol["methods"]
+            parts.append(f"Methods: {', '.join(methods[:20])}")  # Limit to avoid token overflow
+            
+            # Categorize methods
+            special_methods = [m for m in methods if m.startswith('__') and m.endswith('__')]
+            private_methods = [m for m in methods if m.startswith('_') and not m.startswith('__')]
+            public_methods = [m for m in methods if not m.startswith('_')]
+            
+            if special_methods:
+                parts.append(f"Special methods: {', '.join(special_methods[:10])}")
+            if public_methods:
+                parts.append(f"Public methods: {', '.join(public_methods[:15])}")
+            if private_methods:
+                parts.append(f"Private methods: {', '.join(private_methods[:10])}")
+        
+        # Class header code
+        code = symbol.get("code", "")
+        if code:
+            parts.append(f"Class header:\n{code}")
         
         return '\n'.join(parts)
     

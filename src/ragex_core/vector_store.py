@@ -119,6 +119,12 @@ class CodeVectorStore:
             if docstring and len(docstring) < 1000:
                 metadata['docstring'] = docstring
             
+            # Add method names for classes (store as comma-separated string)
+            if symbol.get('methods'):
+                methods_str = ', '.join(symbol['methods'][:50])  # Limit for metadata size
+                if len(methods_str) < 500:  # ChromaDB metadata size limit
+                    metadata['methods'] = methods_str
+            
             metadatas.append(metadata)
         
         return ids, documents, metadatas

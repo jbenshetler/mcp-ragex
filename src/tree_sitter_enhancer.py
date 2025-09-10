@@ -37,6 +37,7 @@ class Symbol:
     signature: Optional[str] = None  # Function signature
     docstring: Optional[str] = None
     code: Optional[str] = None  # The actual code content
+    methods: Optional[List[str]] = None  # Method names for classes
     start_byte: Optional[int] = None  # Start position in file
     end_byte: Optional[int] = None  # End position in file
     
@@ -405,12 +406,44 @@ class TreeSitterEnhancer:
             else:
                 logger.error(f"Unexpected capture format: {type(capture)}, value: {capture}")
                 continue
-            # TODO: Temporarily skip class indexing to prevent massive code blocks
-            # This avoids indexing entire class definitions (can be 1000+ lines)
-            # Individual methods within classes are still indexed separately
-            # TODO: Future - implement class header-only indexing
+            
+            # Class indexing with header + method names only
             if capture_name == "class":
-                logger.debug(f"Skipping class symbol indexing for token optimization")
+                class_name_node = find_capture_node("class.name", node)
+                if class_name_node:
+                    class_name = self._extract_text(class_name_node, source)
+                    
+                    # Extract class header (declaration + docstring only)
+                    class_header = self._extract_class_header(node, source)
+                    
+                    # Extract method names from class body
+                    method_names = self._extract_method_names(node, source)
+                    
+                    # Extract class docstring
+                    docstring = self._extract_docstring(node, source, "python")
+                    
+                    # Build class signature with inheritance if present
+                    class_signature = f"class {class_name}"
+                    for child in node.children:
+                        if child.type == 'argument_list':  # Inheritance
+                            inheritance = self._extract_text(child, source)
+                            class_signature = f"class {class_name}{inheritance}"
+                            break
+                    
+                    symbols.append(Symbol(
+                        name=class_name,
+                        type="class",
+                        file=host_path,
+                        line=class_name_node.start_point[0] + 1,
+                        end_line=class_name_node.end_point[0] + 1,
+                        column=class_name_node.start_point[1],
+                        signature=class_signature,
+                        docstring=docstring,
+                        code=class_header,
+                        methods=method_names,
+                        start_byte=node.start_byte,
+                        end_byte=node.end_byte,
+                    ))
                 continue
             
             elif capture_name == "function" or capture_name == "method.name":
@@ -785,6 +818,64 @@ class TreeSitterEnhancer:
                         ))
         
         return symbols
+    
+    def _extract_class_header(self, class_node, source: bytes) -> str:
+        """Extract only the class declaration and docstring, not the full body"""
+        lines = source.decode('utf-8').split('\n')
+        start_line = class_node.start_point[0]
+        
+        # Find where the class body starts (after the colon)
+        header_lines = []
+        in_docstring = False
+        docstring_quotes = None
+        
+        for i, line in enumerate(lines[start_line:], start_line):
+            header_lines.append(line)
+            
+            # Check for docstring
+            stripped = line.strip()
+            if stripped.startswith('"""') or stripped.startswith("'''"):
+                if not in_docstring:
+                    in_docstring = True
+                    docstring_quotes = stripped[:3]
+                if stripped.endswith(docstring_quotes) and len(stripped) > 3:
+                    in_docstring = False
+                    break
+            elif in_docstring and (stripped.endswith('"""') or stripped.endswith("'''")):
+                in_docstring = False
+                break
+            elif in_docstring:
+                continue
+            elif stripped and not stripped.startswith('class') and not stripped.startswith('@') and not in_docstring:
+                # First non-docstring content after class declaration
+                break
+                
+        return '\n'.join(header_lines)
+
+    def _extract_method_names(self, class_node, source: bytes) -> List[str]:
+        """Extract method and property names from class body"""
+        method_names = []
+        
+        # Walk through child nodes to find function definitions
+        def walk_node(node):
+            if node.type == 'function_definition':
+                for child in node.children:
+                    if child.type == 'identifier':
+                        method_name = self._extract_text(child, source)
+                        method_names.append(method_name)
+                        break
+            
+            # Recursively walk child nodes
+            for child in node.children:
+                walk_node(child)
+        
+        # Only look in the class body (skip class declaration)
+        for child in class_node.children:
+            if child.type == 'block':  # Class body
+                walk_node(child)
+                break
+        
+        return method_names
     
     async def enhance_search_results(self, results: Dict[str, Any]) -> Dict[str, Any]:
         """Enhance ripgrep search results with symbol context"""
