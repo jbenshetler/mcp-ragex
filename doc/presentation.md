@@ -12,6 +12,9 @@ by Jeff Benshetler
     - [MCP Server](#mcp-server)
     - [Regex Search with ripgrep](#regex-search-with-ripgrep)
     - [Semantic Search with SentenceTransformer](#semantic-search-with-sentencetransformer)
+      - [Model Selection](#model-selection)
+      - [Similarity Search](#similarity-search)
+      - [Re-ranking](#re-ranking)
     - [Parse Languages Using Tree Sitter](#parse-languages-using-tree-sitter)
     - [Code Indexing](#code-indexing)
     - [Local first](#local-first)
@@ -20,6 +23,7 @@ by Jeff Benshetler
         - [File Access](#file-access)
       - [Isolation](#isolation)
         - [Network Access](#network-access)
+      - [Installation Ease](#installation-ease)
     - [Administration](#administration)
       - [Index Catalog](#index-catalog)
   - [Improvements](#improvements)
@@ -52,11 +56,31 @@ Initially creating an MCP server using the `mcp[cli]` package to expose `ripgrep
 Claude Code's default is to use regular expressions to search. At the time I created this tool, Claude used `grep`, which is single threaded and slow compared to the parallel `ripgrep`.
 
 ### Semantic Search with SentenceTransformer
+
+#### Model Selection
 SentenceTransformer was selected because of its speed and support in the Python ecosystem. While a code-trained model like [CodeBERT](https://arxiv.org/abs/2002.08155) is the natural approach, it is approximately 10X slower during indexing than the SentenceTransformer models. Because of the chunking done with tree sitter, in practice simpler models work well, at least for languages like Python and JavaScript. Additional challenges with CodeBERT include:
 
 1. SentenceTransformer outputs fixed-sized embeddings optimized for semantic similarity tasks like mean pooling or CLS token extraction vs. CodeBERT requiring additional processing. 
 1. The API between the two is different. 
 1. SentenceTransformer has built-in batch processing optimization while BERT models require custom batching implementation. 
+
+#### Similarity Search
+
+We are using Approximate Nearest Neighbor (ANN) with the cosine similarity metric implemented as implemented as Hierarchical Navigable Small World.
+
+[Similarity Metric vector_store.py:69](../src/ragex_core/vector_store.py)
+[Initial Search vectory_store.py:208](../src/ragex_core/vector_store.py)
+[Cosine Distance to Similarity Conversion cli/search.py:132](../src/cli/search.py)
+
+
+#### Re-ranking
+
+We use re-ranking to adjust the order of results based on simple additive preference weights. For example, we prefer function definitions to constants, and production code to test code. Not involving an LLM in re-ranking allows acceptable performance on CPU-only systems. The primary use case is returning the results to an LLM that will perform its own re-ranking. 
+
+[reranker.py](../src/ragex_core/reranker.py)
+ * Weights configuration L27 
+ * File-level penalties L145
+
 
 <details>
     <summary>Sample semantic search for 'Symbol creation with signature docstring code fields'</summary>
@@ -81,7 +105,7 @@ ragex - search_code_simple (MCP)(query: "Symbol creation with signature docstrin
 
 
 ### Parse Languages Using Tree Sitter
-A tree sitter approach gets most of the languages nuances right without requiring the complexity of a full parser. For many languages, a full parser requires an impractical amount of configuration for search paths, compiler options, etc., to be practical. Tree sitters are available for the languages of my immediate interest: Python, C++, JavaScript/TypeScript.
+A tree sitter approach gets most of the languages nuances right without requiring the complexity of a full parser. For many languages, a full parser requires an impractical amount of configuration for search paths, compiler options, etc.. Tree sitters are available for the languages of my immediate interest: Python, C++, JavaScript/TypeScript.
 
 [Tree Sitter](../src/tree_sitter_enhancer.py)
 
@@ -163,6 +187,24 @@ Each directory available for searching (via `ragex start`) runs in a separate Do
   * First attempt: Offline mode L83-98
   * Second attempt: Network download L23-38
 
+#### Installation Ease
+To make this easy to use, being able to have the program in your path and run it as `ragex` is a significant quality-of-live improvement. It relies on non-default Python packages and would otherwise have to run in a virtual environment. CUDA dependencies are notoriously difficult to get right. By packaging the application as a container and using a launch script, `ragex`, eliminates dependency management challenges for the user.
+
+<details>
+<summary>Recommended Installation</summary>
+
+```
+curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash
+ragex register claude --global # let Claude Code know about this MCP server
+cd <project>
+ragex start
+```
+
+</details>
+
+
+
+
 ### Administration
 #### Index Catalog
 
@@ -183,10 +225,12 @@ nancyknows-web        ragex_1000_787f160eb1a1840a     fast        yes       1175
 ## Improvements
 1. Layered Docker images for faster builds.
 1. Progress bars while indexing.
-1. Support for remote embedding computation with batching. 
+1. Support for remote embedding computation. 
 1. Download non-default model during installation, to avoid the need for network access during runtime.  
+1. Improve test coverage.
+1. 
 
 ## References
 1. "Context Rot: How Increasing Input Tokens Impacts LLM Performance" by Kelly Hong, Anton Troynikov, and Jeff Huber, https://research.trychroma.com/context-rot
 1. Claude Code Release Notes, https://claudelog.com/faqs/claude-code-release-notes/
-1. 
+1. "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs", Yu. A. Malkov, D. A. Yashunin, https://arxiv.org/abs/1603.09320
