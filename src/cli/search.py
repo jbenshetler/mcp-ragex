@@ -182,7 +182,12 @@ class SearchClient:
                 similarity = match.get('similarity', 0.0)
                 
                 # Use signature if available, otherwise use symbol name
-                line_content = signature if signature else symbol_name
+                # Special handling for comments since their signature is just "comment"
+                if symbol_type == 'comment':
+                    # For comments, use the actual comment text from 'code' field
+                    line_content = match.get('code', '') or symbol_name
+                else:
+                    line_content = signature if signature else symbol_name
                     
                 print(f"{file_path}:{line_num}:[{symbol_type}] ({similarity:.3f}) {line_content}")
             else:
@@ -272,9 +277,15 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
                 compact_match["score_delta"] = round(match["score_delta"], 3)
                 
             # Include signature or name for display - same logic as regular CLI output
-            signature = match.get('signature', '')
-            symbol_name = match.get('name', '')
-            display_content = signature if signature else symbol_name
+            # Special handling for comments since their signature is just "comment"
+            if match.get('type') == 'comment':
+                # For comments, use the actual comment text from 'code' field
+                display_content = match.get('code', '') or match.get('name', '')
+            else:
+                # For other symbols, use signature if available, otherwise name
+                signature = match.get('signature', '')
+                symbol_name = match.get('name', '')
+                display_content = signature if signature else symbol_name
             
             if display_content:
                 compact_match["line_content"] = display_content
