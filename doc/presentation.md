@@ -108,7 +108,17 @@ The tree sitter provides natural chunking, with the most salient chunk being fun
 Variables are specifically not indexed because they often require a broader, ill-defined context to get semantic meaning. 
 
 ### Code Indexing
-An index is necessary for semantic search to work. The only way to start the per-directory container is using `ragex start`, which builds or intelligently rebuilds the index before launching the container. 
+An index is necessary for semantic search to work. The only way to start the per-directory container is using `ragex start`, which builds or intelligently rebuilds the index before launching the container.
+
+[ragex](../ragex)
+ * `cmd_start()` L619
+ * Index command processing `cmd_index()` L549
+ * Ensure the daemon is running `exec_via_daemon()` L317
+ * Creates the per-directory container `start_daemon()` L174
+
+Calling `ragex start` from within a directory that already has an index will start that ancestor directory's container rather than create a new one. 
+
+
 
 ### Local first
 Since this project targets not the general public but developers using coding agents, the assumption is that they have either a GPU or a sufficiently powerful CPU to compute the embeddings locally. This preserves the code privacy. 
@@ -141,6 +151,10 @@ The application is limited to accessing to host files using volume mounts, limit
 
 #### Isolation
 Each directory available for searching (via `ragex start`) runs in a separate Docker container, using the host file permissions to enforce isolation. Individual containers can be stopped using `ragex stop` and can be removed using `ragex rm <project ID | glob>`. 
+
+[ragex](../ragex)
+ * Properties that create per-directory isolation L64
+ * Creates unique ID per directory L157
 
 ##### Network Access
  Additionally, the container does not have network access at all enforced by Docker unless the `--network` flag is passed during installation. [install.sh:18](../install.sh). The network is needed during installation for the host to pull the Docker image. The default model is included as part of the Docker image, therefore no runtime network access is needed by the container. If the user requests additional models, they need to provide network access used during runtime to download the model. Because the model is stored in the persistent volume mount, that mount must exist before the model is downloaded. Non-default models are downloaded when a user first indexes a project.   
