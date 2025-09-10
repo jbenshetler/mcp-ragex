@@ -13,11 +13,15 @@ by Jeff Benshetler
     - [Regex Search with ripgrep](#regex-search-with-ripgrep)
     - [Semantic Search with SentenceTransformer](#semantic-search-with-sentencetransformer)
     - [Parse Languages Using Tree Sitter](#parse-languages-using-tree-sitter)
+    - [Code Indexing](#code-indexing)
     - [Local first](#local-first)
     - [Containerize Application](#containerize-application)
       - [Security](#security)
         - [File Access](#file-access)
+      - [Isolation](#isolation)
         - [Network Access](#network-access)
+    - [Administration](#administration)
+      - [Index Catalog](#index-catalog)
   - [Improvements](#improvements)
   - [References](#references)
 
@@ -103,6 +107,9 @@ The tree sitter provides natural chunking, with the most salient chunk being fun
 
 Variables are specifically not indexed because they often require a broader, ill-defined context to get semantic meaning. 
 
+### Code Indexing
+An index is necessary for semantic search to work. The only way to start the per-directory container is using `ragex start`, which builds or intelligently rebuilds the index before launching the container. 
+
 ### Local first
 Since this project targets not the general public but developers using coding agents, the assumption is that they have either a GPU or a sufficiently powerful CPU to compute the embeddings locally. This preserves the code privacy. 
 
@@ -116,6 +123,7 @@ Source files are mounted inside the container and the reported path needs to be 
 1. Isolation
 
 #### Security
+
 ##### File Access
 The application is limited to accessing to host files using volume mounts, limited to:
   1. Indexed directory → /workspace (read-only)
@@ -131,8 +139,31 @@ The application is limited to accessing to host files using volume mounts, limit
     - Path information only, not mounted as volume
     - Used for path mapping between container and host
 
+#### Isolation
+Each directory available for searching (via `ragex start`) runs in a separate Docker container, using the host file permissions to enforce isolation. Individual containers can be stopped using `ragex stop` and can be removed using `ragex rm <project ID | glob>`. 
+
 ##### Network Access
- Additionally, the container does not have network access at all enforced by Docker unless the `--network` flag is passed during installation. [install.sh:18](../install.sh). The default model is included as part of the Docker image. If the user requests additional models, they need to provide network access used during runtime to download the model. Because the model is stored in the persistent volume mount, that mount must exist before the model is downloaded.  
+ Additionally, the container does not have network access at all enforced by Docker unless the `--network` flag is passed during installation. [install.sh:18](../install.sh). The network is needed during installation for the host to pull the Docker image. The default model is included as part of the Docker image, therefore no runtime network access is needed by the container. If the user requests additional models, they need to provide network access used during runtime to download the model. Because the model is stored in the persistent volume mount, that mount must exist before the model is downloaded. Non-default models are downloaded when a user first indexes a project.   
+
+ [Networking strategy embedding.py L79-121](../src/ragex_core/embedding_manager.py)
+  * First attempt: Offline mode L83-98
+  * Second attempt: Network download L23-38
+
+### Administration
+#### Index Catalog
+
+<details>
+<summary>Available indices can be catalogued using `ragex ls [-lh]`</summary>
+
+```
+PROJECT NAME          PROJECT ID                      MODEL       INDEXED   SYMBOLS   SIZE          PATH
+--------------------------------------------------------------------------------------------------------
+mcp-ragex             ragex_1000_f8902326ad894225     fast        yes       2624      36.2M         /home/jeff/clients/mcp-ragex
+mcp-ragex-example     ragex_1000_de615df33aa15e6f     fast        yes       2606      36.7M         /home/jeff/clients/mcp-ragex-example
+nancyknows-web        ragex_1000_787f160eb1a1840a     fast        yes       11759     72.3M         /home/jeff/clients/nancyknows/nancyknows-web
+```
+</details>
+
 
 
 ## Improvements
