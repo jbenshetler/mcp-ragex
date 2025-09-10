@@ -175,12 +175,16 @@ class SearchClient:
             line_num = match.get('line', match.get('line_number', 0))
             
             if mode == "semantic" and 'code' in match:
-                # Show semantic result with similarity score
-                symbol_lines = match['code'].split('\n')
-                if symbol_lines:
-                    line_content = symbol_lines[0].rstrip()
-                    similarity = match.get('similarity', 0.0)
-                    print(f"{file_path}:{line_num}:[{match.get('type', 'unknown')}] ({similarity:.3f}) {line_content}")
+                # Show semantic result with similarity score - use signature or name
+                symbol_type = match.get('type', 'unknown')
+                symbol_name = match.get('name', 'unknown')
+                signature = match.get('signature', '')
+                similarity = match.get('similarity', 0.0)
+                
+                # Use signature if available, otherwise use symbol name
+                line_content = signature if signature else symbol_name
+                    
+                print(f"{file_path}:{line_num}:[{symbol_type}] ({similarity:.3f}) {line_content}")
             else:
                 # Show regex/symbol result (no similarity score)
                 if 'line' in match:
