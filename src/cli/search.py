@@ -271,17 +271,13 @@ async def run_search(args: argparse.Namespace, search_client: Optional[SearchCli
             if "score_delta" in match:
                 compact_match["score_delta"] = round(match["score_delta"], 3)
                 
-            # Include only first line of code to keep response size manageable
-            if "code" in match and match["code"]:
-                first_line = match["code"].split('\n')[0].strip()
-                if len(first_line) > 80:  # Trim very long lines
-                    first_line = first_line[:80] + "..."
-                compact_match["code"] = first_line
-            elif "line" in match:  # Regex results
-                line_content = match["line"].strip()
-                if len(line_content) > 80:
-                    line_content = line_content[:80] + "..."
-                compact_match["line_content"] = line_content
+            # Include signature or name for display - same logic as regular CLI output
+            signature = match.get('signature', '')
+            symbol_name = match.get('name', '')
+            display_content = signature if signature else symbol_name
+            
+            if display_content:
+                compact_match["line_content"] = display_content
             
             compact_matches.append(compact_match)
         
