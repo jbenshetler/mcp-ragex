@@ -361,7 +361,14 @@ class EmbeddingManager:
         
         # Basic metadata
         parts.append(f"Type: {symbol.get('type', 'unknown')}")
-        parts.append(f"Name: {symbol.get('name', 'unknown')}")
+        symbol_name = symbol.get('name', 'unknown')
+        parts.append(f"Name: {symbol_name}")
+        
+        # Add normalized name variations for better searchability
+        name_variations = self._normalize_symbol_name(symbol_name)
+        if len(name_variations) > 1:  # Only add if there are actual variations
+            parts.append(f"Name variations: {', '.join(name_variations[1:])}")
+        
         parts.append(f"Language: {symbol.get('language', 'unknown')}")
         
         # File context
@@ -470,6 +477,48 @@ class EmbeddingManager:
             convert_to_numpy=True,
             normalize_embeddings=self.config.normalize_embeddings
         )
+    
+    def _normalize_symbol_name(self, name: str) -> List[str]:
+        """Generate normalized variations of symbol names for better searchability"""
+        if not name or name == 'unknown':
+            return [name]
+            
+        variations = [name]  # Original name
+        
+        # Convert snake_case to space-separated (handle leading underscores properly)
+        if '_' in name:
+            # For names like '_handle_incremental_index', preserve leading underscore meaning
+            if name.startswith('_'):
+                # Strip leading underscores, convert, then note as private
+                clean_name = name.lstrip('_')
+                if clean_name:
+                    space_version = clean_name.replace('_', ' ')
+                    variations.append(f"private {space_version}")
+                    variations.append(space_version)  # Also add without 'private'
+            else:
+                space_version = name.replace('_', ' ')
+                variations.append(space_version)
+        
+        # Convert camelCase to space-separated
+        import re
+        # Split on capital letters: camelCase -> camel Case
+        camel_split = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+        if camel_split != name:
+            variations.append(camel_split.lower())
+        
+        # Convert kebab-case to space-separated
+        if '-' in name:
+            variations.append(name.replace('-', ' '))
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_variations = []
+        for var in variations:
+            if var not in seen:
+                seen.add(var)
+                unique_variations.append(var)
+        
+        return unique_variations
     
     def embed_code_symbols(self, symbols: List[Dict], batch_size: Optional[int] = None, show_progress: bool = True) -> np.ndarray:
         """Embed code symbols with enriched context
