@@ -1,0 +1,79 @@
+graph TD
+      A[MCP Client<br/>Claude Code] -->|JSON-RPC Request| B[ragex-mcp wrapper]
+      B -->|--mcp flag| C[ragex Python CLI]
+      C -->|Check daemon running| D{Daemon Container<br/>Running?}
+
+      D -->|No| E[Start Daemon Container]
+      E -->|Mount workspace:ro<br/>Mount user volume| F[ragex_daemon_PROJECT_ID]
+      D -->|Yes| F
+
+      F -->|Docker exec -i| G[Socket Client<br/>src/socket_client.py]
+      G -->|JSON over Unix socket| H[MCP Server<br/>src/server.py]
+
+      H -->|Parse search request| I[Semantic Search Handler<br/>search_code tool]
+      I -->|Auto-detect mode| J{Query Analysis}
+
+      J -->|Semantic mode| K[Load Components]
+      J -->|Regex mode| L[RipgrepSearcher<br/>Direct file search]
+
+      K --> M[EmbeddingManager<br/>SentenceTransformer]
+      K --> N[CodeVectorStore<br/>ChromaDB]
+
+      M -->|Encode query| O[Query Embedding<br/>384/768/1024 dims]
+      O -->|Cosine similarity| N
+
+      N -->|HNSW search| P[Initial Results<br/>Distance scores]
+      P -->|Convert distance to similarity<br/>1.0 - distance| Q[Raw Semantic Results]
+
+      Q --> R[FeatureReranker<br/>Multi-signal scoring]
+
+      R --> S[Reranking Weights]
+      S --> T[exact_name_match: +0.3<br/>partial_name_match: +0.15<br/>symbol_type_match: +0.1<br/>definition_bonus: +0.1<br/>file_relevance: +0.1<br/>has_documentation: +0.05<br/>import_statement: +0.05<br/>test_file_penalty: -0.1<br/>comment_penalty: -0.15]
+
+      T --> U[Final Reranked Results<br/>base_score + feature_scores]
+
+      L --> V[Ripgrep Results<br/>Line matches]
+
+      U --> W[Result Formatter<br/>MinimalFormatter/CompactFormatter/RichFormatter]
+      V --> W
+
+      W -->|Token limit check<br/>~2K/5K/15K tokens| X[Formatted Response<br/>CLI-style output]
+
+      X -->|JSON response| H
+      H -->|Unix socket| G
+      G -->|Docker exec stdout| C
+      C -->|JSON-RPC Response| B
+      B -->|MCP Protocol| A
+
+    subgraph "Container Volume Mounts"
+          Y["/workspace:ro/Project files"]
+          Z["/data/ChromaDB + Models"]
+          AA["ragex_user_UID<br/>Persistent storage"]
+    end
+
+    subgraph "Embedding Context Creation"
+        BB[Symbol Type Analysis]
+        BB --> CC[Functions/Classes<br/>→ _create_default_context]
+        BB --> DD[Import Statements<br/>→ _create_import_context]
+        BB --> EE[Comments<br/>→ _create_comment_context]
+        BB --> FF[Constants<br/>→ _create_constant_context]
+        BB --> GG[Env Variables<br/>→ _create_env_var_context]
+    end
+
+    subgraph "ChromaDB Configuration"
+        HH[Collection Metadata]
+        HH --> II[hnsw:space: cosine<br/>hnsw:construction_ef<br/>hnsw:search_ef<br/>hnsw:M]
+    end
+
+    M -.-> BB
+    N -.-> HH
+    F -.-> Y
+    F -.-> Z
+    F -.-> AA
+
+    style A fill:#e1f5fe
+    style F fill:#fff3e0
+    style M fill:#f3e5f5
+    style N fill:#e8f5e8
+    style R fill:#fff8e1
+    style W fill:#fce4ec
