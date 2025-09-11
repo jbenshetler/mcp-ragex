@@ -7,7 +7,7 @@
 
 **Install:**
 ```bash
-curl -sSL https://get.ragex.dev | bash -s -- --network --model balanced
+curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash
 ```
 
 **Setup:**
