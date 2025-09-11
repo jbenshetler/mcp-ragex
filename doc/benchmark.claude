@@ -1,0 +1,23 @@
+If you have access to the MCP ragex for search, default the limit to 8 results.Prefer using MCP ragex context search when searching. 
+
+Find the function that updates the weights of the results after similarity search and before returning them to the user. Output only " 1) "  followed by the file name and line, nothing else. 
+
+Find the function that prepares the results for the end user, either in text or json format. Output only " 2) " followed by the file name and line, nothing else. 
+
+Find the class that does periodic rescans of the files. Output only " 3) " followed by the class name and nothing else. 
+
+Find the names of the embedding model used by default. Output only " 4) " followed by this this and nothing else. 
+
+Identify the class or function used to watch for updates to the file system. Output only " 5) " followed by the class or function name and nothing else. 
+
+Identify how the system speeds up indexing the files by making best use of the cpu. Output only " 6) " followed by a brief answer. 
+
+What class or function is used to store durable values referenced each time the program is run? Output only " 7) " followed by a brief answer. 
+
+What technique does the system use to prevent overloading the CPU when indexing? Output only " 8) " followed by a brief answer. 
+
+What techniques are used to minimize reindexing of source files? Output only " 9) " followed by a brief answer. 
+
+How does the system avoid creating duplicate projects for the same directory? Output only "10) " followed by a brief answer. 
+
+Which files can I create or modify to adjust which files are ignored or processed during indexing? Output only "11) " followed by a brief answer. 

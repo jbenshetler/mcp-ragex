@@ -30,14 +30,17 @@ by Jeff Benshetler
       - [Index Catalog](#index-catalog)
   - [Why](#why)
     - [Prefer Tree Sitter to a Language Server Protocol Server](#prefer-tree-sitter-to-a-language-server-protocol-server)
+  - [Benchmarks](#benchmarks)
   - [Improvements](#improvements)
   - [References](#references)
+
 ## Summary
 Every developer using AI coding agents faces:
 1. Slow searches (although Claude Code has recently added support for `ripgrep`).
 2. Failed searches due to imprecise regular expressions, leading to duplicate code. 
 
 This project adds semantic search, improving recall and reducing search time from tens of seconds to 0.3 seconds. 
+
 ### Technical Challenge:
 LLMs don't understand code structure, only token sequences. This work combines tree-sitter AST parsing with semantic embeddings producing faster, more accurate search results. 
 
@@ -215,8 +218,8 @@ To make this easy to use, being able to have the program in your path and run it
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jbenshetler/mcp-ragex/refs/heads/main/install.sh | bash
-ragex register claude --global # let Claude Code know about this MCP server
 cd <project>
+ragex register claude | bash # per-project
 ragex start
 ```
 </details>
@@ -238,6 +241,14 @@ nancyknows-web        ragex_1000_787f160eb1a1840a     fast        yes       1175
 ## Why 
 ### Prefer Tree Sitter to a Language Server Protocol Server
 The tree sitter is fast, incremental, and local operating on a single file that operates on syntax only. An LSP operates on an entire project, requiring substantial configuration. The LSP provides semantics and types although it is slower. Speed and configuration are the main reasons to prefer a tree sitter for this application. 
+
+## Benchmarks
+The benchmark is 11 questions about this code base run in headless mode. This is looped 12 times. The answers are logged and the Claude Code JSON logs are analyzed to extract token usage and run time. 
+
+`ragex` creates and processes fewer tokens that either `grep` or `ripgrep`. It outputs fewer tokens than `grep` with similar values to `ripgrep`. It is 2X faster than either `grep` or `ripgrep`. 
+
+
+![Performance Comparison: grep, ripgrep, ragex](benchmarks.png) 
 
 ## Improvements
 1. Layered Docker images for faster builds.
