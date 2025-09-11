@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 # Import from lib modules
-from src.ragex_core.ripgrep_searcher import RipgrepSearcher
+from src.ragex_core.ripgrep_searcher import RipgrepSearcher, RAW_RESULTS_LIMIT
 from src.ragex_core.pattern_matcher import PatternMatcher
 from src.tree_sitter_enhancer import TreeSitterEnhancer
 from src.ragex_core.path_mapping import container_to_host_path, PathMappingError
@@ -113,7 +113,7 @@ class SearchClient:
         # Search vector store
         results = self.semantic_searcher['vector_store'].search(
             query_embedding=query_embedding,
-            limit=limit * 2,  # Get more to deduplicate
+            limit=RAW_RESULTS_LIMIT,  # Fixed limit for raw results collection
         )
         
         # Process results
@@ -133,7 +133,7 @@ class SearchClient:
                     'docstring': result["metadata"].get("docstring", ""),
                     'signature': result["metadata"].get("signature", "")
                 })
-                if len(matches) >= limit * 2:  # Get more for reranking
+                if len(matches) >= RAW_RESULTS_LIMIT:  # Fixed limit for raw results collection
                     break
         
         # Filter by minimum similarity if specified

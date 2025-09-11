@@ -14,11 +14,15 @@ try:
     from .embedding_manager import EmbeddingManager
     from .vector_store import CodeVectorStore
     from .project_utils import get_chroma_db_path
+    from .ripgrep_searcher import RAW_RESULTS_LIMIT
+    from .reranker import FeatureReranker
 except ImportError:
     from searcher_base import SearcherBase
     from embedding_manager import EmbeddingManager
     from vector_store import CodeVectorStore
     from project_utils import get_chroma_db_path
+    from ripgrep_searcher import RAW_RESULTS_LIMIT
+    from reranker import FeatureReranker
 
 logger = logging.getLogger("semantic-searcher")
 
@@ -35,6 +39,7 @@ class SemanticSearcher(SearcherBase):
         try:
             self.embedder = EmbeddingManager()
             self.vector_store = CodeVectorStore(persist_directory=str(chroma_path))
+            self.reranker = FeatureReranker()
             
             # Verify ChromaDB has data
             stats = self.vector_store.get_statistics()
@@ -74,7 +79,7 @@ class SemanticSearcher(SearcherBase):
             # Build metadata filter (follow CLI model - only pass where if needed)
             search_kwargs = {
                 "query_embedding": query_embedding,
-                "limit": limit
+                "limit": RAW_RESULTS_LIMIT  # Use fixed raw results limit for collection
             }
             
             if file_types:
@@ -82,10 +87,10 @@ class SemanticSearcher(SearcherBase):
                 search_kwargs["where"] = where_filter
                 logger.info(f"Filtering by file types: {file_types}")
             
-            # Execute search (like CLI - no where parameter if no filters)
+            # Execute search with fixed raw limit
             search_results = self.vector_store.search(**search_kwargs)
             
-            # Format results for standardized output
+            # Format results for reranking
             formatted_matches = []
             for result in search_results.get('results', []):
                 metadata = result.get('metadata', {})
@@ -102,9 +107,15 @@ class SemanticSearcher(SearcherBase):
                     'signature': metadata.get('signature', ''),
                 }
                 
-                # Apply similarity threshold
+                # Apply similarity threshold during raw collection
                 if match['similarity'] >= similarity_threshold:
                     formatted_matches.append(match)
+            
+            # Apply feature-based reranking with user's limit as final limit
+            if formatted_matches:
+                logger.info(f"Before reranking: {len(formatted_matches)} matches, top 3: {[(m['name'], m['similarity']) for m in formatted_matches[:3]]}")
+                formatted_matches = self.reranker.rerank(query, formatted_matches, top_k=limit)
+                logger.info(f"After reranking: {len(formatted_matches)} matches, top 3: {[(m['name'], m.get('reranked_score', 0)) for m in formatted_matches[:3]]}")
             
             # Create standardized result
             result = {

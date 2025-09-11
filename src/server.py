@@ -173,7 +173,7 @@ else:
         # Don't change working directory to avoid breaking Python imports
 
 # Import RipgrepSearcher and constants
-from src.ragex_core.ripgrep_searcher import RipgrepSearcher, ALLOWED_FILE_TYPES, DEFAULT_RESULTS, MAX_RESULTS
+from src.ragex_core.ripgrep_searcher import RipgrepSearcher, ALLOWED_FILE_TYPES, DEFAULT_RESULTS, MAX_RESULTS, RAW_RESULTS_LIMIT
 
 
 # Initialize server
