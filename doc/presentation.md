@@ -2,13 +2,15 @@
 by Jeff Benshetler
 2025-09-10
 ## Table of Contents
+<details>
+
 - [`ragex` : Semantic Search for Code with an MCP Interface](#ragex--semantic-search-for-code-with-an-mcp-interface)
   - [Table of Contents](#table-of-contents)
   - [Summary](#summary)
     - [Technical Challenge:](#technical-challenge)
     - [Introduction](#introduction)
+    - [Requirements](#requirements)
   - [Query Flow](#query-flow)
-  - [Requirements](#requirements)
   - [Design Decisions](#design-decisions)
     - [MCP Server](#mcp-server)
     - [Regex Search with ripgrep](#regex-search-with-ripgrep)
@@ -31,8 +33,10 @@ by Jeff Benshetler
   - [Why](#why)
     - [Prefer Tree Sitter to a Language Server Protocol Server](#prefer-tree-sitter-to-a-language-server-protocol-server)
   - [Benchmarks](#benchmarks)
-  - [Improvements](#improvements)
+  - [Possible Improvements](#possible-improvements)
   - [References](#references)
+
+</details>
 
 ## Summary
 Every developer using AI coding agents faces:
@@ -55,9 +59,16 @@ I learn best by application. I want to more easily locate files from my hard dri
 While I was pleased with the help Claude Code provided, I was stymied by the dreaded `Compacting Conversation`, delayed by the slow `Searching` tools calls, and frustrated by how often it would recreate existing functionality. When Claude Code added support for `ripgrep` in April, 2025, I decided to do something about this. 
 </details>
 
+
+### Requirements
+As a developer using LLM coding agents, I want to spend less time waiting for the coding agent to search my code, and for the search results to be more relevant.
+1. Speed regular expression searches
+2. Support semantic searches
+3. Callable by MCP
+
 ## Query Flow
 
-![Query Flow](query-flow.png)
+![Query Flow](query-flow-simplified.png)
 
   Key Flow Points:
   1. MCP Entry: Claude Code → ragex-mcp wrapper → ragex CLI with --mcp flag
@@ -67,13 +78,6 @@ While I was pleased with the help Claude Code provided, I was stymied by the dre
   5. Reranking: Multi-signal feature scoring with symbol type weights
   6. Response Formatting: Token-limited output optimized for different detail levels
   7. Return Path: JSON-RPC back through socket → docker exec → wrapper → MCP client
-
-
-## Requirements
-As a developer using LLM coding agents, I want to spend less time waiting for the coding agent to search my code, and for the search results to be more relevant.
-1. Speed regular expression searches
-2. Support semantic searches
-3. Callable by MCP
 
 ## Design Decisions
 ### MCP Server
@@ -119,15 +123,15 @@ This creates richer context for functions and classes than imports, environment 
 We use re-ranking to adjust the order of results based on simple additive preference weights. For example, we prefer function definitions to constants, and production code to test code. Not involving an LLM in re-ranking allows acceptable performance on CPU-only systems. The primary use case is returning the results to an LLM that will perform its own re-ranking. 
 
 [reranker.py](../src/ragex_core/reranker.py)
- * Weights configuration L27 
- * File-level penalties L145
+ * [Weights configuration](../src/ragex_core/reranker.py#L27) 
+ * [File-level penalties](../src/ragex_core/reranker.py#L145)
 
 
 
 ### Parse Languages Using Tree Sitter
 A tree sitter approach, i.e., using a fast, incremental parser, gets most of the language's nuances right without requiring the complexity of a full parser. For many languages, a full parser requires an impractical amount of configuration for search paths, compiler options, etc. Tree sitters are available for the languages of my immediate interest: Python, C++, JavaScript/TypeScript.
 
-[Tree Sitter](../src/tree_sitter_enhancer.py)
+[Tree Sitter](../src/tree_sitter_enhancer.py#L107)
 
 The tree sitter provides natural chunking, with the most salient chunk being function name and associated signature. So when generating embeddings for functions and classes, the system creates rich context that includes:
   1. Basic metadata: Type, name, language, file
@@ -144,8 +148,7 @@ the semantic meaning described in its docstring.
 For example, if a function has a docstring saying "Calculate the total price including tax", a search for "calculate price tax" will match that function even if those
 exact words aren't in the function name.
 
-[Embedding Manager](../src/ragex_core/embedding_manager.py)
- * `_create_default_context` L329-330
+[Embedding Manager](../src/ragex_core/embedding_manager.py#L329)
 
 Variables are specifically not indexed because they often require a broader, ill-defined context to get semantic meaning. 
 
@@ -158,11 +161,9 @@ An index is necessary for semantic search to work. The only way to start the per
 ![Indexing Sequence Diagram](indexing-sequence.png)
 </details>
 
-[ragex](../ragex)
- * `cmd_start()` L619
- * Index command processing `cmd_index()` L549
- * Ensure the daemon is running `exec_via_daemon()` L317
- * Creates the per-directory container `start_daemon()` L174
+ * [Index command processing](../ragex#L549)
+ * [Ensure the daemon is running](../ragex#L317)
+ * [Creates the per-directory container](../ragex#L174)
 
 Calling `ragex start` from within a directory that already has an index will start that ancestor directory's container rather than create a new one. 
 
@@ -171,8 +172,7 @@ Calling `ragex start` from within a directory that already has an index will sta
 ### Local first
 Since this project targets not the general public but developers using coding agents, the assumption is that they have either a GPU or a sufficiently powerful CPU to compute the embeddings locally. This preserves the code privacy. 
 
-[Embedding Manager](../src/ragex_core/embedding_manager.py)
- * `embed_code_symbols` L427
+[Embedding Manager](../src/ragex_core/embedding_manager.py#L427)
 
 ### Containerize Application
 Source files are mounted inside the container and the reported path needs to be relative to the host. There is path translation that has to happen. 
@@ -188,7 +188,7 @@ The application is limited to accessing host files using volume mounts, limited 
      - Read-only access prevents accidental modification
   2. User config directory (`$HOME/.config/ragex`) → `/home/ragex/.config/ragex`
      - Stores RAGex configuration files
-     - Only mounted in the fallback wrapper [install.sh:170](../install.sh#L170)
+     - Only mounted in the fallback wrapper [install.sh](../install.sh#L170)
   3. User data volume (ragex_user_<user_id>) → `/data`
      - Docker named volume for persistent data (ChromaDB indexes, models, etc.)
      - Isolated per user ID for security
@@ -199,16 +199,15 @@ The application is limited to accessing host files using volume mounts, limited 
 #### Isolation
 Each directory available for searching (via `ragex start`) runs in a separate Docker container, using the host file permissions to enforce isolation. Individual containers can be stopped using `ragex stop` and can be removed using `ragex rm <project ID | glob>`. 
 
-[ragex](../ragex)
- * Properties that create per-directory isolation L64
- * Creates unique ID per directory L157
+ * [Properties that create per-directory isolation](../ragex#L64)
+ * [Creates unique ID per directory](../ragex#L157)
 
 ##### Network Access
 Additionally, the container does not have network access at all enforced by Docker unless the `--network` flag is passed during installation. [install.sh:18](../install.sh#L18). The network is needed during installation for the host to pull the Docker image. The default model is included as part of the Docker image, therefore no runtime network access is needed by the container. If the user requests additional models, they need to provide network access used during runtime to download the model. Because the model is stored in the persistent volume mount, that mount must exist before the model is downloaded. Non-default models are downloaded when a user first indexes a project.   
  
-[Networking strategy embedding_manager.py L79-121](../src/ragex_core/embedding_manager.py#L79-L121)
-  * First attempt: Offline mode L83-98
-  * Second attempt: Network download L23-38
+ * [Networking strategy](../src/ragex_core/embedding_manager.py#L79)
+ * [First attempt: Offline mode](../src/ragex_core/embedding_manager.py#L83)
+ * [Second attempt: Network download](../src/ragex_core/embedding_manager.py#L104)
 
 #### Installation Ease
 To make this easy to use, being able to have the program in your path and run it as `ragex` is a significant quality-of-life improvement. It relies on non-default Python packages and would otherwise have to run in a virtual environment. CUDA dependencies are notoriously difficult to get right. By packaging the application as a container and using a launch script, `ragex`, eliminates dependency management challenges for the user.
@@ -250,7 +249,7 @@ The benchmark is 11 questions about this code base run in headless mode. This is
 
 ![Performance Comparison: grep, ripgrep, ragex](benchmarks.png) 
 
-## Improvements
+## Possible Improvements
 1. Layered Docker images for faster builds.
 2. Progress bars while indexing.
 3. Support for remote embedding computation. 
