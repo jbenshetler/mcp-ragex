@@ -129,6 +129,12 @@ We are using Approximate Nearest Neighbor (ANN) with the cosine similarity metri
  * [Initial Search](../src/ragex_core/vector_store.py#L208)
  * [Cosine Distance to Similarity Conversion](../src/cli/search.py#L132)
 
+Cosine similarity is used because we are choosing semantic over syntactic similarity. 
+ 1. This is semantic search and we care about conceptual similarity, not code length. 
+ 1. Different programming languages encode concepts with different levels of verbosity.
+ 1. Verbose versus concise doesn't affect the similarity metric. 
+ 1. ChromaDB is highly optimized for HNSW with cosine similarity. 
+
 #### Context Induced Bias
 The following is passed to the encoder when computing embeddings:
 1. Type & Name: "Type: function", "Name: my_function"
