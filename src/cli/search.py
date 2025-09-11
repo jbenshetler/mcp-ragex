@@ -142,6 +142,12 @@ class SearchClient:
             matches = [m for m in matches if m.get('similarity', 0.0) >= min_similarity]
             logger.info(f"Similarity filter ({min_similarity}): {original_count} -> {len(matches)} matches")
         
+        # Filter out non-existent files
+        original_count = len(matches)
+        matches = [m for m in matches if m.get('file', '') and Path(m['file']).exists()]
+        if original_count > len(matches):
+            logger.info(f"File existence filter: {original_count} -> {len(matches)} matches")
+        
         # Apply feature-based reranking
         if matches:
             logger.info(f"Before reranking: {len(matches)} matches, top 3: {[(m['name'], m['similarity']) for m in matches[:3]]}")

@@ -109,7 +109,12 @@ class SemanticSearcher(SearcherBase):
                 
                 # Apply similarity threshold during raw collection
                 if match['similarity'] >= similarity_threshold:
-                    formatted_matches.append(match)
+                    # Check if file still exists before adding to results
+                    file_path = match.get('file', '')
+                    if file_path and Path(file_path).exists():
+                        formatted_matches.append(match)
+                    elif file_path:
+                        logger.debug(f"Skipping non-existent file: {file_path}")
             
             # Apply feature-based reranking with user's limit as final limit
             if formatted_matches:
