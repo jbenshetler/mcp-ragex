@@ -1,0 +1,43 @@
+graph TD
+    A[MCP Client<br/>Claude Code] -->|JSON-RPC| B[ragex-mcp wrapper]
+    B -->|Start if needed| C[Daemon Container<br/>ragex_daemon_PROJECT_ID]
+    
+    C -->|Docker exec| D[MCP Server<br/>src/server.py]
+    D -->|Parse request| E{"Mode Selection"}
+    
+    E -->|Semantic mode| F[Semantic Search Pipeline]
+    E -->|Regex mode| G[RipgrepSearcher<br/>Direct file search]
+    
+    F --> H[EmbeddingManager<br/>SentenceTransformer]
+    F --> I[CodeVectorStore<br/>ChromaDB]
+    
+    H -->|Encode query| J[Query Embedding]
+    J -->|Similarity search| I
+    I -->|HNSW search| K[Semantic Results]
+    
+    K --> L[FeatureReranker<br/>Multi-signal scoring]
+    L --> M[Reranked Results]
+    
+    G --> N[Ripgrep Results]
+    
+    M --> O[Result Formatter<br/>Minimal/Compact/Rich]
+    N --> O
+    
+    O -->|Token limit check| P[Formatted Response]
+    P -->|Return via container| D
+    D -->|JSON-RPC Response| A
+    
+    subgraph "Container Storage"
+        Q["/workspace:ro<br/>Project files"]
+        R["/data<br/>ChromaDB + Models"]
+    end
+    
+    C -.-> Q
+    C -.-> R
+    
+    style A fill:#e1f5fe
+    style C fill:#fff3e0
+    style H fill:#f3e5f5
+    style I fill:#e8f5e8
+    style L fill:#fff8e1
+    style O fill:#fce4ec
