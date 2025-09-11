@@ -837,7 +837,7 @@ async def handle_intelligent_search(
     paths: List[str],  # Required - no dangerous defaulting to cwd
     mode: str = "auto",
     file_types: Optional[List[str]] = None,
-    limit: int = 50,
+    limit: int = DEFAULT_RESULTS,
     case_sensitive: bool = False,
     include_symbols: bool = False,  # For compatibility with Claude Code
     similarity_threshold: float = 0.25,

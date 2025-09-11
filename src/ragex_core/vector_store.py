@@ -13,8 +13,10 @@ from pathlib import Path
 
 try:
     from src.ragex_core.embedding_config import EmbeddingConfig
+    from src.ragex_core.ripgrep_searcher import DEFAULT_RESULTS
 except ImportError:
     from .embedding_config import EmbeddingConfig
+    from .ripgrep_searcher import DEFAULT_RESULTS
 
 logger = logging.getLogger("vector-store")
 
@@ -188,7 +190,7 @@ class CodeVectorStore:
     
     def search(self, 
               query_embedding: np.ndarray, 
-              limit: int = 20,
+              limit: int = DEFAULT_RESULTS,
               where: Optional[Dict] = None,
               include: Optional[List[str]] = None) -> Dict[str, Any]:
         """Search for similar code using vector similarity

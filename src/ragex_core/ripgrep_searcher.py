@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Any
 
 # Security constants
 MAX_RESULTS = 200
-DEFAULT_RESULTS = 20
+DEFAULT_RESULTS = 8
 MAX_PATTERN_LENGTH = 500
 ALLOWED_FILE_TYPES = {
     "py", "python", "js", "javascript", "ts", "typescript", 
