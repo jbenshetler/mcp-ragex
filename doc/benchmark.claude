@@ -1,4 +1,4 @@
-If you have access to the MCP ragex for search, default the limit to 8 results.Prefer using MCP ragex context search when searching. 
+If you have access to the MCP ragex for search, default the limit to 8 results.Prefer using MCP ragex context search when searching. Pass the parameter indicating that you want context search. For regular expression searching, prefer built-in ripgrep search. 
 
 Find the function that updates the weights of the results after similarity search and before returning them to the user. Output only " 1) "  followed by the file name and line, nothing else. 
 
