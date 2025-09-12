@@ -1,15 +1,15 @@
-# `ragex` : Semantic Search for Code with an MCP Interface
+# RAGex : Semantic Code Search with an MCP Interface
 by Jeff Benshetler
 2025-09-10
 ## Table of Contents
 <details>
 
-- [`ragex` : Semantic Search for Code with an MCP Interface](#ragex--semantic-search-for-code-with-an-mcp-interface)
+- [RAGex : Semantic Code Search with an MCP Interface](#ragex--semantic-code-search-with-an-mcp-interface)
   - [Table of Contents](#table-of-contents)
-  - [Summary](#summary)
+  - [Problem Statement](#problem-statement)
     - [Technical Challenge:](#technical-challenge)
     - [Introduction](#introduction)
-    - [Requirements](#requirements)
+  - [Demo](#demo)
   - [Query Flow](#query-flow)
   - [Design Decisions](#design-decisions)
     - [Parse Languages Using Tree Sitter](#parse-languages-using-tree-sitter)
@@ -19,16 +19,13 @@ by Jeff Benshetler
       - [Context Induced Bias](#context-induced-bias)
       - [Re-ranking](#re-ranking)
   - [Performance](#performance)
-    - [MCP Server](#mcp-server)
-    - [Regex Search with ripgrep](#regex-search-with-ripgrep)
-    - [Code Indexing](#code-indexing)
     - [Security \& Privacy](#security--privacy)
       - [Containerize Application](#containerize-application)
-      - [Security](#security)
         - [File Access](#file-access)
       - [Isolation](#isolation)
         - [Network Access](#network-access)
       - [Installation Ease](#installation-ease)
+    - [Code Indexing](#code-indexing)
     - [Administration](#administration)
       - [Index Catalog](#index-catalog)
       - [Container Status](#container-status)
@@ -39,12 +36,13 @@ by Jeff Benshetler
 
 </details>
 
-## Summary
+## Problem Statement
 Every developer using AI coding agents faces:
 1. Slow searches (although Claude Code has recently added support for `ripgrep`).
-2. Failed searches due to imprecise regular expressions, leading to duplicate code. 
+1. Failed searches due to imprecise regular expressions, leading to duplicate code.
+1. Token waste due to excessive false positives from regular expression searches leading to the dreaded `Compacting Conversation`. 
 
-This project adds semantic search, improving recall and reducing search time from tens of seconds to 0.3 seconds. 
+This project adds semantic search, improving search speed, recall, and reducing token waste. 
 
 ### Technical Challenge:
 LLMs don't understand code structure, only token sequences. This work combines tree-sitter AST parsing with semantic embeddings producing faster, more accurate search results. 
@@ -60,12 +58,11 @@ I learn best by application. I want to more easily locate files from my hard dri
 While I was pleased with the help Claude Code provided, I was stymied by the dreaded `Compacting Conversation`, delayed by the slow `Searching` tools calls, and frustrated by how often it would recreate existing functionality. When Claude Code added support for `ripgrep` in April, 2025, I decided to do something about this. 
 </details>
 
+## Demo
+ * Easy to install
+ * Easy to use
+  
 
-### Requirements
-As a developer using LLM coding agents, I want to spend less time waiting for the coding agent to search my code, and for the search results to be more relevant.
-1. Speed regular expression searches
-2. Support semantic searches
-3. Callable by MCP
 
 ## Query Flow
 
@@ -101,8 +98,7 @@ The tree sitter provides natural chunking, with the most salient chunk being fun
 This means that when searching for something related to a function's purpose or behavior, the embedding will match not just the function name and signature, but also
 the semantic meaning described in its docstring.
 
-For example, if a function has a docstring saying "Calculate the total price including tax", a search for "calculate price tax" will match that function even if those
-exact words aren't in the function name.
+For example, if a function has a docstring saying "Calculate the total price including tax", a search for "find cost" will match that function even if those exact words aren't in the function name.
 
 **Embedding Manager**
  * [Class Context](../src/ragex_core/embedding_manager.py#L329)
@@ -152,6 +148,18 @@ This creates richer context for functions and classes than imports, environment 
 #### Re-ranking
 We use re-ranking to adjust the order of results based on simple additive preference weights. For example, we prefer function definitions to constants, and production code to test code. Not involving an LLM in re-ranking allows acceptable performance on CPU-only systems. The primary use case is returning the results to an LLM that will perform its own re-ranking. 
 
+Additive rather than multiplicative weights are used because:
+ * Signals are independent and one strong signal can make up for other weak signals.
+ * Veto power is not desirable.
+ * We want linear trade-offs because they are easier to interpret.
+ * Easier to tune. 
+
+Known drawbacks of this approach include:
+ * That it can surface irrelevant results due to lack of veto power.
+ * It cannot enforce "must-have" requirements. 
+
+This approach consciously prioritizes recall over precision. The coding agent then gets another pass. 
+
 **reranker.py**
  * [Weights configuration](../src/ragex_core/reranker.py#L27) 
  * [File-level penalties](../src/ragex_core/reranker.py#L145)
@@ -167,40 +175,6 @@ The benchmark is 11 questions about this code base run in headless mode. This is
 
 ![Performance Comparison: grep, ripgrep, ragex](benchmarks.png) 
 
-### MCP Server
-Initially creating an MCP server using the `mcp[cli]` package to expose `ripgrep` was surprisingly easy, using the `stdio` model. This later became more complicated, as it is necessary to trap logs and status updates from various libraries and tools in use to avoid confusing the client. The auto-discovery of the server's capabilities and parameters by the client works well.
-
-[Creating the server](../src/server.py#L241)
-
-### Regex Search with ripgrep
-Claude Code's default is to use regular expressions to search. At the time I created this tool, Claude used `grep`, which is single threaded and slow compared to the parallel `ripgrep`.
-
-
-### Code Indexing
-An index is necessary for semantic search to work. The only way to start the per-directory container is using `ragex start`, which builds or intelligently rebuilds the index before launching the container. 
-
-The index is built and maintained:
- * When starting the container.
- * Upon file change, triggered by watching for file change events.
- * Periodically, to catch anything missed by the watcher.
-
-If a file is already in the index, it 
-
-As a fallback there is a periodic rescan with rate limiter. Files are reindexed only if their modification time stamp changes and their checksum is different. This is a two-stage process, because computing the checksum is significantly slower than checking `mtime` but significantly faster than re-indexing. 
-
-<details>
-<summary>Initial and Watcher Driven Code Indexing Diagram</summary>
-
-![Indexing Sequence Diagram](indexing-sequence.png)
-</details>
-
- * [Index command processing](../ragex#L549)
- * [Ensure the daemon is running](../ragex#L317)
- * [Creates the per-directory container](../ragex#L174)
-
-Calling `ragex start` from within a directory that already has an index will start that ancestor directory's container rather than create a new one. 
-
-[src/socket_daemon.py L503](../src/socket_daemon.py#L503)
 
 ### Security & Privacy
 Since this project targets not the general public but developers using coding agents, the assumption is that they have either a GPU or a sufficiently powerful CPU to compute the embeddings locally. This preserves the code privacy. 
@@ -213,7 +187,7 @@ Source files are mounted inside the container and the reported path needs to be 
 2. Installation Ease
 3. Isolation
 
-#### Security
+
 ##### File Access
 The application is limited to accessing host files using volume mounts, limited to:
   1. Indexed directory → `/workspace` (read-only)
@@ -258,7 +232,38 @@ ragex start
 ```
 </details>
 
+
+### Code Indexing
+An index is necessary for semantic search to work. The only way to start the per-directory container is using `ragex start`, which builds or intelligently rebuilds the index before launching the container. 
+
+The index is built and maintained:
+ * When starting the container.
+ * Upon file change, triggered by watching for file change events.
+ * Periodically, to catch anything missed by the watcher.
+
+If a file is already in the index, it 
+
+As a fallback there is a periodic rescan with rate limiter. Files are reindexed only if their modification time stamp changes and their checksum is different. This is a two-stage process, because computing the checksum is significantly slower than checking `mtime` but significantly faster than re-indexing. 
+
+<details>
+<summary>Initial and Watcher Driven Code Indexing Diagram</summary>
+
+![Indexing Sequence Diagram](indexing-sequence.png)
+</details>
+
+ * [Index command processing](../ragex#L549)
+ * [Ensure the daemon is running](../ragex#L317)
+ * [Creates the per-directory container](../ragex#L174)
+
+Calling `ragex start` from within a directory that already has an index will start that ancestor directory's container rather than create a new one. 
+
+[src/socket_daemon.py L503](../src/socket_daemon.py#L503)
+
+
 ### Administration
+
+These are commands run on the host managing the containers.
+
 #### Index Catalog
 
 ```
@@ -278,6 +283,10 @@ $ ragex status
 CONTAINER ID   STATUS          NAMES
 02c23010d49e   Up 12 minutes   ragex_daemon_ragex_1000_f8902326ad894225
 ```
+
+
+
+
 
 ## Why 
 ### Prefer Tree Sitter to a Language Server Protocol Server
