@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/jbenshetler-mcp-ragex-badge.png)](https://mseep.ai/app/jbenshetler-mcp-ragex)
+
 # RAGex - AI-Powered Code Search for Claude
 
 > **Stop creating duplicate code.** Give Claude semantic search superpowers to find and reuse existing patterns in your codebase.
